@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node 24 runs the TypeScript unit tests natively (type stripping)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.11
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Type check
+        run: bun run typecheck
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Unit + database tests (PGlite)
+        run: bun run test
+
+      - name: Build
+        run: bun run build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+          # Placeholders: the build must not depend on real secrets
+          NEXT_PUBLIC_SUPABASE_URL: https://your-project-id.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder

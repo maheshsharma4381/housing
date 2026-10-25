@@ -1,0 +1,44 @@
+{
+  "name": "sahvaas",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"tests/unit/*.test.ts\" \"tests/db/*.test.mjs\"",
+    "test:unit": "node --test \"tests/unit/*.test.ts\"",
+    "test:db": "node --test \"tests/db/*.test.mjs\"",
+    "db:bundle": "node scripts/build-sql.mjs",
+    "db:migrate": "node scripts/db-migrate.mjs"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.5.2",
+    "@supabase/supabase-js": "^2.117.3",
+    "@tailwindcss/postcss": "^4.0.9",
+    "lucide-react": "^0.546.0",
+    "next": "15.5.27",
+    "pdfjs-dist": "6.3.289",
+    "postcss": "^8.5.3",
+    "qrcode.react": "^4.2.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "server-only": "^0.0.1"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.9",
+    "@electric-sql/pglite-socket": "^0.2.13",
+    "@eslint/eslintrc": "^3.3.7",
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "eslint": "^9",
+    "eslint-config-next": "15.5.27",
+    "pg": "^8.23.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "~5.8.3"
+  }
+}

@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0284c7" />
+      <stop offset="100%" stop-color="#0f172a" />
+    </linearGradient>
+    <linearGradient id="roof" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#0284c7" />
+    </linearGradient>
+  </defs>
+  <!-- Background with safe zone margin -->
+  <rect width="512" height="512" rx="100" fill="url(#grad)"/>
+  
+  <!-- Architectural Society Building Icon -->
+  <g transform="translate(76, 76)">
+    <!-- Back Building -->
+    <rect x="180" y="80" width="130" height="240" rx="12" fill="#0369a1" opacity="0.8" />
+    <rect x="200" y="110" width="20" height="20" rx="4" fill="#bae6fd" opacity="0.6"/>
+    <rect x="235" y="110" width="20" height="20" rx="4" fill="#bae6fd" opacity="0.6"/>
+    <rect x="270" y="110" width="20" height="20" rx="4" fill="#bae6fd" opacity="0.6"/>
+    <rect x="200" y="150" width="20" height="20" rx="4" fill="#bae6fd" opacity="0.6"/>
+    <rect x="235" y="150" width="20" height="20" rx="4" fill="#bae6fd" opacity="0.6"/>
+    <rect x="270" y="150" width="20" height="20" rx="4" fill="#bae6fd" opacity="0.6"/>
+    <rect x="200" y="190" width="20" height="20" rx="4" fill="#bae6fd" opacity="0.6"/>
+    <rect x="235" y="190" width="20" height="20" rx="4" fill="#bae6fd" opacity="0.6"/>
+    <rect x="270" y="190" width="20" height="20" rx="4" fill="#bae6fd" opacity="0.6"/>
+
+    <!-- Front Tower -->
+    <rect x="50" y="130" width="150" height="190" rx="14" fill="#0284c7" />
+    <path d="M 50 130 L 125 70 L 200 130 Z" fill="url(#roof)"/>
+    
+    <!-- Windows -->
+    <rect x="75" y="150" width="26" height="26" rx="5" fill="#f0f9ff"/>
+    <rect x="117" y="150" width="26" height="26" rx="5" fill="#f0f9ff"/>
+    <rect x="159" y="150" width="26" height="26" rx="5" fill="#f0f9ff"/>
+
+    <rect x="75" y="195" width="26" height="26" rx="5" fill="#f0f9ff"/>
+    <rect x="117" y="195" width="26" height="26" rx="5" fill="#f0f9ff"/>
+    <rect x="159" y="195" width="26" height="26" rx="5" fill="#f0f9ff"/>
+
+    <rect x="75" y="240" width="26" height="26" rx="5" fill="#f0f9ff"/>
+    <rect x="117" y="240" width="26" height="26" rx="5" fill="#f0f9ff"/>
+    <rect x="159" y="240" width="26" height="26" rx="5" fill="#f0f9ff"/>
+
+    <!-- Community shield / gate in front -->
+    <circle cx="260" cy="270" r="42" fill="#38bdf8" />
+    <path d="M 248 270 L 256 278 L 274 260" stroke="#0f172a" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  </g>
+</svg>
