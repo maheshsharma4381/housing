@@ -117,7 +117,22 @@ test('NEFT payments are marked by the platform admin; free months extend the per
   assert.equal((await sub(ids.B.id)).tier_code, 'basic');
 });
 
-test('trial over without paying: Free plan, ads on, CA portal and asset register locked; paying restores them', async () => {
+test('plans: Free and Basic differ only in ads; Pro unchanged', async () => {
+  const rows = Object.fromEntries((await db.query(
+    `SELECT tier_code, feature_keys, features_included, description, show_ads FROM subscription_plans WHERE tier_code IN ('free','basic','pro')`
+  )).rows.map((p) => [p.tier_code, p]));
+  assert.deepEqual(rows.free.feature_keys, ['ca_portal', 'asset_register']);
+  assert.deepEqual(rows.basic.feature_keys, ['ca_portal', 'asset_register']);
+  assert.deepEqual([rows.free.show_ads, rows.basic.show_ads], [true, false]);
+  assert.deepEqual(rows.free.features_included, ['Billing & UPI collection', 'Receipts', 'Notices & tickets', 'Double-entry books', 'CA & auditor portal', 'Asset register & depreciation']);
+  assert.equal(rows.free.description, 'Everything to run the society, including the CA portal. Residents see a few local offers.');
+  assert.deepEqual(rows.basic.features_included, ['Everything in Free', 'No ads']);
+  assert.equal(rows.basic.description, 'Everything in Free, without ads.');
+  assert.equal(rows.pro.feature_keys.length, 6);
+  assert.equal(rows.pro.features_included[0], 'Everything in Basic');
+});
+
+test('trial over without paying: Free keeps the CA portal and asset register, shows ads and locks Pro; Basic removes ads', async () => {
   const C = ids.C;
   const ca = await createUser(db, 'ca@saas.test');
   const inv = (await q(C.admin, `INSERT INTO professional_invites (society_id, invited_email, role, permissions, invited_by, expires_at)
@@ -132,18 +147,33 @@ test('trial over without paying: Free plan, ads on, CA portal and asset register
   assert.ok(run.trials_ended >= 1);
 
   const plan = await val(C.admin, 'SELECT public.society_plan($1)', [C.id]);
-  assert.deepEqual([plan.plan_code, plan.show_ads, plan.features], ['free', true, []]);
-  assert.equal(await val(ca, 'SELECT count(*)::int FROM expenses'), 0, 'grant kept, access paused');
-  await assert.rejects(q(C.admin, `INSERT INTO professional_invites (society_id, invited_email, role, permissions, invited_by, expires_at)
-    VALUES ($1,'ca2@saas.test','ca','["view_reports"]',$2, now() + interval '7 days')`, [C.id, C.admin]), /part of the Basic and Pro plan/);
-  await assert.rejects(q(C.admin, `SELECT public.add_existing_asset($1,'Old pump','1500','2020-01-01',10000,5000,'2025-04-01')`, [C.id]), /asset register/);
-  assert.equal(await val(C.admin, 'SELECT count(*)::int FROM expenses'), 1, 'the society keeps all its data');
+  assert.deepEqual([plan.plan_code, plan.show_ads, plan.features], ['free', true, ['ca_portal', 'asset_register']]);
+  assert.equal(await val(ca, 'SELECT count(*)::int FROM expenses'), 1, 'CA keeps access on Free');
+  await q(C.admin, `INSERT INTO professional_invites (society_id, invited_email, role, permissions, invited_by, expires_at)
+    VALUES ($1,'ca2@saas.test','ca','["view_reports"]',$2, now() + interval '7 days')`, [C.id, C.admin]);
+  assert.equal(await val(C.admin, `SELECT public.society_has_feature($1,'asset_register')`, [C.id]), true);
+  await q(C.admin, `SELECT public.add_existing_asset($1,'Old pump','1500','2020-01-01',10000,5000,'2025-04-01')`, [C.id]);
+  await assert.rejects(q(C.admin, `SELECT * FROM public.tds_register($1, current_date - 30, current_date)`, [C.id]),
+    /The TDS register is part of the Pro plan — upgrade under Plan & Billing/);
 
   const r = await val(C.admin, `SELECT public.choose_plan($1,'basic','annual')`, [C.id]);
   assert.equal(r.period_start, today, 'no trial left: the plan starts today');
   await q(ids.owner, `SELECT public.platform_mark_invoice_paid($1,'NEFT-C1')`, [r.invoice_id]);
-  assert.equal(await val(ca, 'SELECT count(*)::int FROM expenses'), 2, 'CA access is back (incl. the Sahvaas bill)');
+  const basic = await val(C.admin, 'SELECT public.society_plan($1)', [C.id]);
+  assert.deepEqual([basic.plan_code, basic.show_ads], ['basic', false], 'Basic only removes ads');
+  assert.equal(await val(ca, 'SELECT count(*)::int FROM expenses'), 2, 'CA still sees everything (incl. the Sahvaas bill)');
   ids.ca = ca;
+});
+
+test('a feature no active plan includes says so', async () => {
+  const C = ids.C;
+  try {
+    await db.query(`UPDATE subscription_plans SET feature_keys = array_remove(feature_keys, 'tds_register')`);
+    await assert.rejects(q(C.admin, `SELECT * FROM public.tds_register($1, current_date - 30, current_date)`, [C.id]),
+      /The TDS register is not part of any current plan/);
+  } finally {
+    await db.query(`UPDATE subscription_plans SET feature_keys = '{ca_portal,asset_register,gst_recon,tds_register,bank_match,tally_export}' WHERE tier_code = 'pro'`);
+  }
 });
 
 test('upgrade now is prorated; cheaper plans wait for the period end', async () => {
