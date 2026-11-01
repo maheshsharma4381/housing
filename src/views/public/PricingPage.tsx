@@ -9,10 +9,10 @@ interface PublicPlan { tier_code: string; name: string; monthly_rate_per_unit_in
 
 // Shown until the live plans load (and if the database is unreachable); the admin's prices win
 const FALLBACK: PublicPlan[] = [
-  { tier_code: 'free', name: 'Free', monthly_rate_per_unit_inr: 0, show_ads: true, description: 'Everything to run the society. Residents see a few local offers.',
-    features_included: ['Billing & UPI collection', 'Receipts', 'Notices & tickets', 'Double-entry books'] },
-  { tier_code: 'basic', name: 'Basic', monthly_rate_per_unit_inr: 10, show_ads: false, description: 'For societies that work with a CA.',
-    features_included: ['Everything in Free', 'No ads', 'CA & auditor portal', 'Asset register & depreciation'] },
+  { tier_code: 'free', name: 'Free', monthly_rate_per_unit_inr: 0, show_ads: true, description: 'Everything to run the society, including the CA portal. Residents see a few local offers.',
+    features_included: ['Billing & UPI collection', 'Receipts', 'Notices & tickets', 'Double-entry books', 'CA & auditor portal', 'Asset register & depreciation'] },
+  { tier_code: 'basic', name: 'Basic', monthly_rate_per_unit_inr: 10, show_ads: false, description: 'Everything in Free, without ads.',
+    features_included: ['Everything in Free', 'No ads'] },
   { tier_code: 'pro', name: 'Pro', monthly_rate_per_unit_inr: 18, show_ads: false, description: 'For GST-registered and larger societies.',
     features_included: ['Everything in Basic', 'GSTR-2B reconciliation', 'TDS register', 'Bank statement match', 'Tally export'] },
 ];

@@ -62,7 +62,9 @@ export const PlanBilling: React.FC<{ societyId: string; canManage: boolean; onPl
 
   const choose = async (code: string) => {
     if (!supabase) return;
-    if (code === 'free' && !window.confirm('Switch to the Free plan? Residents will see a few local offers and the CA portal / asset register will be locked. No data is deleted.')) return;
+    if (code === 'free' && !window.confirm(plan?.paid_plan_code === 'pro'
+      ? 'Switch to the Free plan? Residents will see a few local offers, and Pro features (GSTR-2B, TDS register, bank statement match, Tally export) will be locked. No data is deleted.'
+      : 'Switch to the Free plan? Residents will see a few local offers. No data is deleted.')) return;
     setBusy(code);
     const { data, error: rpcErr } = await supabase.rpc('choose_plan', { p_society_id: societyId, p_plan_code: code, p_term: term });
     setBusy(null);
@@ -115,7 +117,7 @@ export const PlanBilling: React.FC<{ societyId: string; canManage: boolean; onPl
           {!plan.in_trial && (
             <><div className="text-xl font-extrabold text-white">{plan.plan_name}</div>
               <div className="text-slate-300">
-                {plan.paid_plan_code === 'free' ? 'Residents see a few local offers. Upgrade to remove them and unlock the CA portal.'
+                {plan.paid_plan_code === 'free' ? 'Residents see a few local offers. Choose Basic to remove them.'
                   : `${plan.term === 'annual' ? 'Yearly' : 'Monthly'} · paid till ${d(plan.period_end)}`}
                 {plan.next_plan_code && ` · moves to ${plan.next_plan_code} after ${d(plan.period_end)}`}
               </div>

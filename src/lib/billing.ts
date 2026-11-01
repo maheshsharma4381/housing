@@ -1,8 +1,8 @@
 import type { PlanFeature, PlatformInvoice } from '../types/database';
 
-export const FEATURES: { key: PlanFeature; label: string; plan: 'Basic' | 'Pro' }[] = [
-  { key: 'ca_portal', label: 'CA & auditor portal', plan: 'Basic' },
-  { key: 'asset_register', label: 'Asset register & depreciation', plan: 'Basic' },
+export const FEATURES: { key: PlanFeature; label: string; plan: 'every plan' | 'Pro' }[] = [
+  { key: 'ca_portal', label: 'CA & auditor portal', plan: 'every plan' },
+  { key: 'asset_register', label: 'Asset register & depreciation', plan: 'every plan' },
   { key: 'gst_recon', label: 'GSTR-2B reconciliation', plan: 'Pro' },
   { key: 'tds_register', label: 'TDS register', plan: 'Pro' },
   { key: 'bank_match', label: 'Bank statement match', plan: 'Pro' },

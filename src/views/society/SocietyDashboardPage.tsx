@@ -22,7 +22,7 @@ import { AdjustmentsPanel } from '../../components/AdjustmentsPanel';
 import { PriorYearEditor } from '../../components/PriorYearEditor';
 import { YearLockPanel } from '../../components/YearLockPanel';
 import { FeatureGate, PlanBilling } from '../../components/PlanBilling';
-import { daysUntil } from '../../lib/billing';
+import { daysUntil, featurePlan } from '../../lib/billing';
 import {
   Unit,
   Bill,
@@ -158,8 +158,8 @@ export const SocietyDashboardPage: React.FC = () => {
   const trialLeft = plan?.in_trial && plan.plan_code === 'trial' ? daysUntil(plan.trial_ends_on) : null;
   const planBanner = !plan ? null
     : plan.status === 'past_due' ? { tone: 'rose', text: `Sahvaas renewal is unpaid — the society moves to the Free plan on ${plan.open_invoice?.moves_to_free_on ?? 'soon'}.` }
-    : trialLeft != null && trialLeft <= 7 ? { tone: 'sky', text: `Free trial ends in ${trialLeft} day${trialLeft === 1 ? '' : 's'}. Choose a plan to keep the CA portal and asset register.` }
-    : !plan.in_trial && plan.paid_plan_code === 'free' ? { tone: 'amber', text: 'You are on the Free plan — residents see a few local offers. Upgrade to remove them and unlock the CA portal.' }
+    : trialLeft != null && trialLeft <= 7 ? { tone: 'sky', text: `Free trial ends in ${trialLeft} day${trialLeft === 1 ? '' : 's'}. After that you move to Free: residents see a few local offers and Pro tools (GSTR-2B, TDS register, bank statement match, Tally export) lock. Choose Basic to stay ad-free, or Pro to keep them.` }
+    : !plan.in_trial && plan.paid_plan_code === 'free' ? { tone: 'amber', text: 'You are on the Free plan — residents see a few local offers. Choose Basic to remove them.' }
     : null;
 
   const goTo = (tab: Tab) => {
@@ -455,7 +455,7 @@ export const SocietyDashboardPage: React.FC = () => {
         )}
 
         {activeTab === 'assets' && activeSociety && (
-          <FeatureGate plan={plan} feature="asset_register" label="The asset register" planName="Basic and Pro" onUpgrade={() => goTo('plan')}>
+          <FeatureGate plan={plan} feature="asset_register" label="The asset register" planName={featurePlan('asset_register')} onUpgrade={() => goTo('plan')}>
             <AssetRegister societyId={activeSociety.id} canManage={!readOnly} />
           </FeatureGate>
         )}
@@ -494,13 +494,13 @@ export const SocietyDashboardPage: React.FC = () => {
 
         {/* PROFESSIONALS */}
         {activeTab === 'professionals' && activeSociety && (
-          <FeatureGate plan={plan} feature="ca_portal" label="CA & auditor access" planName="Basic and Pro" onUpgrade={() => goTo('plan')}>
+          <FeatureGate plan={plan} feature="ca_portal" label="CA & auditor access" planName={featurePlan('ca_portal')} onUpgrade={() => goTo('plan')}>
             <ProfessionalsTab societyId={activeSociety.id} currentUserId={user?.id} />
           </FeatureGate>
         )}
 
         {activeTab === 'bank' && activeSociety && (
-          <FeatureGate plan={plan} feature="bank_match" label="Bank statement match" planName="Pro" onUpgrade={() => goTo('plan')}>
+          <FeatureGate plan={plan} feature="bank_match" label="Bank statement match" planName={featurePlan('bank_match')} onUpgrade={() => goTo('plan')}>
             <BankReconciliation societyId={activeSociety.id} canManage={!readOnly} />
           </FeatureGate>
         )}
