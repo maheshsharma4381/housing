@@ -1,6 +1,6 @@
 import type { ProfessionalRole } from '../types/database';
 
-/** Must match valid_professional_permissions() in 009_professional.sql and the RLS checks. */
+/** Must match valid_professional_permissions() (latest in 019_account_groups.sql) and the RLS checks. */
 export const PROFESSIONAL_PERMISSIONS = [
   { key: 'view_reports', label: 'Financial reports', hint: 'I&E, balance sheet, trial balance, dues' },
   { key: 'view_ledger', label: 'Ledger & journals', hint: 'Every double-entry posting' },
@@ -12,6 +12,7 @@ export const PROFESSIONAL_PERMISSIONS = [
   { key: 'view_documents', label: 'Documents vault', hint: 'Bye-laws, minutes, audit reports' },
   { key: 'view_units', label: 'Flats register', hint: 'Units and occupancy' },
   { key: 'view_audit_logs', label: 'Audit trail', hint: 'Who changed what' },
+  { key: 'manage_accounts', label: 'Manage accounts', hint: 'Groups, ledgers and opening balance' },
 ] as const;
 
 export type ProfessionalPermission = (typeof PROFESSIONAL_PERMISSIONS)[number]['key'];
@@ -27,9 +28,9 @@ export const PROFESSIONAL_ROLES: { value: ProfessionalRole; label: string }[] = 
 
 /** Sensible defaults per role; the committee can still tick/untick. */
 export const ROLE_PRESETS: Record<ProfessionalRole, ProfessionalPermission[]> = {
-  ca: ['view_reports', 'view_ledger', 'view_expenses', 'audit_gst', 'view_bills', 'view_payments', 'view_documents'],
+  ca: ['view_reports', 'view_ledger', 'view_expenses', 'audit_gst', 'view_bills', 'view_payments', 'view_documents', 'manage_accounts'],
   auditor: ['view_reports', 'view_ledger', 'view_expenses', 'view_bills', 'view_payments', 'view_bank_reconciliation', 'view_documents', 'view_units', 'view_audit_logs'],
-  accountant: ['view_reports', 'view_ledger', 'view_expenses', 'view_bills', 'view_payments'],
+  accountant: ['view_reports', 'view_ledger', 'view_expenses', 'view_bills', 'view_payments', 'manage_accounts'],
   gst_consultant: ['audit_gst', 'view_expenses'],
   tax_consultant: ['view_reports', 'view_expenses'],
   financial_consultant: ['view_reports'],
