@@ -209,3 +209,60 @@ test('the committee reads the chart; residents cannot', async () => {
   assert.equal(chart.groups.find((g) => g.system_key === 'expenses').allows_ledgers, true);
   await assert.rejects(q(ids.resident, `SELECT public.chart_of_accounts($1)`, [ids.societyId]), /do not have access/);
 });
+
+// ---------------------------------------------------------------------------
+// 021: billing charges, adjustments and Receipts & Payments follow the chart
+// ---------------------------------------------------------------------------
+const balOf = async (code) => Number((await db.query(
+  `SELECT coalesce(sum(l.amount),0) b FROM ledger_entries l JOIN accounts a ON a.id=l.account_id WHERE l.society_id=$1 AND a.code=$2`,
+  [ids.societyId, code])).rows[0].b);
+const addRule = (code, name) => q(ids.secretary,
+  `INSERT INTO billing_rules (society_id,name,calculation_type,rate,tax_rate_percent,account_code) VALUES ($1,$2,'flat_per_unit',500,0,$3) RETURNING id`,
+  [ids.societyId, name, code]);
+
+test('maintenance charges can post to a CA-created income ledger', async () => {
+  const parking = await createLedger(ids.ca, await groupId('income'), 'Parking Charges');
+  assert.equal(parking, '4C001');
+  await addRule(parking, 'Parking');
+  await q(ids.secretary, `SELECT public.generate_bills($1,'2026-11-01','2026-11-30','2026-11-10')`, [ids.societyId]);
+  const flats = Number((await db.query(`SELECT count(*) n FROM units WHERE society_id=$1`, [ids.societyId])).rows[0].n);
+  assert.equal(await balOf(parking), -500 * flats);
+});
+
+test('a maintenance charge cannot go to an expense or inactive ledger', async () => {
+  await assert.rejects(addRule('5100', 'Security'), /active income or fund ledger/);
+  const old = await createLedger(ids.ca, await groupId('income'), 'Old Charges');
+  await q(ids.ca, `SELECT public.set_ledger_active($1,$2,false)`, [ids.societyId, old]);
+  await assert.rejects(addRule(old, 'Old'), /active income or fund ledger/);
+  await assert.rejects(addRule('9999', 'Missing'), /active income or fund ledger/);
+});
+
+test('adjustments follow the groups', async () => {
+  const propose = (lines) => q(ids.ca, `SELECT public.propose_adjustment($1,'2026-10-18','Reclassify for the audit',$2)`,
+    [ids.societyId, JSON.stringify(lines)]);
+  const liftOld = await createLedger(ids.ca, await groupId('fixed_assets'), 'Lift (old)');
+  await assert.rejects(propose([{ code: liftOld, amount: 100 }, { code: '5900', amount: -100 }]), /kept by its own register/);
+  const ok = await propose([{ code: '5C001', amount: 100 }, { code: '5900', amount: -100 }]);
+  assert.equal(ok.length, 1);
+  const chart = await val(ids.ca, `SELECT public.chart_of_accounts($1)`, [ids.societyId]);
+  const adj = (c) => chart.ledgers.find((l) => l.code === c).adjustable;
+  assert.deepEqual([adj(liftOld), adj('5C001'), adj('1200'), adj('1590')], [false, true, false, false]);
+});
+
+test('a transfer between two banks is neither a receipt nor a payment', async () => {
+  const icici = await createLedger(ids.ca, await groupId('bank_accounts'), 'ICICI Current');
+  const rp = () => q(ids.ca, `SELECT section, code, amount FROM public.receipts_payments($1,'2026-04-01','2027-03-31')`, [ids.societyId]);
+  const closingOf = (rows) => Number(rows.find((r) => r.section === 'closing').amount);
+  const before = closingOf(await rp());
+
+  const p = await val(ids.ca, `SELECT public.propose_adjustment($1,'2026-10-19','Move money to the new bank',$2)`,
+    [ids.societyId, JSON.stringify([{ code: icici, amount: 1000 }, { code: '1000', amount: -1000 }])]);
+  const d = await val(ids.treasurer, 'SELECT public.decide_adjustment($1,true)', [p.id]);
+  assert.equal(d.status, 'approved');
+  assert.equal(await balOf(icici), 1000);
+
+  const after = await rp();
+  assert.deepEqual(after.filter((r) => [icici, '1000'].includes(r.code)), [], 'no receipt or payment row for either bank');
+  assert.equal(closingOf(after), before, 'a transfer does not change bank & cash');
+  assert.equal(closingOf(after), (await balOf('1000')) + (await balOf('1100')) + (await balOf(icici)));
+});

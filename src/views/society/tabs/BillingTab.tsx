@@ -24,15 +24,17 @@ type RuleDraft = Pick<BillingRule, 'name' | 'calculation_type' | 'rate' | 'tax_r
 
 const EMPTY_RULE: RuleDraft = { name: '', calculation_type: 'flat_per_unit', rate: 0, tax_rate_percent: 0, applies_to_unit_type: '', account_code: '4000' };
 
-// Fund contributions are credited to the fund, not to income (must match chk_billing_rules_account_code)
-const CREDIT_ACCOUNTS: { code: BillingRule['account_code']; label: string }[] = [
-  { code: '4000', label: 'Maintenance income' },
-  { code: '3000', label: 'Sinking fund' },
-  { code: '3100', label: 'Repair fund' },
-  { code: '3200', label: 'General reserve' },
-  { code: '4200', label: 'Other income' },
+// A charge credits any active income or fund ledger (trg_billing_rule_account in 021); fund
+// contributions go to the fund, not to income. Shown until the society's chart loads.
+interface CreditAccount { code: string; label: string }
+const DEFAULT_CREDIT_ACCOUNTS: CreditAccount[] = [
+  { code: '4000', label: 'Maintenance Charges' },
+  { code: '4200', label: 'Other Income' },
+  { code: '3000', label: 'Sinking Fund' },
+  { code: '3100', label: 'Repair & Maintenance Fund' },
+  { code: '3200', label: 'General Reserve' },
 ];
-const creditLabel = (code: string) => CREDIT_ACCOUNTS.find(a => a.code === code)?.label ?? code;
+interface ChartLedgerRow { code: string; name: string; nature: string; is_active: boolean }
 
 const STATUS_STYLES: Record<BillStatus, string> = {
   draft: 'bg-slate-800 text-slate-300',
@@ -54,6 +56,8 @@ export const BillingTab: React.FC<BillingTabProps> = ({ societyId, bills, totals
   const [rules, setRules] = useState<BillingRule[]>([]);
   const [draft, setDraft] = useState<RuleDraft>(EMPTY_RULE);
   const [savingRule, setSavingRule] = useState(false);
+  const [creditAccounts, setCreditAccounts] = useState<CreditAccount[]>(DEFAULT_CREDIT_ACCOUNTS);
+  const creditLabel = (code: string) => creditAccounts.find(a => a.code === code)?.label ?? code;
 
   const today = new Date();
   const [month, setMonth] = useState(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`);
@@ -70,11 +74,17 @@ export const BillingTab: React.FC<BillingTabProps> = ({ societyId, bills, totals
 
   const loadRules = useCallback(async () => {
     if (!supabase) return;
-    const [rRes, sRes] = await Promise.all([
+    const [rRes, sRes, cRes] = await Promise.all([
       supabase.from('billing_rules').select('*').eq('society_id', societyId).order('created_at'),
       supabase.from('society_settings').select('due_day_of_month').eq('society_id', societyId).maybeSingle(),
+      supabase.rpc('chart_of_accounts', { p_society_id: societyId }),
     ]);
     setRules((rRes.data ?? []) as BillingRule[]);
+    const ledgers = (cRes.data as { ledgers?: ChartLedgerRow[] } | null)?.ledgers ?? [];
+    const credit = ledgers.filter(l => l.is_active && (l.nature === 'income' || l.nature === 'equity'))
+      .sort((a, b) => (a.nature === b.nature ? a.code.localeCompare(b.code) : a.nature === 'income' ? -1 : 1))
+      .map(l => ({ code: l.code, label: l.name }));
+    if (credit.length) setCreditAccounts(credit);
     if (sRes.data?.due_day_of_month) setDueDay(sRes.data.due_day_of_month);
   }, [societyId]);
 
@@ -295,8 +305,8 @@ export const BillingTab: React.FC<BillingTabProps> = ({ societyId, bills, totals
           </label>
           <label className="space-y-1">
             <span className="block text-slate-400">Credit to</span>
-            <select value={draft.account_code} onChange={e => setDraft({ ...draft, account_code: e.target.value as RuleDraft['account_code'] })} className={inputClass}>
-              {CREDIT_ACCOUNTS.map(a => <option key={a.code} value={a.code}>{a.label}</option>)}
+            <select value={draft.account_code} onChange={e => setDraft({ ...draft, account_code: e.target.value })} className={inputClass}>
+              {creditAccounts.map(a => <option key={a.code} value={a.code}>{a.label}</option>)}
             </select>
           </label>
           <button type="submit" disabled={savingRule} className="col-span-2 sm:col-span-7 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50">

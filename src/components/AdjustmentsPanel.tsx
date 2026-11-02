@@ -8,7 +8,8 @@ import { Banner } from './Banner';
 import { EmptyState } from './EmptyState';
 import { CheckCircle2, Loader2, Plus, Scale, Trash2, XCircle } from 'lucide-react';
 
-interface Account { code: string; name: string; type: string }
+interface Account { code: string; name: string; type: string; is_active: boolean; adjustable: boolean }
+interface ChartLedgerRow { code: string; name: string; nature: string; is_active: boolean; adjustable: boolean }
 interface Proposal {
   id: string;
   proposal_number: string;
@@ -26,8 +27,6 @@ interface Proposal {
 }
 interface RevenueExpense { id: string; expense_number: string; title: string; subtotal: number; gst_amount: number; gst_claimable: boolean; invoice_date: string | null }
 
-// Mirrors adjustment_blocked_code() in 014: sub-ledger accounts change only through their own screens
-const BLOCKED = new Set(['1200', '2000', '2300', '1500', '1510', '1520', '1530', '1540', '1550', '1590']);
 const STATUS: Record<Proposal['status'], string> = {
   pending: 'bg-amber-500/10 text-amber-300', approved: 'bg-emerald-500/10 text-emerald-300',
   rejected: 'bg-rose-500/10 text-rose-300', withdrawn: 'bg-slate-800 text-slate-400',
@@ -64,14 +63,16 @@ export const AdjustmentsPanel: React.FC<AdjustmentsPanelProps> = ({ societyId, c
     const [pRes, aRes, eRes] = await Promise.all([
       supabase.from('adjustment_proposals').select('*, proposer:proposed_by (full_name), decider:decided_by (full_name)')
         .eq('society_id', societyId).order('proposed_at', { ascending: false }).limit(200),
-      supabase.from('accounts').select('code, name, type').eq('society_id', societyId).order('code'),
+      supabase.rpc('chart_of_accounts', { p_society_id: societyId }),
       supabase.from('expenses').select('id, expense_number, title, subtotal, gst_amount, gst_claimable, invoice_date')
         .eq('society_id', societyId).eq('expense_type', 'revenue').in('status', ['approved', 'paid'])
         .order('created_at', { ascending: false }).limit(300),
     ]);
     if (pRes.error) setError(pRes.error.message);
     setProposals((pRes.data ?? []) as unknown as Proposal[]);
-    setAccounts((aRes.data ?? []) as Account[]);
+    // Ledgers kept by their own register (members, vendors, advances, fixed assets) come back with adjustable = false
+    const ledgers = ((aRes.data as { ledgers?: ChartLedgerRow[] } | null)?.ledgers ?? []);
+    setAccounts(ledgers.map(l => ({ code: l.code, name: l.name, type: l.nature, is_active: l.is_active, adjustable: l.adjustable })));
     setExpenses((eRes.data ?? []) as RevenueExpense[]);
   }, [societyId]);
 
@@ -159,7 +160,7 @@ export const AdjustmentsPanel: React.FC<AdjustmentsPanelProps> = ({ societyId, c
                 <div key={i} className="grid grid-cols-[1fr_110px_110px_32px] gap-2">
                   <select value={l.code} onChange={e => setLines(ls => ls.map((x, j) => (j === i ? { ...x, code: e.target.value } : x)))} className={inputClass}>
                     <option value="">Account…</option>
-                    {accounts.filter(a => !BLOCKED.has(a.code)).map(a => <option key={a.code} value={a.code}>{a.code} · {a.name}</option>)}
+                    {accounts.filter(a => a.is_active && a.adjustable).map(a => <option key={a.code} value={a.code}>{a.code} · {a.name}</option>)}
                   </select>
                   <input type="number" min={0} step="0.01" placeholder="Debit" value={l.debit || ''} onChange={e => setLines(ls => ls.map((x, j) => (j === i ? { ...x, debit: Number(e.target.value), credit: 0 } : x)))} className={inputClass} />
                   <input type="number" min={0} step="0.01" placeholder="Credit" value={l.credit || ''} onChange={e => setLines(ls => ls.map((x, j) => (j === i ? { ...x, credit: Number(e.target.value), debit: 0 } : x)))} className={inputClass} />

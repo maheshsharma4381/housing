@@ -321,8 +321,8 @@ export interface BillingRule {
   applies_to_unit_type?: string;
   tax_rate_percent: number;
   hsn_sac_code?: string;
-  /** Account credited when billed (DB check: 4000 | 4200 | 3000 | 3100 | 3200) */
-  account_code: '4000' | '4200' | '3000' | '3100' | '3200';
+  /** Ledger credited when billed: any active income or fund (equity) ledger (trg_billing_rule_account in 021) */
+  account_code: string;
   is_active: boolean;
   created_at: string;
 }
