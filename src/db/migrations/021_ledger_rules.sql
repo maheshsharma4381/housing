@@ -6,7 +6,9 @@
 --      Inactive ledgers cannot be adjusted.
 --   2. Maintenance charges may credit any active income or fund (equity)
 --      ledger, including ones the CA created; the fixed code list is gone.
---   3. Receipts & Payments: bank and cash are the ledgers in the Bank Accounts
+--   3. chart_of_accounts: income and expense ledgers show the current financial
+--      year's figure (they start each year at zero); others show the balance.
+--   4. Receipts & Payments: bank and cash are the ledgers in the Bank Accounts
 --      and Cash-in-Hand groups, so a transfer between two banks is neither a
 --      receipt nor a payment.
 -- ============================================================================
@@ -61,7 +63,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public;
 
--- chart_of_accounts as in 020, with adjustable from the groups
+-- chart_of_accounts as in 020, with adjustable from the groups and income / expense
+-- balances for the current financial year (the figure set_ledger_active checks)
 CREATE OR REPLACE FUNCTION public.chart_of_accounts(p_society_id UUID)
 RETURNS JSONB AS $$
 BEGIN
@@ -86,8 +89,11 @@ BEGIN
             ) ORDER BY a.code)
             FROM accounts a
             LEFT JOIN (
-                SELECT l.account_id, sum(l.amount) AS bal FROM ledger_entries l
-                WHERE l.society_id = p_society_id GROUP BY l.account_id
+                SELECT l.account_id, sum(l.amount) AS bal
+                FROM ledger_entries l JOIN accounts x ON x.id = l.account_id
+                WHERE l.society_id = p_society_id
+                  AND (x.type NOT IN ('income', 'expense') OR l.date >= fy_start_of(current_date))
+                GROUP BY l.account_id
             ) b ON b.account_id = a.id
             WHERE a.society_id = p_society_id
         ), '[]'::jsonb)

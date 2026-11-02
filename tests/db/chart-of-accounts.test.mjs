@@ -122,8 +122,9 @@ test('upgrade from 018 puts every existing ledger in a group', async () => {
 // 020: the CA manages groups and ledgers
 // ---------------------------------------------------------------------------
 const createLedger = (user, group, name) => val(user, `SELECT public.create_ledger($1,$2,$3)`, [ids.societyId, group, name]);
-const postAsSystem = (lines, date = '2026-10-20') => db.query(
-  `SELECT public.post_journal($1,$2::date,'test',gen_random_uuid(),'Test posting',$3)`, [ids.societyId, date, JSON.stringify(lines)]);
+/** Posts as the system; dated today unless `daysAgo` is given. */
+const postAsSystem = (lines, daysAgo = 0) => db.query(
+  `SELECT public.post_journal($1,current_date - $2::int,'test',gen_random_uuid(),'Test posting',$3)`, [ids.societyId, daysAgo, JSON.stringify(lines)]);
 
 test('the CA creates a sub-group and ledgers; codes follow the nature', async () => {
   const fds = await val(ids.ca, `SELECT public.create_account_group($1,$2,'FDs')`, [ids.societyId, await groupId('investments')]);
@@ -265,4 +266,47 @@ test('a transfer between two banks is neither a receipt nor a payment', async ()
   assert.deepEqual(after.filter((r) => [icici, '1000'].includes(r.code)), [], 'no receipt or payment row for either bank');
   assert.equal(closingOf(after), before, 'a transfer does not change bank & cash');
   assert.equal(closingOf(after), (await balOf('1000')) + (await balOf('1100')) + (await balOf(icici)));
+});
+
+// ---------------------------------------------------------------------------
+// Final review fixes
+// ---------------------------------------------------------------------------
+test('an income or expense ledger used only in an earlier year can be deactivated; balance-sheet ledgers still need a zero balance', async () => {
+  const garden = await createLedger(ids.ca, await groupId('expenses'), 'Garden Upkeep');
+  await postAsSystem([{ code: garden, amount: 400 }, { code: '1100', amount: -400 }], 400);
+  const chart = await val(ids.ca, `SELECT public.chart_of_accounts($1)`, [ids.societyId]);
+  assert.equal(Number(chart.ledgers.find((l) => l.code === garden).balance), 0, 'income and expense ledgers show this financial year');
+  await q(ids.ca, `SELECT public.set_ledger_active($1,$2,false)`, [ids.societyId, garden]);
+
+  const deposit = await createLedger(ids.ca, await groupId('current_assets'), 'Old Deposit');
+  await postAsSystem([{ code: deposit, amount: 400 }, { code: '1100', amount: -400 }], 400);
+  await assert.rejects(q(ids.ca, `SELECT public.set_ledger_active($1,$2,false)`, [ids.societyId, deposit]), /Move its balance/);
+});
+
+test('every chart change is in the audit log', async () => {
+  const actions = async () => (await db.query(
+    `SELECT action, entity_id, old_value, new_value FROM audit_logs WHERE society_id=$1 AND user_id=$2 AND action LIKE 'chart.%' ORDER BY timestamp, action`,
+    [ids.societyId, ids.ca])).rows;
+  const before = (await actions()).length;
+  const grp = await val(ids.ca, `SELECT public.create_account_group($1,$2,'Audit Funds')`, [ids.societyId, await groupId('capital_funds')]);
+  const code = await createLedger(ids.ca, grp, 'Corpus Fund');
+  await q(ids.ca, `SELECT public.update_ledger($1,$2,'Corpus Fund 2026',NULL)`, [ids.societyId, code]);
+  await q(ids.ca, `SELECT public.update_ledger($1,$2,NULL,$3)`, [ids.societyId, code, await groupId('capital_funds')]);
+  await q(ids.ca, `SELECT public.set_ledger_active($1,$2,false)`, [ids.societyId, code]);
+  await q(ids.ca, `SELECT public.set_ledger_active($1,$2,true)`, [ids.societyId, code]);
+  await q(ids.ca, `SELECT public.update_account_group($1,'Audit Reserve',NULL)`, [grp]);
+  const sub = await val(ids.ca, `SELECT public.create_account_group($1,$2,'Audit Sub')`, [ids.societyId, await groupId('capital_funds')]);
+  await q(ids.ca, `SELECT public.update_account_group($1,NULL,$2)`, [sub, grp]);
+
+  const rows = (await actions()).slice(before);
+  const find = (action) => rows.find((r) => r.action === action);
+  assert.deepEqual(rows.map((r) => r.action).sort(), [
+    'chart.group_created', 'chart.group_created', 'chart.group_moved', 'chart.group_renamed',
+    'chart.ledger_activated', 'chart.ledger_created', 'chart.ledger_deactivated', 'chart.ledger_moved', 'chart.ledger_renamed',
+  ]);
+  assert.equal(find('chart.ledger_created').entity_id, code);
+  assert.deepEqual([find('chart.ledger_renamed').old_value.name, find('chart.ledger_renamed').new_value.name], ['Corpus Fund', 'Corpus Fund 2026']);
+  assert.deepEqual([find('chart.ledger_moved').old_value.group, find('chart.ledger_moved').new_value.group], ['Audit Funds', 'Capital & Funds']);
+  assert.deepEqual([find('chart.group_renamed').old_value.name, find('chart.group_renamed').new_value.name], ['Audit Funds', 'Audit Reserve']);
+  assert.deepEqual([find('chart.group_moved').old_value.parent, find('chart.group_moved').new_value.parent], ['Capital & Funds', 'Audit Reserve']);
 });

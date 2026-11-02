@@ -200,7 +200,7 @@ export const ChartOfAccounts: React.FC<{ societyId: string; canManage: boolean }
           <h2 className="text-lg font-bold text-white flex items-center gap-2"><ListTree className="w-4 h-4 text-sky-400" /> Groups &amp; Ledgers</h2>
           <p className="text-slate-400">
             {canManage
-              ? 'Add sub-groups and ledgers, rename them, move them within the same nature, or deactivate a ledger once its balance is zero. Codes never change.'
+              ? 'Add sub-groups and ledgers, rename them, move them within the same nature, or deactivate a ledger once its balance is zero (income and expense: zero this financial year). Codes never change.'
               : 'The society’s chart of accounts. Only the CA or accountant with “Manage accounts” can change it.'}
           </p>
         </div>
@@ -219,7 +219,7 @@ export const ChartOfAccounts: React.FC<{ societyId: string; canManage: boolean }
           {(childrenOf.get(null) ?? []).map(g => renderGroup(g, 0))}
         </div>
       )}
-      <p className="text-slate-500">Balances are as per the books today (Dr / Cr). Members&apos; dues, creditors, member advances and taxes get their ledgers from Sahvaas automatically.</p>
+      <p className="text-slate-500">Assets, liabilities and funds show the balance today; income and expense ledgers show this financial year (Dr / Cr). Members&apos; dues, creditors, member advances and taxes get their ledgers from Sahvaas automatically.</p>
     </div>
   );
 };

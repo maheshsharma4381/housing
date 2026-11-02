@@ -8836,11 +8836,13 @@ GRANT EXECUTE ON FUNCTION public.can_manage_accounts(UUID) TO authenticated;
 --      Dues, Sundry Creditors, Advances from Members and Duties & Taxes are
 --      created by Sahvaas itself.
 --   3. update_ledger / set_ledger_active: rename, move within the nature,
---      deactivate at zero balance. System ledgers can be renamed only.
+--      deactivate at zero balance (income and expense ledgers: zero in the
+--      current financial year, since they start each year at zero). System
+--      ledgers can be renamed only.
 --   4. chart_of_accounts(): groups and ledgers with balances, for the screens.
 --   5. post_journal refuses inactive ledgers.
 --   Only the society's CA / accountant (manage_accounts) or the platform owner
---   can change the chart.
+--   can change the chart. Every change is written to audit_logs (chart.*).
 -- ============================================================================
 
 CREATE OR REPLACE FUNCTION public.require_manage_accounts(p_society_id UUID)
@@ -8894,6 +8896,9 @@ BEGIN
     EXCEPTION WHEN unique_violation THEN
         RAISE EXCEPTION 'A group named % already exists', v_name;
     END;
+    INSERT INTO audit_logs (society_id, user_id, action, entity_type, entity_id, new_value)
+    VALUES (p_society_id, auth.uid(), 'chart.group_created', 'account_group', v_id::text,
+            jsonb_build_object('name', v_name, 'parent', v_parent.name, 'nature', v_parent.nature));
     RETURN v_id;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
@@ -8939,15 +8944,24 @@ BEGIN
             RAISE EXCEPTION 'Groups cannot move into % — Sahvaas fills it automatically', v_parent.name;
         END IF;
         UPDATE account_groups SET parent_id = v_parent.id WHERE id = v_group.id;
+        INSERT INTO audit_logs (society_id, user_id, action, entity_type, entity_id, old_value, new_value)
+        VALUES (v_group.society_id, auth.uid(), 'chart.group_moved', 'account_group', v_group.id::text,
+                jsonb_build_object('name', v_group.name, 'parent', (SELECT name FROM account_groups WHERE id = v_group.parent_id)),
+                jsonb_build_object('name', v_group.name, 'parent', v_parent.name));
     END IF;
 
     IF p_name IS NOT NULL THEN
         v_name := chart_name(p_name);
-        BEGIN
-            UPDATE account_groups SET name = v_name WHERE id = v_group.id;
-        EXCEPTION WHEN unique_violation THEN
-            RAISE EXCEPTION 'A group named % already exists', v_name;
-        END;
+        IF v_name IS DISTINCT FROM v_group.name THEN
+            BEGIN
+                UPDATE account_groups SET name = v_name WHERE id = v_group.id;
+            EXCEPTION WHEN unique_violation THEN
+                RAISE EXCEPTION 'A group named % already exists', v_name;
+            END;
+            INSERT INTO audit_logs (society_id, user_id, action, entity_type, entity_id, old_value, new_value)
+            VALUES (v_group.society_id, auth.uid(), 'chart.group_renamed', 'account_group', v_group.id::text,
+                    jsonb_build_object('name', v_group.name), jsonb_build_object('name', v_name));
+        END IF;
     END IF;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
@@ -8993,6 +9007,9 @@ BEGIN
     EXCEPTION WHEN unique_violation THEN
         RAISE EXCEPTION 'A ledger named % already exists', v_name;
     END;
+    INSERT INTO audit_logs (society_id, user_id, action, entity_type, entity_id, new_value)
+    VALUES (p_society_id, auth.uid(), 'chart.ledger_created', 'ledger', v_code,
+            jsonb_build_object('code', v_code, 'name', v_name, 'group', v_group.name));
     RETURN v_code;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
@@ -9022,15 +9039,24 @@ BEGIN
             RAISE EXCEPTION 'Ledgers in % are created by Sahvaas automatically', v_group.name;
         END IF;
         UPDATE accounts SET group_id = v_group.id WHERE id = v_ledger.id;
+        INSERT INTO audit_logs (society_id, user_id, action, entity_type, entity_id, old_value, new_value)
+        VALUES (p_society_id, auth.uid(), 'chart.ledger_moved', 'ledger', p_code,
+                jsonb_build_object('name', v_ledger.name, 'group', (SELECT name FROM account_groups WHERE id = v_ledger.group_id)),
+                jsonb_build_object('name', v_ledger.name, 'group', v_group.name));
     END IF;
 
     IF p_name IS NOT NULL THEN
         v_name := chart_name(p_name);
-        BEGIN
-            UPDATE accounts SET name = v_name WHERE id = v_ledger.id;
-        EXCEPTION WHEN unique_violation THEN
-            RAISE EXCEPTION 'A ledger named % already exists', v_name;
-        END;
+        IF v_name IS DISTINCT FROM v_ledger.name THEN
+            BEGIN
+                UPDATE accounts SET name = v_name WHERE id = v_ledger.id;
+            EXCEPTION WHEN unique_violation THEN
+                RAISE EXCEPTION 'A ledger named % already exists', v_name;
+            END;
+            INSERT INTO audit_logs (society_id, user_id, action, entity_type, entity_id, old_value, new_value)
+            VALUES (p_society_id, auth.uid(), 'chart.ledger_renamed', 'ledger', p_code,
+                    jsonb_build_object('name', v_ledger.name), jsonb_build_object('name', v_name));
+        END IF;
     END IF;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
@@ -9049,14 +9075,25 @@ BEGIN
         IF v_ledger.is_system THEN
             RAISE EXCEPTION 'This ledger cannot be deactivated';
         END IF;
-        IF coalesce((SELECT sum(amount) FROM ledger_entries WHERE account_id = v_ledger.id), 0) <> 0 THEN
+        -- Income and expense ledgers start every financial year at zero; others carry their balance
+        IF coalesce((
+            SELECT sum(amount) FROM ledger_entries
+            WHERE account_id = v_ledger.id
+              AND (v_ledger.type NOT IN ('income', 'expense') OR date >= fy_start_of(current_date))
+        ), 0) <> 0 THEN
             RAISE EXCEPTION 'Move its balance to another ledger first';
         END IF;
         IF EXISTS (SELECT 1 FROM billing_rules WHERE society_id = p_society_id AND account_code = p_code AND is_active) THEN
             RAISE EXCEPTION 'A maintenance charge uses this ledger';
         END IF;
     END IF;
-    UPDATE accounts SET is_active = coalesce(p_active, false) WHERE id = v_ledger.id;
+    IF v_ledger.is_active IS DISTINCT FROM coalesce(p_active, false) THEN
+        UPDATE accounts SET is_active = coalesce(p_active, false) WHERE id = v_ledger.id;
+        INSERT INTO audit_logs (society_id, user_id, action, entity_type, entity_id, new_value)
+        VALUES (p_society_id, auth.uid(),
+                CASE WHEN coalesce(p_active, false) THEN 'chart.ledger_activated' ELSE 'chart.ledger_deactivated' END,
+                'ledger', p_code, jsonb_build_object('code', p_code, 'name', v_ledger.name));
+    END IF;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
@@ -9202,7 +9239,9 @@ GRANT EXECUTE ON FUNCTION public.chart_of_accounts(UUID) TO authenticated;
 --      Inactive ledgers cannot be adjusted.
 --   2. Maintenance charges may credit any active income or fund (equity)
 --      ledger, including ones the CA created; the fixed code list is gone.
---   3. Receipts & Payments: bank and cash are the ledgers in the Bank Accounts
+--   3. chart_of_accounts: income and expense ledgers show the current financial
+--      year's figure (they start each year at zero); others show the balance.
+--   4. Receipts & Payments: bank and cash are the ledgers in the Bank Accounts
 --      and Cash-in-Hand groups, so a transfer between two banks is neither a
 --      receipt nor a payment.
 -- ============================================================================
@@ -9257,7 +9296,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public;
 
--- chart_of_accounts as in 020, with adjustable from the groups
+-- chart_of_accounts as in 020, with adjustable from the groups and income / expense
+-- balances for the current financial year (the figure set_ledger_active checks)
 CREATE OR REPLACE FUNCTION public.chart_of_accounts(p_society_id UUID)
 RETURNS JSONB AS $$
 BEGIN
@@ -9282,8 +9322,11 @@ BEGIN
             ) ORDER BY a.code)
             FROM accounts a
             LEFT JOIN (
-                SELECT l.account_id, sum(l.amount) AS bal FROM ledger_entries l
-                WHERE l.society_id = p_society_id GROUP BY l.account_id
+                SELECT l.account_id, sum(l.amount) AS bal
+                FROM ledger_entries l JOIN accounts x ON x.id = l.account_id
+                WHERE l.society_id = p_society_id
+                  AND (x.type NOT IN ('income', 'expense') OR l.date >= fy_start_of(current_date))
+                GROUP BY l.account_id
             ) b ON b.account_id = a.id
             WHERE a.society_id = p_society_id
         ), '[]'::jsonb)
