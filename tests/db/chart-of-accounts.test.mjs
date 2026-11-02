@@ -117,3 +117,95 @@ test('upgrade from 018 puts every existing ledger in a group', async () => {
     await old.close();
   }
 });
+
+// ---------------------------------------------------------------------------
+// 020: the CA manages groups and ledgers
+// ---------------------------------------------------------------------------
+const createLedger = (user, group, name) => val(user, `SELECT public.create_ledger($1,$2,$3)`, [ids.societyId, group, name]);
+const postAsSystem = (lines, date = '2026-10-20') => db.query(
+  `SELECT public.post_journal($1,$2::date,'test',gen_random_uuid(),'Test posting',$3)`, [ids.societyId, date, JSON.stringify(lines)]);
+
+test('the CA creates a sub-group and ledgers; codes follow the nature', async () => {
+  const fds = await val(ids.ca, `SELECT public.create_account_group($1,$2,'FDs')`, [ids.societyId, await groupId('investments')]);
+  const g = (await db.query(`SELECT nature, parent_id FROM account_groups WHERE id=$1`, [fds])).rows[0];
+  assert.deepEqual([g.nature, g.parent_id], ['asset', await groupId('investments')]);
+  ids.fds = fds;
+  assert.equal(await createLedger(ids.ca, fds, 'SBI FD 2026'), '1C001');
+  assert.equal(await createLedger(ids.ca, fds, 'HDFC FD'), '1C002');
+  assert.equal(await createLedger(ids.ca, await groupId('expenses'), 'Lift AMC'), '5C001');
+  const lift = (await db.query(`SELECT type, is_system, is_active FROM accounts WHERE society_id=$1 AND code='5C001'`, [ids.societyId])).rows[0];
+  assert.deepEqual([lift.type, lift.is_system, lift.is_active], ['expense', false, true]);
+});
+
+test('the next code skips a manually inserted one', async () => {
+  await db.query(`INSERT INTO accounts (society_id, code, name, type, group_id, is_system) VALUES ($1,'1C007','Manual','asset',$2,false)`,
+    [ids.societyId, await groupId('current_assets')]);
+  assert.equal(await createLedger(ids.ca, await groupId('current_assets'), 'Petty deposits'), '1C008');
+});
+
+test('the secretary and a view_ledger professional cannot change the chart', async () => {
+  const expenses = await groupId('expenses');
+  await assert.rejects(createLedger(ids.secretary, expenses, 'Garden'), /CA or accountant/);
+  await assert.rejects(createLedger(ids.viewer, expenses, 'Garden'), /CA or accountant/);
+  await assert.rejects(q(ids.secretary, `SELECT public.create_account_group($1,$2,'Misc')`, [ids.societyId, expenses]), /CA or accountant/);
+});
+
+test('duplicate names are refused', async () => {
+  await assert.rejects(createLedger(ids.ca, await groupId('expenses'), 'lift amc'), /duplicate key|already exists/);
+});
+
+test('ledgers cannot be created in automatic groups', async () => {
+  await assert.rejects(createLedger(ids.ca, await groupId('sundry_creditors'), 'Eagle Guards'), /created by Sahvaas automatically/);
+  const sub = await val(ids.ca, `SELECT public.create_account_group($1,$2,'Statutory dues')`, [ids.societyId, await groupId('duties_taxes')]);
+  await assert.rejects(createLedger(ids.ca, sub, 'Professional tax'), /created by Sahvaas automatically/, 'a sub-group inside an automatic group is automatic too');
+});
+
+test('system ledgers can be renamed, not moved or deactivated', async () => {
+  await q(ids.ca, `SELECT public.update_ledger($1,'1000','HDFC Savings',NULL)`, [ids.societyId]);
+  const name = (await db.query(`SELECT name FROM accounts WHERE society_id=$1 AND code='1000'`, [ids.societyId])).rows[0].name;
+  assert.equal(name, 'HDFC Savings');
+  await assert.rejects(q(ids.ca, `SELECT public.update_ledger($1,'1000',NULL,$2)`, [ids.societyId, await groupId('current_assets')]), /rename it but not move it/);
+  await assert.rejects(q(ids.ca, `SELECT public.set_ledger_active($1,'1000',false)`, [ids.societyId]), /cannot be deactivated/);
+});
+
+test('a ledger moves only within its nature', async () => {
+  await assert.rejects(q(ids.ca, `SELECT public.update_ledger($1,'1C001',NULL,$2)`, [ids.societyId, await groupId('expenses')]), /same nature/);
+  await q(ids.ca, `SELECT public.update_ledger($1,'1C001',NULL,$2)`, [ids.societyId, await groupId('current_assets')]);
+  const key = (await db.query(`SELECT g.system_key FROM accounts a JOIN account_groups g ON g.id=a.group_id WHERE a.society_id=$1 AND a.code='1C001'`,
+    [ids.societyId])).rows[0].system_key;
+  assert.equal(key, 'current_assets');
+});
+
+test('deactivation needs a zero balance; inactive ledgers take no postings', async () => {
+  await postAsSystem([{ code: '5C001', amount: 700 }, { code: '1100', amount: -700 }]);
+  await assert.rejects(q(ids.ca, `SELECT public.set_ledger_active($1,'5C001',false)`, [ids.societyId]), /Move its balance/);
+  await q(ids.ca, `SELECT public.set_ledger_active($1,'1C002',false)`, [ids.societyId]);
+  const active = (await db.query(`SELECT is_active FROM accounts WHERE society_id=$1 AND code='1C002'`, [ids.societyId])).rows[0].is_active;
+  assert.equal(active, false);
+  await assert.rejects(postAsSystem([{ code: '1C002', amount: 100 }, { code: '1100', amount: -100 }]), /is inactive/);
+  await q(ids.ca, `SELECT public.set_ledger_active($1,'1C002',true)`, [ids.societyId]);
+});
+
+test('primary groups are fixed; a group cannot move inside itself', async () => {
+  await assert.rejects(q(ids.ca, `SELECT public.update_account_group($1,'Assets',NULL)`, [await groupId('fixed_assets')]), /Primary groups cannot be changed/);
+  await q(ids.ca, `SELECT public.update_account_group($1,'Banks',NULL)`, [await groupId('bank_accounts')]);
+  await assert.rejects(q(ids.ca, `SELECT public.update_account_group($1,NULL,$2)`, [await groupId('bank_accounts'), await groupId('investments')]),
+    /rename/);
+  const child = await val(ids.ca, `SELECT public.create_account_group($1,$2,'Long-term FDs')`, [ids.societyId, ids.fds]);
+  await assert.rejects(q(ids.ca, `SELECT public.update_account_group($1,NULL,$2)`, [ids.fds, child]), /cannot move inside itself/);
+  await assert.rejects(q(ids.ca, `SELECT public.update_account_group($1,NULL,$2)`, [ids.fds, await groupId('expenses')]), /same nature/);
+  await q(ids.ca, `SELECT public.update_account_group($1,NULL,$2)`, [ids.fds, await groupId('current_assets')]);
+  await q(ids.ca, `SELECT public.update_account_group($1,'Bank Accounts',NULL)`, [await groupId('bank_accounts')]);
+});
+
+test('the committee reads the chart; residents cannot', async () => {
+  const chart = await val(ids.secretary, `SELECT public.chart_of_accounts($1)`, [ids.societyId]);
+  assert.ok(chart.groups.length >= 14);
+  assert.ok(chart.ledgers.length >= 33);
+  assert.ok(chart.ledgers.every((l) => l.group_id && typeof l.adjustable === 'boolean'));
+  const bank = chart.ledgers.find((l) => l.code === '1000');
+  assert.equal(Number(bank.balance), 1180);
+  assert.equal(chart.groups.find((g) => g.system_key === 'sundry_creditors').allows_ledgers, false);
+  assert.equal(chart.groups.find((g) => g.system_key === 'expenses').allows_ledgers, true);
+  await assert.rejects(q(ids.resident, `SELECT public.chart_of_accounts($1)`, [ids.societyId]), /do not have access/);
+});
