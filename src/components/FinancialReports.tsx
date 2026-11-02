@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase/client';
 import { formatINR } from '../lib/inr';
 import { downloadCsv, downloadFile, toCsv } from '../lib/csv-export';
 import { buildTallyXml } from '../lib/tally-xml';
+import { EMPTY_CHART, groupTree, nodeRows, nodeSum, type Chart, type GroupNode } from '../lib/chart';
 import { fyLabel } from '../lib/tds';
 import { BarChart3, Download, Loader2, AlertCircle, RefreshCw, Printer, FileCode2, Lock } from 'lucide-react';
 
@@ -26,7 +27,6 @@ interface JournalRow {
   narration: string;
   ledger_entries: { amount: number; accounts: { code: string; name: string } | null }[];
 }
-interface Account { code: string; name: string; type: string }
 
 const REPORTS: { key: ReportKey; label: string }[] = [
   { key: 'pnl', label: 'Income & Expenditure' },
@@ -71,7 +71,8 @@ export const FinancialReports: React.FC<FinancialReportsProps> = ({ societyId, s
   const [asOf, setAsOf] = useState(today());
   const [ledgerCode, setLedgerCode] = useState('1000');
 
-  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [chart, setChart] = useState<Chart>(EMPTY_CHART);
+  const accounts = chart.ledgers;
   const [lockedUntil, setLockedUntil] = useState<string | null>(null);
   const [compare, setCompare] = useState<CompareRow[]>([]);
   const [trial, setTrial] = useState<TrialRow[]>([]);
@@ -88,8 +89,8 @@ export const FinancialReports: React.FC<FinancialReportsProps> = ({ societyId, s
 
   useEffect(() => {
     if (!supabase) return;
-    supabase.from('accounts').select('code, name, type').eq('society_id', societyId).order('code')
-      .then(({ data }) => setAccounts((data ?? []) as Account[]));
+    supabase.rpc('chart_of_accounts', { p_society_id: societyId })
+      .then(({ data }) => setChart((data as Chart | null) ?? EMPTY_CHART));
     supabase.rpc('books_locked_until', { p_society_id: societyId }).then(({ data }) => setLockedUntil((data as string | null) ?? null));
   }, [societyId]);
 
@@ -112,6 +113,10 @@ export const FinancialReports: React.FC<FinancialReportsProps> = ({ societyId, s
       if (res.error) failure.message = res.error.message;
       else set(res.data as T);
     };
+    // Group-wise reports read the chart fresh, so a ledger the CA just added is not "Unclassified"
+    if (report === 'pnl' || report === 'balance' || report === 'trial') {
+      await run<Chart>(supabase.rpc('chart_of_accounts', { p_society_id: societyId }), v => setChart(v ?? EMPTY_CHART));
+    }
     switch (report) {
       case 'pnl': await run<CompareRow[]>(supabase.rpc('income_expenditure_compare', { p_society_id: societyId, p_from: from, p_to: to }), v => setCompare(v ?? [])); break;
       case 'balance': await run<CompareRow[]>(supabase.rpc('balance_sheet_compare', { p_society_id: societyId, p_as_of: asOf }), v => setCompare(v ?? [])); break;
@@ -153,10 +158,12 @@ export const FinancialReports: React.FC<FinancialReportsProps> = ({ societyId, s
     const sum = (rows: CompareRow[], k: 'current' | 'previous') => rows.reduce((s, r) => s + n(r[k]), 0);
     return {
       income, expense,
+      incomeGroups: groupTree(chart, income, r => n(r.current)),
+      expenseGroups: groupTree(chart, expense, r => n(r.current)),
       inc: { cur: sum(income, 'current'), prev: sum(income, 'previous') },
       exp: { cur: sum(expense, 'current'), prev: sum(expense, 'previous') },
     };
-  }, [compare]);
+  }, [compare, chart]);
 
   const bs = useMemo(() => {
     const pick = (types: string[], sign: number) => compare.filter(r => types.includes(r.type)).map(r => ({ ...r, cur: sign * n(r.current), prev: sign * n(r.previous) }));
@@ -167,8 +174,15 @@ export const FinancialReports: React.FC<FinancialReportsProps> = ({ societyId, s
     const total = (rows: { cur: number; prev: number }[], extra = { cur: 0, prev: 0 }) => ({
       cur: rows.reduce((s, r) => s + r.cur, 0) + extra.cur, prev: rows.reduce((s, r) => s + r.prev, 0) + extra.prev,
     });
-    return { assets, liabilities, surplus, totalAssets: total(assets), totalLiabilities: total(liabilities, surplus) };
-  }, [compare]);
+    const asRows = (rows: typeof assets) => rows.map(r => ({ ...r, current: r.cur, previous: r.prev }));
+    return {
+      assets, liabilities, surplus, totalAssets: total(assets), totalLiabilities: total(liabilities, surplus),
+      assetGroups: groupTree(chart, asRows(assets), r => r.current),
+      liabilityGroups: groupTree(chart, asRows(liabilities), r => r.current),
+    };
+  }, [compare, chart]);
+
+  const trialGroups = useMemo(() => groupTree(chart, trial, r => n(r.debit) - n(r.credit)), [chart, trial]);
 
   const trialDr = trial.reduce((s, r) => s + n(r.debit), 0);
   const trialCr = trial.reduce((s, r) => s + n(r.credit), 0);
@@ -236,7 +250,7 @@ export const FinancialReports: React.FC<FinancialReportsProps> = ({ societyId, s
     const { data, error: jErr } = await loadJournal();
     if (jErr) return setError(jErr.message);
     const rows = ((data ?? []) as unknown as JournalRow[]).slice().reverse();
-    const xml = buildTallyXml(societyName ?? 'Society', accounts, rows.map(j => ({
+    const xml = buildTallyXml(societyName ?? 'Society', chart, rows.map(j => ({
       entry_number: j.entry_number, entry_date: j.entry_date, narration: j.narration,
       lines: j.ledger_entries.map(l => ({ code: l.accounts?.code ?? '', amount: n(l.amount) })),
     })));
@@ -308,8 +322,8 @@ export const FinancialReports: React.FC<FinancialReportsProps> = ({ societyId, s
 
       {show && report === 'pnl' && (
         <div className="space-y-3">
-          <CompareTable title="Income" rows={ie.income} prevLabel={prevLabel} prevSource={prevSource} onOpen={openLedger} total={ie.inc} />
-          <CompareTable title="Expenditure" rows={ie.expense} prevLabel={prevLabel} prevSource={prevSource} onOpen={openLedger} total={ie.exp} />
+          <CompareTable title="Income" groups={ie.incomeGroups} prevLabel={prevLabel} prevSource={prevSource} onOpen={openLedger} total={ie.inc} />
+          <CompareTable title="Expenditure" groups={ie.expenseGroups} prevLabel={prevLabel} prevSource={prevSource} onOpen={openLedger} total={ie.exp} />
           <div className={`p-4 rounded-2xl border font-bold text-sm grid grid-cols-[1fr_auto_auto] gap-6 ${ie.inc.cur - ie.exp.cur >= 0 ? 'bg-emerald-500/5 border-emerald-500/30 text-emerald-300' : 'bg-rose-500/5 border-rose-500/30 text-rose-300'}`}>
             <span>{ie.inc.cur - ie.exp.cur >= 0 ? 'Surplus' : 'Deficit'} for the period</span>
             <span className="w-28 text-right">{signed(ie.inc.cur - ie.exp.cur)}</span>
@@ -322,10 +336,10 @@ export const FinancialReports: React.FC<FinancialReportsProps> = ({ societyId, s
       {show && report === 'balance' && (
         <div className="space-y-3">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <CompareTable title="Funds & Liabilities" rows={bs.liabilities.map(r => ({ ...r, current: r.cur, previous: r.prev }))}
+            <CompareTable title="Funds & Liabilities" groups={bs.liabilityGroups}
               extra={{ name: 'Income & Expenditure surplus', cur: bs.surplus.cur, prev: bs.surplus.prev }}
               prevLabel={prevLabel} prevSource={prevSource} onOpen={openLedger} total={bs.totalLiabilities} />
-            <CompareTable title="Assets" rows={bs.assets.map(r => ({ ...r, current: r.cur, previous: r.prev }))}
+            <CompareTable title="Assets" groups={bs.assetGroups}
               prevLabel={prevLabel} prevSource={prevSource} onOpen={openLedger} total={bs.totalAssets} />
           </div>
           <BalanceCheck ok={Math.abs(bs.totalAssets.cur - bs.totalLiabilities.cur) < 0.01} />
@@ -351,16 +365,23 @@ export const FinancialReports: React.FC<FinancialReportsProps> = ({ societyId, s
           <div className="rounded-2xl bg-slate-900 border border-slate-800 overflow-x-auto">
             <table className="w-full text-left">
               <thead className="bg-slate-950 text-slate-400"><tr><th className="p-2.5">Code</th><th className="p-2.5">Account</th><th className="p-2.5 text-right">Debit</th><th className="p-2.5 text-right">Credit</th></tr></thead>
-              <tbody className="divide-y divide-slate-800 text-slate-300">
-                {trial.map(r => (
-                  <tr key={r.code} onClick={() => openLedger(r.code)} className="cursor-pointer hover:bg-slate-800/50">
-                    <td className="p-2.5 font-mono text-slate-500">{r.code}</td>
-                    <td className="p-2.5 text-white">{r.name}</td>
-                    <td className="p-2.5 text-right">{n(r.debit) ? formatINR(r.debit) : ''}</td>
-                    <td className="p-2.5 text-right">{n(r.credit) ? formatINR(r.credit) : ''}</td>
+              {trialGroups.map(g => (
+                <tbody key={g.group.id} className="divide-y divide-slate-800 text-slate-300">
+                  <tr className="bg-slate-950/60 font-semibold text-slate-200">
+                    <td className="p-2.5" colSpan={2}>{g.group.name}</td>
+                    <td className="p-2.5 text-right">{formatINR(nodeSum(g, r => n(r.debit)))}</td>
+                    <td className="p-2.5 text-right">{formatINR(nodeSum(g, r => n(r.credit)))}</td>
                   </tr>
-                ))}
-              </tbody>
+                  {nodeRows(g).map(r => (
+                    <tr key={r.code} onClick={() => openLedger(r.code)} className="cursor-pointer hover:bg-slate-800/50">
+                      <td className="p-2.5 pl-5 font-mono text-slate-500">{r.code}</td>
+                      <td className="p-2.5 text-white">{r.name}</td>
+                      <td className="p-2.5 text-right">{n(r.debit) ? formatINR(r.debit) : ''}</td>
+                      <td className="p-2.5 text-right">{n(r.credit) ? formatINR(r.credit) : ''}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              ))}
               <tfoot className="border-t border-slate-700 font-bold text-white">
                 <tr><td className="p-2.5" colSpan={2}>Total</td><td className="p-2.5 text-right">{formatINR(trialDr)}</td><td className="p-2.5 text-right">{formatINR(trialCr)}</td></tr>
               </tfoot>
@@ -509,29 +530,47 @@ const r0 = (s?: string) => (s === 'audited' ? 'audited' : 'books');
 const signed = (v: number) => (v < 0 ? `(${formatINR(-v)})` : formatINR(v));
 const drCr = (v: number) => (v === 0 ? formatINR(0) : `${formatINR(Math.abs(v))} ${v > 0 ? 'Dr' : 'Cr'}`);
 
+interface CompareLine { code: string; name: string; current: number; previous: number }
+
+const LedgerLine: React.FC<{ row: CompareLine; depth: number; onOpen: (code: string) => void }> = ({ row: r, depth, onOpen }) => (
+  <button onClick={() => onOpen(r.code)} style={{ paddingLeft: 12 + depth * 16 }}
+    className="w-full p-3 grid grid-cols-[1fr_auto_auto] gap-6 text-left text-slate-300 hover:bg-slate-800/50 cursor-pointer">
+    <span><span className="font-mono text-slate-500 mr-2">{r.code}</span>{r.name}</span>
+    <span className="w-28 text-right">{signed(Number(r.current) || 0)}</span>
+    <span className="w-28 text-right text-slate-500">{signed(Number(r.previous) || 0)}</span>
+  </button>
+);
+
+/** A group line with its subtotal, then its ledgers and sub-groups, indented by depth. */
+const GroupLines: React.FC<{ node: GroupNode<CompareLine>; depth: number; onOpen: (code: string) => void }> = ({ node, depth, onOpen }) => (
+  <>
+    <div className="p-3 grid grid-cols-[1fr_auto_auto] gap-6 bg-slate-950/40 font-semibold text-slate-200" style={{ paddingLeft: 12 + depth * 16 }}>
+      <span>{node.group.name}</span>
+      <span className="w-28 text-right">{signed(nodeSum(node, r => Number(r.current) || 0))}</span>
+      <span className="w-28 text-right text-slate-500">{signed(nodeSum(node, r => Number(r.previous) || 0))}</span>
+    </div>
+    {node.rows.map(r => <LedgerLine key={r.code} row={r} depth={depth + 1} onOpen={onOpen} />)}
+    {node.children.map(c => <GroupLines key={c.group.id} node={c} depth={depth + 1} onOpen={onOpen} />)}
+  </>
+);
+
 const CompareTable: React.FC<{
   title: string;
-  rows: { code: string; name: string; current: number; previous: number }[];
+  groups: GroupNode<CompareLine>[];
   extra?: { name: string; cur: number; prev: number };
   total: { cur: number; prev: number };
   prevLabel: string;
   prevSource?: string;
   onOpen: (code: string) => void;
-}> = ({ title, rows, extra, total, prevLabel, prevSource, onOpen }) => (
+}> = ({ title, groups, extra, total, prevLabel, prevSource, onOpen }) => (
   <div className="rounded-2xl bg-slate-900 border border-slate-800 overflow-hidden">
     <div className="p-3 border-b border-slate-800 font-bold text-white grid grid-cols-[1fr_auto_auto] gap-6">
       <span>{title}</span><span className="w-28 text-right text-slate-400 font-medium">This period</span>
       <span className="w-28 text-right text-slate-400 font-medium">{prevLabel}{prevSource && <span className="block text-[10px]">({r0(prevSource)})</span>}</span>
     </div>
     <div className="divide-y divide-slate-800">
-      {rows.length === 0 && !extra && <div className="p-3 text-slate-500">Nothing recorded</div>}
-      {rows.map(r => (
-        <button key={r.code} onClick={() => onOpen(r.code)} className="w-full p-3 grid grid-cols-[1fr_auto_auto] gap-6 text-left text-slate-300 hover:bg-slate-800/50 cursor-pointer">
-          <span><span className="font-mono text-slate-500 mr-2">{r.code}</span>{r.name}</span>
-          <span className="w-28 text-right">{signed(Number(r.current) || 0)}</span>
-          <span className="w-28 text-right text-slate-500">{signed(Number(r.previous) || 0)}</span>
-        </button>
-      ))}
+      {groups.length === 0 && !extra && <div className="p-3 text-slate-500">Nothing recorded</div>}
+      {groups.map(g => <GroupLines key={g.group.id} node={g} depth={0} onOpen={onOpen} />)}
       {extra && (
         <div className="p-3 grid grid-cols-[1fr_auto_auto] gap-6 text-slate-300">
           <span>{extra.name}</span><span className="w-28 text-right">{signed(extra.cur)}</span><span className="w-28 text-right text-slate-500">{signed(extra.prev)}</span>
