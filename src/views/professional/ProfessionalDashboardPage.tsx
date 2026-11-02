@@ -14,10 +14,11 @@ import { RemarksPanel } from '../../components/RemarksPanel';
 import { AssetRegister } from '../../components/AssetRegister';
 import { AdjustmentsPanel } from '../../components/AdjustmentsPanel';
 import { PriorYearEditor } from '../../components/PriorYearEditor';
+import { ChartOfAccounts } from '../../components/ChartOfAccounts';
 import { Expense } from '../../types/database';
-import { Briefcase, FileSpreadsheet, Landmark, Receipt, FolderLock, LogOut, ShieldCheck, Lock, Boxes, Scale } from 'lucide-react';
+import { Briefcase, FileSpreadsheet, Landmark, Receipt, FolderLock, LogOut, ShieldCheck, Lock, Boxes, Scale, ListTree } from 'lucide-react';
 
-type Tab = 'gst' | 'financials' | 'expenses' | 'assets' | 'adjustments' | 'documents' | 'remarks' | 'my_societies';
+type Tab = 'gst' | 'financials' | 'ledgers' | 'expenses' | 'assets' | 'adjustments' | 'documents' | 'remarks' | 'my_societies';
 
 export const ProfessionalDashboardPage: React.FC = () => {
   const { user, profile, professionalGrants, activeSociety, logout } = useAuth();
@@ -27,6 +28,7 @@ export const ProfessionalDashboardPage: React.FC = () => {
   const allowed: Record<Tab, boolean> = {
     gst: permissions.includes('audit_gst'),
     financials: permissions.includes('view_reports') || permissions.includes('view_ledger'),
+    ledgers: permissions.includes('manage_accounts') || permissions.includes('view_reports') || permissions.includes('view_ledger'),
     expenses: permissions.includes('view_expenses'),
     assets: permissions.includes('view_expenses') || permissions.includes('view_reports') || permissions.includes('view_ledger'),
     adjustments: permissions.includes('view_reports') || permissions.includes('view_ledger'),
@@ -39,7 +41,7 @@ export const ProfessionalDashboardPage: React.FC = () => {
 
   // Land on the first module this grant allows when switching society
   useEffect(() => {
-    const first = (['financials', 'gst', 'expenses', 'assets', 'adjustments', 'documents', 'remarks'] as Tab[]).find(t => allowed[t]);
+    const first = (['financials', 'ledgers', 'gst', 'expenses', 'assets', 'adjustments', 'documents', 'remarks'] as Tab[]).find(t => allowed[t]);
     setActiveTab(first ?? 'my_societies');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSociety?.id]);
@@ -59,6 +61,7 @@ export const ProfessionalDashboardPage: React.FC = () => {
 
   const tabs: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
     { id: 'financials', label: 'Financial Reports', icon: Landmark },
+    { id: 'ledgers', label: 'Groups & Ledgers', icon: ListTree },
     { id: 'gst', label: 'GST (GSTR-2B)', icon: FileSpreadsheet },
     { id: 'expenses', label: 'Expenses & TDS', icon: Receipt },
     { id: 'assets', label: 'Fixed Assets', icon: Boxes },
@@ -124,12 +127,15 @@ export const ProfessionalDashboardPage: React.FC = () => {
             </span>
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Read-only access granted by the society committee{currentGrant?.expires_at ? ` until ${new Date(currentGrant.expires_at).toLocaleDateString('en-IN')}` : ''}. Every module you open is logged for the committee.
+            {permissions.includes('manage_accounts') ? 'Access' : 'Read-only access'} granted by the society committee{currentGrant?.expires_at ? ` until ${new Date(currentGrant.expires_at).toLocaleDateString('en-IN')}` : ''}. Every module you open is logged for the committee.
           </p>
         </div>
 
         {activeTab === 'financials' && activeSociety && allowed.financials && (
           <FinancialReports societyId={activeSociety.id} societyName={activeSociety.name} />
+        )}
+        {activeTab === 'ledgers' && activeSociety && allowed.ledgers && (
+          <ChartOfAccounts societyId={activeSociety.id} canManage={permissions.includes('manage_accounts')} />
         )}
         {activeTab === 'gst' && activeSociety && allowed.gst && (
           <Gstr2bPanel societyId={activeSociety.id} societyName={activeSociety.name} />
