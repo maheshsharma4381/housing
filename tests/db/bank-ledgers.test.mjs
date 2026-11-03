@@ -152,3 +152,68 @@ test('CA ledgers can go in Duties & Taxes, not in Fixed Assets', async () => {
   const allows = (key) => chart.groups.find((g) => g.system_key === key).allows_ledgers;
   assert.deepEqual([allows('duties_taxes'), allows('fixed_assets'), allows('members_dues')], [true, false, false]);
 });
+
+// ---------------------------------------------------------------------------
+// 023: bank reconciliation per bank ledger
+// ---------------------------------------------------------------------------
+const setPlan = (code) => db.query(
+  `UPDATE subscriptions SET plan_id = (SELECT id FROM subscription_plans WHERE tier_code = $2), status = 'active',
+     trial_ends_on = current_date - 1, current_period_start = current_date - 1,
+     current_period_end = CASE WHEN $2 = 'free' THEN NULL ELSE current_date + 300 END
+   WHERE society_id = $1`, [ids.societyId, code]);
+const balOf = async (code) => Number((await db.query(
+  `SELECT coalesce(sum(l.amount),0) b FROM ledger_entries l JOIN accounts a ON a.id=l.account_id WHERE l.society_id=$1 AND a.code=$2`,
+  [ids.societyId, code])).rows[0].b);
+const addStatementAccount = (accountNo, ledger) => one(ids.secretary,
+  `INSERT INTO bank_accounts (society_id, bank_name, account_number, ifsc_code, branch_name, is_primary, ledger_id)
+   VALUES ($1,'Bank',$2,'ICIC0000001','Baner',false,$3) RETURNING id, ledger_id`, [ids.societyId, accountNo, ledger]);
+const importInto = async (account, rows) => {
+  const today = (await db.query('SELECT current_date::text AS d')).rows[0].d;
+  return val(ids.secretary, `SELECT public.import_bank_statement($1,'stmt.csv','hdfc',$2)`,
+    [account, JSON.stringify(rows.map((r) => ({ date: today, debit: 0, credit: 0, ...r })))]);
+};
+const lineOf = async (account, text) => (await db.query(
+  `SELECT * FROM bank_transactions WHERE bank_account_id=$1 AND description LIKE $2`, [account, `%${text}%`])).rows[0];
+
+// Statement lines in the first two tests match nothing in the books.
+test('each statement account belongs to one bank ledger', async () => {
+  await setPlan('pro');
+  const a = await addStatementAccount('111', null);
+  assert.equal(a.ledger_id, ids.icici, 'no choice → the default receiving bank');
+  ids.stmtIcici = a.id;
+  await assert.rejects(addStatementAccount('222', await ledgerId('1300')), /Choose a bank ledger of this society/);
+  ids.stmt1000 = (await addStatementAccount('333', ids.b1000)).id;
+});
+
+test("the book balance is that bank ledger's own balance", async () => {
+  await importInto(ids.stmtIcici, [{ description: 'OPENING CHECK', credit: 1, balance: 1 }]);
+  await importInto(ids.stmt1000, [{ description: 'OPENING CHECK', credit: 1, balance: 1 }]);
+  const book = async (account) => Number((await val(ids.secretary, 'SELECT public.bank_reconciliation_summary($1)', [account])).book_balance);
+  assert.notEqual(await balOf('1C001'), await balOf('1000'));
+  assert.equal(await book(ids.stmtIcici), await balOf('1C001'));
+  assert.equal(await book(ids.stmt1000), await balOf('1000'));
+  await assert.rejects(q(ids.secretary, 'UPDATE bank_accounts SET ledger_id = $2 WHERE id = $1', [ids.stmtIcici, ids.b1000]),
+    /already has statement lines/);
+});
+
+test('matching stays inside one bank', async () => {
+  const pX = await newPayment('P-X', 777, '998877665544');
+  await importInto(ids.stmt1000, [
+    { description: 'UPI/998877665544/Flat 101', credit: 777 },
+    { description: 'NEFT/VENDREF002/Lift', debit: 1000 },
+    { description: 'NEFT/VENDREF001/Lift', debit: 1900 },
+    { description: 'NEFT-SHARMA', credit: 1000 },
+    { description: 'CASH WDL', debit: 500 },
+  ]);
+  assert.equal((await lineOf(ids.stmt1000, '998877665544')).reconciled_payment_id, pX);
+  assert.equal((await lineOf(ids.stmt1000, 'VENDREF002')).reconciled_vendor_payment_id, ids.vp1000);
+  assert.equal((await lineOf(ids.stmt1000, 'VENDREF001')).match_kind, null, 'paid from ICICI, not from this bank');
+  await assert.rejects(setPaymentBank(ids.secretary, pX, ids.icici), /matched to a bank statement line/);
+  const link = async (text, kind, target) => q(ids.secretary, 'SELECT public.link_bank_line($1,$2,$3)',
+    [(await lineOf(ids.stmt1000, text)).id, kind, target]);
+  await assert.rejects(link('VENDREF001', 'vendor_payment', ids.vpIcici), /paid from ICICI Current in the books/);
+  await assert.rejects(link('NEFT-SHARMA', 'payment', ids.pA), /is in ICICI Current in the books/);
+  await assert.rejects(link('CASH WDL', 'vendor_payment', ids.vpCash), /paid in cash/);
+  await q(ids.secretary, 'SELECT public.verify_matched_payments($1)', [ids.societyId]);
+  assert.deepEqual(await bankCodes('payment.verified', pX), ['1000'], 'the statement decides, not the default receiving bank');
+});
