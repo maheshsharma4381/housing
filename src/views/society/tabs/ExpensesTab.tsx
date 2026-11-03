@@ -5,6 +5,7 @@ import { supabase } from '../../../lib/supabase/client';
 import { formatINR } from '../../../lib/inr';
 import { deleteSocietyFile, openSocietyFile, uploadSocietyFile } from '../../../lib/storage';
 import { assetTypeLabel } from '../../../lib/tds';
+import { type BankLedger, defaultBankId, fetchBankLedgers } from '../../../lib/banks';
 import { Banner } from '../../../components/Banner';
 import { EmptyState } from '../../../components/EmptyState';
 import { ExpenseBillForm } from './ExpenseBillForm';
@@ -30,7 +31,7 @@ interface ApprovalRow {
   profiles: { full_name: string } | null;
 }
 
-interface PaymentDraft { id: string; amount: number; tds: number; mode: VendorPayment['mode']; reference: string; date: string; proof: File | null }
+interface PaymentDraft { id: string; amount: number; tds: number; mode: VendorPayment['mode']; reference: string; date: string; proof: File | null; bank: string }
 
 interface ExpensesTabProps {
   societyId: string;
@@ -62,7 +63,8 @@ export const ExpensesTab: React.FC<ExpensesTabProps> = ({ societyId, currentUser
   const [busy, setBusy] = useState<string | null>(null);
   const [rejecting, setRejecting] = useState<{ id: string; reason: string } | null>(null);
   const [paying, setPaying] = useState<PaymentDraft | null>(null);
-  const [challan, setChallan] = useState<{ number: string; amount: number; date: string; month: string; section: string } | null>(null);
+  const [challan, setChallan] = useState<{ number: string; amount: number; date: string; month: string; section: string; bank: string } | null>(null);
+  const [banks, setBanks] = useState<BankLedger[]>([]);
   const [attaching, setAttaching] = useState<{ id: string; file: File | null; invoiceNumber: string; date: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -83,6 +85,7 @@ export const ExpensesTab: React.FC<ExpensesTabProps> = ({ societyId, currentUser
     setPayments((pRes.data ?? []) as VendorPayment[]);
     setChallansTotal((tRes.data ?? []).reduce((s, r) => s + Number(r.amount), 0));
     setRequiredApprovals(sRes.data?.require_two_step_expense_approval ? 2 : 1);
+    setBanks(await fetchBankLedgers(supabase, societyId).catch(() => []));
   }, [societyId]);
 
   useEffect(() => {
@@ -129,7 +132,7 @@ export const ExpensesTab: React.FC<ExpensesTabProps> = ({ societyId, currentUser
   const startPayment = (exp: Expense) => {
     if (paying?.id === exp.id) return setPaying(null);
     const tds = tdsLeft(exp);
-    setPaying({ id: exp.id, amount: outstanding(exp) - tds, tds, mode: 'neft', reference: '', date: today(), proof: null });
+    setPaying({ id: exp.id, amount: outstanding(exp) - tds, tds, mode: 'neft', reference: '', date: today(), proof: null, bank: defaultBankId(banks, 'payment') ?? '' });
   };
 
   const recordPayment = async (exp: Expense) => {
@@ -141,6 +144,7 @@ export const ExpensesTab: React.FC<ExpensesTabProps> = ({ societyId, currentUser
       const { data, error: rpcErr } = await supabase.rpc('record_vendor_payment', {
         p_expense_id: exp.id, p_amount: paying.amount, p_tds: paying.tds, p_mode: paying.mode,
         p_reference: paying.reference || null, p_paid_on: paying.date, p_proof_url: proofPath,
+        p_bank_ledger_id: paying.mode !== 'cash' && paying.bank ? paying.bank : null,
       });
       if (rpcErr) throw new Error(rpcErr.message);
       const r = data as { payment_number: string; outstanding: number; status: string };
@@ -161,7 +165,7 @@ export const ExpensesTab: React.FC<ExpensesTabProps> = ({ societyId, currentUser
     setBusy('challan');
     const { error: rpcErr } = await supabase.rpc('record_tds_challan', {
       p_society_id: societyId, p_challan_number: challan.number, p_amount: challan.amount, p_paid_on: challan.date,
-      p_period_month: `${challan.month}-01`, p_section: challan.section || null,
+      p_period_month: `${challan.month}-01`, p_section: challan.section || null, p_bank_ledger_id: challan.bank || null,
     });
     setBusy(null);
     if (rpcErr) return setError(rpcErr.message);
@@ -239,7 +243,7 @@ export const ExpensesTab: React.FC<ExpensesTabProps> = ({ societyId, currentUser
         <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
           <div className="text-slate-400">TDS to deposit</div>
           <div className="text-xl font-bold text-white">{formatINR(tdsPayable)}</div>
-          <button onClick={() => setChallan(challan ? null : { number: '', amount: tdsPayable, date: today(), month: today().slice(0, 7), section: '' })}
+          <button onClick={() => setChallan(challan ? null : { number: '', amount: tdsPayable, date: today(), month: today().slice(0, 7), section: '', bank: defaultBankId(banks, 'payment') ?? '' })}
             className="mt-1 text-sky-400 hover:underline cursor-pointer">Record challan (due by the 7th of next month)</button>
         </div>
         <button onClick={() => setFilter('invoice_pending')} className="p-4 rounded-2xl bg-slate-900 border border-slate-800 text-left cursor-pointer hover:border-amber-700">
@@ -259,6 +263,12 @@ export const ExpensesTab: React.FC<ExpensesTabProps> = ({ societyId, currentUser
             <input type="date" value={challan.date} onChange={e => setChallan({ ...challan, date: e.target.value })} className={inputClass} /></label>
           <label className="space-y-1"><span className="text-slate-400">For month</span>
             <input type="month" value={challan.month} onChange={e => setChallan({ ...challan, month: e.target.value })} className={inputClass} /></label>
+          {banks.length > 1 && (
+            <label className="space-y-1"><span className="text-slate-400">Paid from</span>
+              <select value={challan.bank} onChange={e => setChallan({ ...challan, bank: e.target.value })} className={inputClass}>
+                {banks.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select></label>
+          )}
           <button onClick={recordChallan} disabled={!challan.number.trim() || challan.amount <= 0 || busy !== null}
             className="py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1">
             <Landmark className="w-3.5 h-3.5" /> Save
@@ -398,6 +408,12 @@ export const ExpensesTab: React.FC<ExpensesTabProps> = ({ societyId, currentUser
                         <select value={paying.mode} onChange={e => setPaying({ ...paying, mode: e.target.value as PaymentDraft['mode'] })} className={inputClass}>
                           <option value="neft">NEFT / RTGS</option><option value="upi">UPI</option><option value="cheque">Cheque</option><option value="cash">Cash</option>
                         </select></label>
+                      {banks.length > 1 && paying.mode !== 'cash' && (
+                        <label className="space-y-1"><span className="text-slate-400">Paid from</span>
+                          <select value={paying.bank} onChange={e => setPaying({ ...paying, bank: e.target.value })} className={inputClass}>
+                            {banks.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                          </select></label>
+                      )}
                       <label className="space-y-1"><span className="text-slate-400">UTR / cheque no.</span>
                         <input value={paying.reference} onChange={e => setPaying({ ...paying, reference: e.target.value })} className={inputClass} /></label>
                       <label className="space-y-1"><span className="text-slate-400">Paid on</span>

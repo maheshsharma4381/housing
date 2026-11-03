@@ -8,6 +8,7 @@ import { EmptyState } from '../../../components/EmptyState';
 import { Payment, Unit } from '../../../types/database';
 import { receiptText, whatsappLink } from '../../../lib/messages';
 import { describeNotify, notify } from '../../../lib/notify';
+import { type BankLedger, defaultBankId, fetchBankLedgers } from '../../../lib/banks';
 import { QrCode, CheckCircle2, XCircle, AlertCircle, Loader2, Receipt, MessageCircle } from 'lucide-react';
 
 type PaymentRow = Payment & { profiles: { full_name: string; email: string; phone?: string | null } | null };
@@ -28,6 +29,8 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ societyId, societyName
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [inBank, setInBank] = useState<Map<string, string>>(new Map());
+  const [banks, setBanks] = useState<BankLedger[]>([]);
+  const [bankFor, setBankFor] = useState<Record<string, string>>({});
 
   const unitNumber = (id: string) => units.find(u => u.id === id)?.unit_number ?? '—';
 
@@ -47,7 +50,11 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ societyId, societyName
     const { data: lines } = await supabase.from('bank_transactions').select('reconciled_payment_id, transaction_date')
       .eq('society_id', societyId).not('reconciled_payment_id', 'is', null).limit(1000);
     setInBank(new Map((lines ?? []).map(l => [l.reconciled_payment_id as string, l.transaction_date as string])));
+    setBanks(await fetchBankLedgers(supabase, societyId).catch(() => []));
   }, [societyId]);
+
+  // Only when the society has more than one bank, and the bank statement has not already decided
+  const asksBank = (p: PaymentRow) => banks.length > 1 && p.payment_method !== 'cash' && !inBank.has(p.id);
 
   useEffect(() => {
     load();
@@ -61,6 +68,17 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ societyId, societyName
     }
     setBusyId(p.id);
     setError(null);
+    if (approve && asksBank(p)) {
+      const { error: bankErr } = await supabase.rpc('set_payment_bank', {
+        p_payment_id: p.id, p_bank_ledger_id: bankFor[p.id] ?? defaultBankId(banks, 'receipt'),
+      });
+      // A payment matched on a bank statement goes to that bank; anything else stops here
+      if (bankErr && !bankErr.message.includes('matched to a bank statement line')) {
+        setBusyId(null);
+        setError(bankErr.message);
+        return;
+      }
+    }
     const { data, error: rpcErr } = await supabase.rpc('verify_payment', {
       p_payment_id: p.id,
       p_approve: approve,
@@ -127,6 +145,18 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ societyId, societyName
                     <div className="text-emerald-300 flex items-center gap-1">
                       <CheckCircle2 className="w-3.5 h-3.5" /> In bank statement ({inBank.get(p.id)})
                     </div>
+                  )}
+                  {asksBank(p) && (
+                    <label className="flex items-center gap-2 pt-1 text-slate-400">
+                      Received in
+                      <select
+                        value={bankFor[p.id] ?? defaultBankId(banks, 'receipt') ?? ''}
+                        onChange={e => setBankFor(b => ({ ...b, [p.id]: e.target.value }))}
+                        className="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-white outline-none focus:border-sky-500"
+                      >
+                        {banks.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                      </select>
+                    </label>
                   )}
                 </div>
                 <div className="flex gap-2 shrink-0">

@@ -4,8 +4,9 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase/client';
 import { formatINR } from '../lib/inr';
 import { EMPTY_CHART, type Chart, type ChartGroup, type ChartLedger } from '../lib/chart';
+import { type BankLedger, defaultBankId, fetchBankLedgers } from '../lib/banks';
 import { Banner } from './Banner';
-import { FolderPlus, ListTree, Loader2, MoveRight, Pencil, Plus, Power, RefreshCw } from 'lucide-react';
+import { FolderPlus, Landmark, ListTree, Loader2, MoveRight, Pencil, Plus, Power, RefreshCw } from 'lucide-react';
 
 type Editor =
   | { kind: 'add_group' | 'add_ledger'; groupId: string; name: string }
@@ -18,6 +19,64 @@ const drCr = (v: number) => (Math.abs(v) < 0.005 ? '—' : `${formatINR(Math.abs
 const bySortThenName = (a: ChartGroup, b: ChartGroup) => a.sort_order - b.sort_order || a.name.localeCompare(b.name);
 const inputClass = 'bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-white outline-none focus:border-sky-500';
 const linkClass = 'flex items-center gap-1 text-slate-400 hover:text-sky-300 cursor-pointer disabled:opacity-50';
+
+/** The CA's default bank for money coming in and for bills paid out; others see it read-only. */
+const DefaultBanks: React.FC<{ societyId: string; canManage: boolean; chart: Chart }> = ({ societyId, canManage, chart }) => {
+  const [banks, setBanks] = useState<BankLedger[]>([]);
+  const [receipt, setReceipt] = useState('');
+  const [payment, setPayment] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  // Reload whenever the chart changes: a new or renamed ledger under Bank Accounts is a new bank
+  useEffect(() => {
+    if (!supabase) return;
+    fetchBankLedgers(supabase, societyId)
+      .then(list => {
+        setBanks(list);
+        setReceipt(defaultBankId(list, 'receipt') ?? '');
+        setPayment(defaultBankId(list, 'payment') ?? '');
+      })
+      .catch((err: Error) => setError(err.message));
+  }, [societyId, chart]);
+
+  const changed = receipt !== (defaultBankId(banks, 'receipt') ?? '') || payment !== (defaultBankId(banks, 'payment') ?? '');
+  const save = async () => {
+    if (!supabase) return;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    const { error: err } = await supabase.rpc('set_default_banks', { p_society_id: societyId, p_receipt_ledger_id: receipt, p_payment_ledger_id: payment });
+    setBusy(false);
+    if (err) return setError(err.message);
+    setBanks(list => list.map(b => ({ ...b, is_default_receipt: b.id === receipt, is_default_payment: b.id === payment })));
+    setNotice('Default banks saved. New receipts and payments use them unless the secretary picks another bank.');
+  };
+  const select = (value: string, onChange: (v: string) => void) => (
+    <select value={value} disabled={!canManage || busy} onChange={e => onChange(e.target.value)} className={inputClass}>
+      {banks.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+    </select>
+  );
+
+  return (
+    <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
+      <div className="font-semibold text-white flex items-center gap-2"><Landmark className="w-3.5 h-3.5 text-sky-400" /> Default banks</div>
+      <div className="flex flex-wrap items-center gap-4 text-slate-400">
+        <label className="flex items-center gap-2">Money comes into {select(receipt, setReceipt)}</label>
+        <label className="flex items-center gap-2">Bills are paid from {select(payment, setPayment)}</label>
+        {canManage && (
+          <button onClick={save} disabled={busy || !changed} className="px-3 py-1 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold cursor-pointer disabled:opacity-50">
+            Save
+          </button>
+        )}
+      </div>
+      <p className="text-slate-500">Add a ledger under Bank Accounts for each bank account first.</p>
+      <Banner tone="error">{error}</Banner>
+      <Banner tone="success">{notice}</Banner>
+    </div>
+  );
+};
 
 /**
  * Groups & Ledgers: the society's Tally-style chart. The CA / accountant (manage_accounts) adds
@@ -212,6 +271,8 @@ export const ChartOfAccounts: React.FC<{ societyId: string; canManage: boolean }
       <Banner tone="error">{error}</Banner>
       <Banner tone="success">{notice}</Banner>
 
+      <DefaultBanks societyId={societyId} canManage={canManage} chart={chart} />
+
       {loading && chart.groups.length === 0 ? (
         <div className="flex items-center gap-2 text-slate-400"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</div>
       ) : (
@@ -219,7 +280,7 @@ export const ChartOfAccounts: React.FC<{ societyId: string; canManage: boolean }
           {(childrenOf.get(null) ?? []).map(g => renderGroup(g, 0))}
         </div>
       )}
-      <p className="text-slate-500">Assets, liabilities and funds show the balance today; income and expense ledgers show this financial year (Dr / Cr). Members&apos; dues, creditors, member advances and taxes get their ledgers from Sahvaas automatically.</p>
+      <p className="text-slate-500">Assets, liabilities and funds show the balance today; income and expense ledgers show this financial year (Dr / Cr). Members&apos; dues, creditors and member advances get their ledgers from Sahvaas automatically; fixed-asset ledgers come from the asset register.</p>
     </div>
   );
 };

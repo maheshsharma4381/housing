@@ -5,11 +5,12 @@ import { supabase } from '../lib/supabase/client';
 import { formatINR } from '../lib/inr';
 import { parseBankStatement, ParsedStatement } from '../lib/bank-statement';
 import { notify } from '../lib/notify';
+import { type BankLedger, defaultBankId, fetchBankLedgers } from '../lib/banks';
 import { Banner } from './Banner';
 import { EmptyState } from './EmptyState';
 import { ArrowDownLeft, ArrowUpRight, CheckCircle2, EyeOff, FileUp, Landmark, Link2, Loader2, Plus, Sparkles, Unlink } from 'lucide-react';
 
-interface BankAccount { id: string; bank_name: string; account_number: string; ifsc_code: string; branch_name: string; is_primary: boolean; current_balance: number }
+interface BankAccount { id: string; bank_name: string; account_number: string; ifsc_code: string; branch_name: string; is_primary: boolean; current_balance: number; ledger_id: string }
 interface Line {
   id: string;
   transaction_date: string;
@@ -36,7 +37,7 @@ interface Summary {
 type Filter = 'open' | 'suggested' | 'matched' | 'ignored' | 'all';
 type Action = { lineId: string; kind: 'link' | 'record' | 'ignore'; value: string };
 
-const ACCOUNT_BLANK = { bank_name: '', account_number: '', ifsc_code: '', branch_name: '' };
+const ACCOUNT_BLANK = { bank_name: '', account_number: '', ifsc_code: '', branch_name: '', ledger_id: '' };
 const fmtDate = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 
 interface BankReconciliationProps {
@@ -49,6 +50,7 @@ export const BankReconciliation: React.FC<BankReconciliationProps> = ({ societyI
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
   const [accountId, setAccountId] = useState('');
   const [newAccount, setNewAccount] = useState<typeof ACCOUNT_BLANK | null>(null);
+  const [banks, setBanks] = useState<BankLedger[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [lines, setLines] = useState<Line[]>([]);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
@@ -64,7 +66,7 @@ export const BankReconciliation: React.FC<BankReconciliationProps> = ({ societyI
   const loadAccounts = useCallback(async () => {
     if (!supabase) return;
     const [aRes, uRes] = await Promise.all([
-      supabase.from('bank_accounts').select('id, bank_name, account_number, ifsc_code, branch_name, is_primary, current_balance')
+      supabase.from('bank_accounts').select('id, bank_name, account_number, ifsc_code, branch_name, is_primary, current_balance, ledger_id')
         .eq('society_id', societyId).order('is_primary', { ascending: false }).order('created_at'),
       supabase.from('units').select('id, unit_number').eq('society_id', societyId).order('unit_number'),
     ]);
@@ -72,6 +74,7 @@ export const BankReconciliation: React.FC<BankReconciliationProps> = ({ societyI
     const list = (aRes.data ?? []) as BankAccount[];
     setAccounts(list);
     setUnits(uRes.data ?? []);
+    setBanks(await fetchBankLedgers(supabase, societyId).catch(() => []));
     setAccountId(id => (list.some(a => a.id === id) ? id : list[0]?.id ?? ''));
     setLoading(false);
   }, [societyId]);
@@ -149,6 +152,7 @@ export const BankReconciliation: React.FC<BankReconciliationProps> = ({ societyI
     setBusy('account');
     const { data, error: insErr } = await supabase.from('bank_accounts').insert({
       society_id: societyId, ...newAccount, ifsc_code: newAccount.ifsc_code.toUpperCase().trim(), is_primary: accounts.length === 0,
+      ledger_id: newAccount.ledger_id || null,
     }).select('id').single();
     setBusy(null);
     if (insErr) return setError(insErr.message);
@@ -226,6 +230,9 @@ export const BankReconciliation: React.FC<BankReconciliationProps> = ({ societyI
 
   const inputClass = 'w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-sky-500';
   const account = accounts.find(a => a.id === accountId);
+  const bankName = (id: string) => banks.find(b => b.id === id)?.name ?? 'Bank';
+  // A new statement account most likely belongs to a bank ledger no other account uses yet
+  const unusedBank = () => banks.find(b => !accounts.some(a => a.ledger_id === b.id))?.id ?? defaultBankId(banks, 'receipt') ?? '';
   const difference = summary?.statement_balance != null ? Number(summary.statement_balance) - Number(summary.book_balance) : null;
 
   if (loading) return <div className="flex justify-center py-10"><Loader2 className="w-5 h-5 animate-spin text-slate-500" /></div>;
@@ -243,11 +250,12 @@ export const BankReconciliation: React.FC<BankReconciliationProps> = ({ societyI
         <div className="flex items-center gap-2">
           {accounts.length > 1 && (
             <select value={accountId} onChange={e => setAccountId(e.target.value)} className={`${inputClass} w-auto`}>
-              {accounts.map(a => <option key={a.id} value={a.id}>{a.bank_name} ··{a.account_number.slice(-4)}</option>)}
+              {accounts.map(a => <option key={a.id} value={a.id}>{a.bank_name} ··{a.account_number.slice(-4)} · {bankName(a.ledger_id)}</option>)}
             </select>
           )}
+          {accounts.length === 1 && account && <span className="text-slate-400">In the books as {bankName(account.ledger_id)}</span>}
           {canManage && !newAccount && (
-            <button onClick={() => setNewAccount({ ...ACCOUNT_BLANK })} className="flex items-center gap-1 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold cursor-pointer">
+            <button onClick={() => setNewAccount({ ...ACCOUNT_BLANK, ledger_id: unusedBank() })} className="flex items-center gap-1 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold cursor-pointer">
               <Plus className="w-3.5 h-3.5" /> Bank account
             </button>
           )}
@@ -262,6 +270,14 @@ export const BankReconciliation: React.FC<BankReconciliationProps> = ({ societyI
           <input required value={newAccount.account_number} onChange={e => setNewAccount({ ...newAccount, account_number: e.target.value.replace(/\s/g, '') })} placeholder="Account number" inputMode="numeric" className={inputClass} />
           <input required value={newAccount.ifsc_code} onChange={e => setNewAccount({ ...newAccount, ifsc_code: e.target.value })} placeholder="IFSC" pattern="[A-Za-z]{4}0[A-Za-z0-9]{6}" title="11 characters, e.g. HDFC0001234" className={inputClass} />
           <input required value={newAccount.branch_name} onChange={e => setNewAccount({ ...newAccount, branch_name: e.target.value })} placeholder="Branch" className={inputClass} />
+          {banks.length > 1 && (
+            <label className="sm:col-span-4 flex items-center gap-2 text-slate-400">
+              Bank in the books
+              <select value={newAccount.ledger_id} onChange={e => setNewAccount({ ...newAccount, ledger_id: e.target.value })} className={`${inputClass} w-auto`}>
+                {banks.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </label>
+          )}
           <div className="sm:col-span-4 flex justify-end gap-2">
             <button type="button" onClick={() => setNewAccount(null)} className="px-3 py-2 text-slate-400 hover:text-white cursor-pointer">Cancel</button>
             <button type="submit" disabled={busy === 'account'} className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold cursor-pointer disabled:opacity-50">Save account</button>
