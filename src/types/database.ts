@@ -484,6 +484,20 @@ export interface ExpenseCategory {
   is_active: boolean;
 }
 
+/** One entry of bill_types() (024): the society's own row for a key, else the Sahvaas default. */
+export interface BillType {
+  key: string;
+  label: string;
+  account_code: string;
+  ledger_name: string | null;
+  tds_nature: TdsNature;
+  asset_account_code: AssetAccountCode | null;
+  asset_threshold: number | null;
+  sort_order: number;
+  is_custom: boolean;
+  is_active: boolean;
+}
+
 export interface TdsRule {
   id: string;
   nature: Exclude<TdsNature, 'none' | 'goods'>;

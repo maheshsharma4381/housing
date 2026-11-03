@@ -1,4 +1,4 @@
-import type { AssetAccountCode, ExpenseCategory, TdsSuggestion } from '../types/database';
+import type { AssetAccountCode, BillType, TdsSuggestion } from '../types/database';
 
 const GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]{3}$/;
 const PAN_RE = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
@@ -71,7 +71,7 @@ export function explainTds(s: TdsSuggestion): string {
 }
 
 /** Should this bill be suggested as an asset? */
-export function suggestsAsset(cat: Pick<ExpenseCategory, 'asset_account_code' | 'asset_threshold'> | undefined, amount: number): boolean {
+export function suggestsAsset(cat: Pick<BillType, 'asset_account_code' | 'asset_threshold'> | undefined, amount: number): boolean {
   return !!cat?.asset_account_code && cat.asset_threshold != null && amount >= Number(cat.asset_threshold);
 }
 

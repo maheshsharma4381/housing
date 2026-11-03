@@ -9,7 +9,7 @@ import { type BankLedger, defaultBankId, fetchBankLedgers } from '../../../lib/b
 import { Banner } from '../../../components/Banner';
 import { EmptyState } from '../../../components/EmptyState';
 import { ExpenseBillForm } from './ExpenseBillForm';
-import { Expense, ExpenseCategory, ExpenseStatus, Vendor, VendorPayment } from '../../../types/database';
+import { BillType, Expense, ExpenseStatus, Vendor, VendorPayment } from '../../../types/database';
 import { Receipt, Loader2, CheckCircle2, XCircle, Banknote, Paperclip, ChevronDown, ChevronUp, Landmark, FileWarning } from 'lucide-react';
 
 const STATUS_STYLES: Record<ExpenseStatus, string> = {
@@ -45,16 +45,9 @@ const gross = (e: Expense) => Number(e.subtotal) + Number(e.gst_amount);
 const outstanding = (e: Expense) => Math.max(gross(e) - Number(e.amount_settled ?? 0), 0);
 const tdsLeft = (e: Expense) => Math.max(Number(e.tds_amount) - Number(e.tds_deducted ?? 0), 0);
 
-/** Platform defaults plus the society's own categories (a society row overrides the same key). */
-function mergeCategories(rows: ExpenseCategory[]): ExpenseCategory[] {
-  const byKey = new Map<string, ExpenseCategory>();
-  for (const c of rows) if (!byKey.has(c.key) || c.society_id) byKey.set(c.key, c);
-  return [...byKey.values()].sort((a, b) => a.sort_order - b.sort_order || a.label.localeCompare(b.label));
-}
-
 export const ExpensesTab: React.FC<ExpensesTabProps> = ({ societyId, currentUserId, expenses, onChanged }) => {
   const [vendors, setVendors] = useState<Vendor[]>([]);
-  const [categories, setCategories] = useState<ExpenseCategory[]>([]);
+  const [categories, setCategories] = useState<BillType[]>([]); // bill types: the society's own row for a key, else the default
   const [approvals, setApprovals] = useState<ApprovalRow[]>([]);
   const [payments, setPayments] = useState<VendorPayment[]>([]);
   const [challansTotal, setChallansTotal] = useState(0);
@@ -73,14 +66,14 @@ export const ExpensesTab: React.FC<ExpensesTabProps> = ({ societyId, currentUser
     if (!supabase) return;
     const [vRes, cRes, aRes, pRes, tRes, sRes] = await Promise.all([
       supabase.from('vendors').select('*').eq('society_id', societyId).order('name'),
-      supabase.from('expense_categories').select('*').eq('is_active', true),
+      supabase.rpc('bill_types', { p_society_id: societyId }),
       supabase.from('expense_approvals').select('expense_id, approver_id, decision, notes, profiles:approver_id (full_name)').eq('society_id', societyId),
       supabase.from('vendor_payments').select('*').eq('society_id', societyId).order('paid_on', { ascending: false }),
       supabase.from('tds_challans').select('amount').eq('society_id', societyId),
       supabase.from('society_settings').select('require_two_step_expense_approval').eq('society_id', societyId).maybeSingle(),
     ]);
     setVendors((vRes.data ?? []) as Vendor[]);
-    setCategories(mergeCategories((cRes.data ?? []) as ExpenseCategory[]));
+    setCategories((cRes.data ?? []) as BillType[]);
     setApprovals(((aRes.data ?? []) as unknown) as ApprovalRow[]);
     setPayments((pRes.data ?? []) as VendorPayment[]);
     setChallansTotal((tRes.data ?? []).reduce((s, r) => s + Number(r.amount), 0));
@@ -279,7 +272,7 @@ export const ExpensesTab: React.FC<ExpensesTabProps> = ({ societyId, currentUser
       <ExpenseBillForm
         societyId={societyId}
         vendors={vendors}
-        categories={categories}
+        categories={categories.filter(c => c.is_active)}
         requiredApprovals={requiredApprovals}
         onVendorsChanged={load}
         onCreated={done}

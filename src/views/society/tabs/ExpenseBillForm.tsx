@@ -6,7 +6,7 @@ import { formatINR } from '../../../lib/inr';
 import { deleteSocietyFile, uploadSocietyFile } from '../../../lib/storage';
 import { ASSET_TYPES, explainTds, suggestsAsset, vendorPan, panEntity } from '../../../lib/tds';
 import type { ExtractedInvoice } from '../../../lib/invoice-extract';
-import { AssetAccountCode, ExpenseCategory, TdsSuggestion, Vendor } from '../../../types/database';
+import { AssetAccountCode, BillType, TdsSuggestion, Vendor } from '../../../types/database';
 import { Banner } from '../../../components/Banner';
 import { FileUp, Loader2, Receipt, Sparkles, Store, Camera } from 'lucide-react';
 
@@ -17,7 +17,7 @@ type Field = 'vendor' | 'title' | 'category' | 'invoiceNumber' | 'invoiceDate' |
 interface ExpenseBillFormProps {
   societyId: string;
   vendors: Vendor[];
-  categories: ExpenseCategory[];
+  categories: BillType[];
   requiredApprovals: number;
   onVendorsChanged: () => void;
   onCreated: (message: string) => void;
@@ -28,7 +28,11 @@ const emptyForm = {
   expenseType: 'revenue' as 'revenue' | 'capital', assetCode: '' as AssetAccountCode | '', location: '',
   fundedFrom: 'general' as 'general' | 'sinking_fund' | 'repair_fund', gstClaimable: false,
   tds: 0, tdsReason: '', payeeName: '', payeePhone: '',
+  otherNature: '' as '' | 'contract' | 'professional' | 'goods', // the "Other" bill type's answer
 };
+
+const OTHER_QUESTION = 'Is this for work or a service (contractor, AMC, repair), a professional (CA, lawyer, architect), or goods you bought?';
+const OTHER_ANSWERS: [typeof emptyForm.otherNature, string][] = [['contract', 'Work or a service'], ['professional', 'A professional'], ['goods', 'Goods']];
 
 const SOURCE_STYLE: Record<Source, string> = {
   invoice: 'bg-sky-500/15 text-sky-300',
@@ -89,6 +93,7 @@ export const ExpenseBillForm: React.FC<ExpenseBillFormProps> = ({ societyId, ven
         p_category: form.category,
         p_taxable: form.subtotal,
         p_invoice_date: form.invoiceDate || null,
+        p_tds_nature: form.category === 'other' ? form.otherNature || null : null,
       });
       if (rpcErr) return;
       const s = data as TdsSuggestion;
@@ -99,7 +104,7 @@ export const ExpenseBillForm: React.FC<ExpenseBillFormProps> = ({ societyId, ven
       }
     }, 350);
     return () => clearTimeout(timer);
-  }, [societyId, form.vendorId, form.category, form.subtotal, form.invoiceDate]);
+  }, [societyId, form.vendorId, form.category, form.subtotal, form.invoiceDate, form.otherNature]);
 
   const applyExtraction = (inv: ExtractedInvoice) => {
     const found: Partial<Record<Field, Source>> = {};
@@ -206,6 +211,7 @@ export const ExpenseBillForm: React.FC<ExpenseBillFormProps> = ({ societyId, ven
     if (mode === 'invoice' && !filePath) return setError('Upload the invoice, or choose "Invoice comes later".');
     if (mode === 'none' && (!form.payeeName.trim() || !filePath)) return setError('A voucher needs who was paid and a photo of the work or receipt.');
     if (form.expenseType === 'capital' && !form.assetCode) return setError('Pick the asset type.');
+    if (form.category === 'other' && !form.otherNature) return setError('Answer what this bill is for, so TDS is worked out correctly.');
     const suggested = suggestion ? Number(suggestion.amount) : null;
     if (suggested != null && form.tds !== suggested && !form.tdsReason.trim()) return setError('You changed the TDS — add a reason.');
 
@@ -309,11 +315,25 @@ export const ExpenseBillForm: React.FC<ExpenseBillFormProps> = ({ societyId, ven
             )}
           </div>
         )}
-        <label className={labelClass}><span className="text-slate-400">Category<Tag source={sources.category} /></span>
+        <label className={labelClass}><span className="text-slate-400">Bill type<Tag source={sources.category} /></span>
           <select value={form.category} onChange={e => set('category', e.target.value, 'category')} className={inputClass}>
             {categories.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
           </select></label>
       </div>
+
+      {form.category === 'other' && (
+        <div role="radiogroup" aria-label={OTHER_QUESTION} className="p-3 rounded-xl bg-slate-950 border border-violet-900 space-y-2">
+          <div className="text-violet-200">{OTHER_QUESTION}</div>
+          <div className="flex flex-wrap gap-2">
+            {OTHER_ANSWERS.map(([value, label]) => (
+              <button key={value} type="button" role="radio" aria-checked={form.otherNature === value} onClick={() => set('otherNature', value)}
+                className={`px-3 py-1.5 rounded-xl border cursor-pointer ${form.otherNature === value ? 'bg-violet-600 border-violet-500 text-white' : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-violet-700'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {newVendor && (
         <div className="p-3 rounded-xl bg-slate-950 border border-sky-900 grid grid-cols-2 sm:grid-cols-5 gap-2">
