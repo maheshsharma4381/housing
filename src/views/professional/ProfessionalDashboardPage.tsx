@@ -16,6 +16,7 @@ import { AdjustmentsPanel } from '../../components/AdjustmentsPanel';
 import { PriorYearEditor } from '../../components/PriorYearEditor';
 import { ChartOfAccounts } from '../../components/ChartOfAccounts';
 import { BillTypes } from '../../components/BillTypes';
+import { PartyLedgers } from '../../components/PartyLedgers';
 import { Expense } from '../../types/database';
 import { Briefcase, FileSpreadsheet, Landmark, Receipt, FolderLock, LogOut, ShieldCheck, Lock, Boxes, Scale, ListTree, Tags } from 'lucide-react';
 
@@ -138,7 +139,10 @@ export const ProfessionalDashboardPage: React.FC = () => {
           <FinancialReports societyId={activeSociety.id} societyName={activeSociety.name} />
         )}
         {activeTab === 'ledgers' && activeSociety && allowed.ledgers && (
-          <ChartOfAccounts societyId={activeSociety.id} canManage={permissions.includes('manage_accounts')} />
+          <div className="space-y-6">
+            <ChartOfAccounts societyId={activeSociety.id} canManage={permissions.includes('manage_accounts')} />
+            <PartyLedgers societyId={activeSociety.id} />
+          </div>
         )}
         {activeTab === 'billtypes' && activeSociety && allowed.billtypes && (
           <BillTypes societyId={activeSociety.id} canManage={permissions.includes('manage_accounts')} />

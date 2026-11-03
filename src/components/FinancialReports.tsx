@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase/client';
 import { formatINR } from '../lib/inr';
 import { downloadCsv, downloadFile, toCsv } from '../lib/csv-export';
-import { buildTallyXml } from '../lib/tally-xml';
+import { buildTallyXml, splitPartyLines, type PartyLine } from '../lib/tally-xml';
 import { EMPTY_CHART, groupTree, nodeRows, nodeSum, type Chart, type GroupNode } from '../lib/chart';
 import { fyLabel } from '../lib/tds';
 import { BarChart3, Download, Loader2, AlertCircle, RefreshCw, Printer, FileCode2, Lock } from 'lucide-react';
@@ -25,7 +25,7 @@ interface JournalRow {
   entry_date: string;
   reference_event_type: string;
   narration: string;
-  ledger_entries: { amount: number; accounts: { code: string; name: string } | null }[];
+  ledger_entries: { id: string; amount: number; accounts: { code: string; name: string } | null }[];
 }
 
 const REPORTS: { key: ReportKey; label: string }[] = [
@@ -96,7 +96,7 @@ export const FinancialReports: React.FC<FinancialReportsProps> = ({ societyId, s
 
   const loadJournal = useCallback(async () => supabase!
     .from('journal_entries')
-    .select('id, entry_number, entry_date, reference_event_type, narration, ledger_entries (amount, accounts (code, name))')
+    .select('id, entry_number, entry_date, reference_event_type, narration, ledger_entries (id, amount, accounts (code, name))')
     .eq('society_id', societyId)
     .gte('entry_date', from)
     .lte('entry_date', to)
@@ -250,9 +250,13 @@ export const FinancialReports: React.FC<FinancialReportsProps> = ({ societyId, s
     const { data, error: jErr } = await loadJournal();
     if (jErr) return setError(jErr.message);
     const rows = ((data ?? []) as unknown as JournalRow[]).slice().reverse();
+    // Members' dues and Sundry Creditors lines go to one Tally ledger per flat / vendor
+    const { data: partyData, error: pErr } = await supabase.rpc('party_lines', { p_society_id: societyId, p_from: from, p_to: to });
+    if (pErr) return setError(pErr.message);
+    const parties = (partyData ?? []) as PartyLine[];
     const xml = buildTallyXml(societyName ?? 'Society', chart, rows.map(j => ({
       entry_number: j.entry_number, entry_date: j.entry_date, narration: j.narration,
-      lines: j.ledger_entries.map(l => ({ code: l.accounts?.code ?? '', amount: n(l.amount) })),
+      lines: splitPartyLines(j.ledger_entries.map(l => ({ id: l.id, code: l.accounts?.code ?? '', amount: n(l.amount) })), parties),
     })));
     downloadFile(`${slug}-tally-${from}-to-${to}.xml`, xml, 'application/xml');
   };

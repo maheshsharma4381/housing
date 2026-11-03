@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildTallyXml, tallyParentName } from '../../src/lib/tally-xml.ts';
+import { buildTallyXml, splitPartyLines, tallyParentName } from '../../src/lib/tally-xml.ts';
 import type { Chart, ChartGroup, ChartLedger } from '../../src/lib/chart.ts';
 
 const g = (id: string, name: string, nature: ChartGroup['nature'], system_key: string | null, parent_id: string | null = null): ChartGroup =>
@@ -18,6 +18,7 @@ const chart: Chart = {
     g('inv', 'Investments', 'asset', 'investments'),
     g('ca', 'Current Assets', 'asset', 'current_assets'),
     g('bank', 'Banks', 'asset', 'bank_accounts', 'ca'),
+    g('md', "Members' Dues", 'asset', 'members_dues', 'ca'),
     g('inc', 'Income', 'income', 'income'),
     g('exp', 'Expenses', 'expense', 'expenses'),
     g('fds', 'FDs', 'asset', null, 'inv'),
@@ -31,6 +32,8 @@ const chart: Chart = {
     l('5100', 'Security & Guards', 'expense', 'exp'),
     l('4000', 'Maintenance Charges', 'income', 'inc'),
     l('1C001', 'SBI FD', 'asset', 'fds'),
+    l('1200', 'Members Receivable', 'asset', 'md'),
+    l('5C001', 'Lift AMC', 'expense', 'exp'),
   ],
 };
 const parentOf = (code: string) => tallyParentName(chart, chart.ledgers.find((x) => x.code === code)!.group_id);
@@ -71,4 +74,40 @@ test('a CA sub-group is created as a Tally group before its ledgers', () => {
   const ledger = xml.indexOf('<LEDGER NAME="SBI FD" ACTION="Create"><NAME>SBI FD</NAME><PARENT>FDs</PARENT></LEDGER>');
   assert.ok(group >= 0, 'group master emitted');
   assert.ok(ledger > group, 'ledger master comes after its group');
+});
+
+test('party lines become Sundry Debtors and Sundry Creditors ledgers', () => {
+  const xml = buildTallyXml('Palm Heights', chart, [{
+    entry_number: 'JV-000009', entry_date: '2026-10-01', narration: 'Bill MB-0001',
+    lines: [{ code: '1200', amount: 1180, party: 'Flat 101' }, { code: '4000', amount: -1180 }],
+  }, {
+    entry_number: 'JV-000010', entry_date: '2026-10-05', narration: 'Lift AMC bill',
+    lines: [{ code: '5100', amount: 5000 }, { code: '2000', amount: -5000, party: 'Shiv Lifts' }],
+  }]);
+  assert.match(xml, /<LEDGER NAME="Flat 101" ACTION="Create"><NAME>Flat 101<\/NAME><PARENT>Sundry Debtors<\/PARENT><\/LEDGER>/);
+  assert.match(xml, /<LEDGER NAME="Shiv Lifts" ACTION="Create"><NAME>Shiv Lifts<\/NAME><PARENT>Sundry Creditors<\/PARENT><\/LEDGER>/);
+  assert.match(xml, /<LEDGERNAME>Flat 101<\/LEDGERNAME><ISDEEMEDPOSITIVE>Yes<\/ISDEEMEDPOSITIVE><AMOUNT>-1180.00<\/AMOUNT>/);
+  assert.ok(!xml.includes('LEDGER NAME="Members Receivable"'), 'a control ledger whose lines all have parties gets no master');
+  assert.ok(!xml.includes('LEDGER NAME="Sundry Creditors"'));
+});
+
+test('a party named like a ledger gets a suffix', () => {
+  const xml = buildTallyXml('Palm Heights', chart, [{
+    entry_number: 'JV-000011', entry_date: '2026-10-06', narration: 'Lift AMC bill',
+    lines: [{ code: '5C001', amount: 5000 }, { code: '2000', amount: -5000, party: 'Lift AMC' }],
+  }]);
+  assert.match(xml, /<LEDGER NAME="Lift AMC" ACTION="Create"><NAME>Lift AMC<\/NAME><PARENT>Indirect Expenses<\/PARENT>/);
+  assert.match(xml, /<LEDGER NAME="Lift AMC \(Party\)" ACTION="Create"><NAME>Lift AMC \(Party\)<\/NAME><PARENT>Sundry Creditors<\/PARENT>/);
+  assert.match(xml, /<LEDGERNAME>Lift AMC \(Party\)<\/LEDGERNAME><ISDEEMEDPOSITIVE>No<\/ISDEEMEDPOSITIVE>/);
+});
+
+test('splitPartyLines splits one entry across its parties', () => {
+  const party = (id: string, name: string, amount: number) => ({ ledger_entry_id: id, kind: 'flat' as const, key: name, name, amount });
+  assert.deepEqual(
+    splitPartyLines(
+      [{ id: 'e1', code: '1200', amount: 2500 }, { id: 'e2', code: '3200', amount: -2500 }],
+      [party('e1', 'Flat 102', 1500), party('e1', 'Flat 103', 1000)],
+    ),
+    [{ code: '1200', amount: 1500, party: 'Flat 102' }, { code: '1200', amount: 1000, party: 'Flat 103' }, { code: '3200', amount: -2500 }],
+  );
 });
