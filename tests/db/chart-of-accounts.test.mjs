@@ -157,8 +157,9 @@ test('duplicate names are refused', async () => {
 
 test('ledgers cannot be created in automatic groups', async () => {
   await assert.rejects(createLedger(ids.ca, await groupId('sundry_creditors'), 'Eagle Guards'), /created by Sahvaas automatically/);
-  const sub = await val(ids.ca, `SELECT public.create_account_group($1,$2,'Statutory dues')`, [ids.societyId, await groupId('duties_taxes')]);
-  await assert.rejects(createLedger(ids.ca, sub, 'Professional tax'), /created by Sahvaas automatically/, 'a sub-group inside an automatic group is automatic too');
+  const sub = await val(ids.ca, `SELECT public.create_account_group($1,$2,'Wing A dues')`, [ids.societyId, await groupId('members_dues')]);
+  await assert.rejects(createLedger(ids.ca, sub, 'Flat 101 dues'), /created by Sahvaas automatically/, 'a sub-group inside an automatic group is automatic too');
+  await assert.rejects(createLedger(ids.ca, await groupId('fixed_assets'), 'Lift'), /created by Sahvaas automatically/, 'fixed-asset ledgers wait for 2C');
 });
 
 test('system ledgers can be renamed, not moved or deactivated', async () => {
@@ -241,7 +242,7 @@ test('a maintenance charge cannot go to an expense or inactive ledger', async ()
 test('adjustments follow the groups', async () => {
   const propose = (lines) => q(ids.ca, `SELECT public.propose_adjustment($1,'2026-10-18','Reclassify for the audit',$2)`,
     [ids.societyId, JSON.stringify(lines)]);
-  const liftOld = await createLedger(ids.ca, await groupId('fixed_assets'), 'Lift (old)');
+  const liftOld = '1510';
   await assert.rejects(propose([{ code: liftOld, amount: 100 }, { code: '5900', amount: -100 }]), /kept by its own register/);
   const ok = await propose([{ code: '5C001', amount: 100 }, { code: '5900', amount: -100 }]);
   assert.equal(ok.length, 1);
