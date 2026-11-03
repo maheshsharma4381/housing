@@ -13,15 +13,28 @@ UPDATE bank_accounts b SET ledger_id = a.id
 FROM accounts a
 WHERE a.society_id = b.society_id AND a.code = '1000' AND b.ledger_id IS NULL;
 
+-- A statement account can move to another bank ledger (e.g. the CA's own ledger for that bank)
+-- while none of its matched lines points at an entry the books keep in a different bank.
 CREATE OR REPLACE FUNCTION public.trg_bank_account_ledger()
 RETURNS TRIGGER AS $$
+DECLARE
+    v_other TEXT;
 BEGIN
     IF NEW.ledger_id IS NULL THEN
         NEW.ledger_id := default_bank_ledger(NEW.society_id, 'receipt');
     END IF;
-    IF TG_OP = 'UPDATE' AND NEW.ledger_id IS DISTINCT FROM OLD.ledger_id
-       AND EXISTS (SELECT 1 FROM bank_transactions WHERE bank_account_id = NEW.id) THEN
-        RAISE EXCEPTION 'This account already has statement lines';
+    IF TG_OP = 'UPDATE' AND NEW.ledger_id IS DISTINCT FROM OLD.ledger_id THEN
+        SELECT a.name INTO v_other
+        FROM bank_transactions bt
+        LEFT JOIN payments p ON p.id = bt.reconciled_payment_id
+        LEFT JOIN vendor_payments vp ON vp.id = bt.reconciled_vendor_payment_id
+        LEFT JOIN tds_challans c ON c.id = bt.reconciled_challan_id
+        JOIN accounts a ON a.id = coalesce(p.bank_ledger_id, vp.bank_ledger_id, c.bank_ledger_id)
+        WHERE bt.bank_account_id = NEW.id AND a.id <> NEW.ledger_id
+        LIMIT 1;
+        IF v_other IS NOT NULL THEN
+            RAISE EXCEPTION 'Lines of this statement are matched to entries in % — rename that ledger instead, or unlink those lines first', v_other;
+        END IF;
     END IF;
     IF (TG_OP = 'INSERT' OR NEW.ledger_id IS DISTINCT FROM OLD.ledger_id)
        AND NOT is_bank_ledger(NEW.society_id, NEW.ledger_id) THEN

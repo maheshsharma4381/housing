@@ -160,6 +160,12 @@ BEGIN
     IF v_own.id IS NULL THEN
         RAISE EXCEPTION 'Unknown bill type %', p_key;
     END IF;
+    -- A turned-off type no longer decides the ledger, so bills still waiting would land elsewhere
+    IF NOT coalesce(p_active, false) AND EXISTS (
+        SELECT 1 FROM expenses WHERE society_id = p_society_id AND category = p_key AND status IN ('draft', 'pending_approval')
+    ) THEN
+        RAISE EXCEPTION 'Bills of this type are waiting for approval — approve or reject them first';
+    END IF;
     IF v_own.is_active IS DISTINCT FROM coalesce(p_active, false) THEN
         UPDATE expense_categories SET is_active = coalesce(p_active, false) WHERE id = v_own.id;
         INSERT INTO audit_logs (society_id, user_id, action, entity_type, entity_id, new_value)
@@ -173,8 +179,9 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 -- ============================================================================
 -- 4. MOVING THIS YEAR'S EARLIER BILLS (committee approval)
 --    What sits on each expense ledger for this type this financial year: the
---    bills' own postings plus earlier approved moves. Everything not on the
---    type's current ledger becomes one adjustment proposal.
+--    bills' own postings, earlier approved moves, and approved moves of its
+--    bills into fixed assets (capitalisation). Everything not on the type's
+--    current ledger becomes one adjustment proposal.
 -- ============================================================================
 ALTER TABLE adjustment_proposals ADD COLUMN IF NOT EXISTS bill_type_key VARCHAR(48);
 
@@ -212,8 +219,12 @@ BEGIN
           AND l.date >= v_fy
         UNION ALL
         SELECT x ->> 'code', (x ->> 'amount')::numeric
-        FROM adjustment_proposals p, jsonb_array_elements(p.lines) x
-        WHERE p.society_id = p_society_id AND p.bill_type_key = p_key AND p.status = 'approved' AND p.entry_date >= v_fy
+        FROM adjustment_proposals p
+        CROSS JOIN jsonb_array_elements(p.lines) x
+        WHERE p.society_id = p_society_id AND p.status = 'approved' AND p.entry_date >= v_fy
+          AND (p.bill_type_key = p_key
+               OR (p.kind = 'capitalise' AND EXISTS (SELECT 1 FROM expenses e WHERE e.id = p.expense_id AND e.category = p_key)))
+          AND EXISTS (SELECT 1 FROM accounts a WHERE a.society_id = p_society_id AND a.code = x ->> 'code' AND a.type = 'expense')
     ), net AS (
         SELECT code, sum(amount) AS amount FROM sitting
         WHERE code <> v_target

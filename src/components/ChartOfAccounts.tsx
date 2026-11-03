@@ -71,7 +71,7 @@ const DefaultBanks: React.FC<{ societyId: string; canManage: boolean; chart: Cha
           </button>
         )}
       </div>
-      <p className="text-slate-500">Add a ledger under Bank Accounts for each bank account first.</p>
+      <p className="text-slate-500">One bank so far? Rename “Bank Accounts” to that bank’s name. Add a ledger under Bank Accounts for each further bank account.</p>
       <Banner tone="error">{error}</Banner>
       <Banner tone="success">{notice}</Banner>
     </div>

@@ -119,6 +119,11 @@ test('the CA adds a bill type and can turn it off; standard types stay on', asyn
   assert.equal(await setType(ids.ca, null, 'Water tanker', '5400', 'contract'), 'water_tanker');
   assert.equal(await setType(ids.ca, null, 'Water-tanker', '5400', 'contract'), 'water_tanker_2');
   await assert.rejects(setType(ids.ca, null, 'water TANKER', '5400', 'none'), /already exists/);
+  // A bill of this type still waiting for approval keeps the type on
+  const waiting = await val(ids.treasurer, `INSERT INTO expenses (society_id, vendor_id, category, title, subtotal, tds_amount, invoice_number, invoice_date)
+    VALUES ($1,$2,'water_tanker','Tanker 5 Nov',2400,0,'WT-1',current_date) RETURNING id`, [ids.societyId, ids.vendor]);
+  await assert.rejects(q(ids.ca, `SELECT public.set_bill_type_active($1,'water_tanker',false)`, [ids.societyId]), /waiting for approval/);
+  await q(ids.secretary, `SELECT public.decide_expense($1, false, 'Wrong type')`, [waiting]);
   await q(ids.ca, `SELECT public.set_bill_type_active($1,'water_tanker',false)`, [ids.societyId]);
   const tanker = (await types()).find((t) => t.key === 'water_tanker');
   assert.deepEqual([tanker.is_active, tanker.is_custom, tanker.label], [false, true, 'Water tanker']);
@@ -135,4 +140,17 @@ test('"Other" bills take their TDS type from the plain question', async () => {
   assert.equal((await s('other', 'professional')).nature, 'professional');
   assert.equal((await s('security', 'professional')).nature, 'contract');
   await assert.rejects(s('other', 'rent_building'), /Choose work, professional or goods/);
+});
+
+test('a bill moved to assets is not moved again when its type is re-pointed', async () => {
+  const bill = await val(ids.treasurer, `INSERT INTO expenses (society_id, vendor_id, category, title, subtotal, tds_amount, invoice_number, invoice_date, expense_type)
+    VALUES ($1,$2,'electrical','Rewiring',30000,0,'EL-1',current_date,'revenue') RETURNING id`, [ids.societyId, ids.vendor]);
+  await q(ids.secretary, 'SELECT public.decide_expense($1, true)', [bill]);
+  assert.deepEqual(await debitCodes(bill), ['5000']);
+  const cap = await val(ids.ca, `SELECT public.propose_capitalisation($1,'1510','Rewiring is a lasting improvement')`, [bill]);
+  await q(ids.treasurer, 'SELECT public.decide_adjustment($1, true)', [cap.id]);
+
+  const code = await val(ids.ca, `SELECT public.create_ledger($1,$2,'Electrical Works')`, [ids.societyId, await groupId('expenses')]);
+  await setType(ids.ca, 'electrical', 'Electrical work', code, 'contract');
+  await assert.rejects(q(ids.ca, `SELECT public.propose_bill_type_move($1,'electrical')`, [ids.societyId]), /already in Electrical Works/);
 });

@@ -192,8 +192,6 @@ test("the book balance is that bank ledger's own balance", async () => {
   assert.notEqual(await balOf('1C001'), await balOf('1000'));
   assert.equal(await book(ids.stmtIcici), await balOf('1C001'));
   assert.equal(await book(ids.stmt1000), await balOf('1000'));
-  await assert.rejects(q(ids.secretary, 'UPDATE bank_accounts SET ledger_id = $2 WHERE id = $1', [ids.stmtIcici, ids.b1000]),
-    /already has statement lines/);
 });
 
 test('matching stays inside one bank', async () => {
@@ -216,4 +214,15 @@ test('matching stays inside one bank', async () => {
   await assert.rejects(link('CASH WDL', 'vendor_payment', ids.vpCash), /paid in cash/);
   await q(ids.secretary, 'SELECT public.verify_matched_payments($1)', [ids.societyId]);
   assert.deepEqual(await bankCodes('payment.verified', pX), ['1000'], 'the statement decides, not the default receiving bank');
+});
+
+test('a statement account moves to another bank ledger unless its matched entries are in a different bank', async () => {
+  const repoint = (account, ledger) => q(ids.secretary, 'UPDATE bank_accounts SET ledger_id = $2 WHERE id = $1', [account, ledger]);
+  await assert.rejects(repoint(ids.stmt1000, ids.icici), /matched to entries in Bank Accounts/);
+  // The ICICI statement has no matched lines: the CA's own ledger for that bank account can take it over
+  const code = await createLedger(ids.ca, await groupId('bank_accounts'), 'ICICI Current (new)');
+  await repoint(ids.stmtIcici, await ledgerId(code));
+  const summary = await val(ids.secretary, 'SELECT public.bank_reconciliation_summary($1)', [ids.stmtIcici]);
+  assert.equal(Number(summary.book_balance), await balOf(code));
+  await assert.rejects(repoint(ids.stmtIcici, await ledgerId('1300')), /Choose a bank ledger of this society/);
 });

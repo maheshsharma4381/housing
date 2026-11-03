@@ -233,6 +233,18 @@ export const BankReconciliation: React.FC<BankReconciliationProps> = ({ societyI
   const bankName = (id: string) => banks.find(b => b.id === id)?.name ?? 'Bank';
   // A new statement account most likely belongs to a bank ledger no other account uses yet
   const unusedBank = () => banks.find(b => !accounts.some(a => a.ledger_id === b.id))?.id ?? defaultBankId(banks, 'receipt') ?? '';
+  // Point this statement account at another bank ledger (refused while its matched lines are in another bank)
+  const repoint = async (ledgerId: string) => {
+    if (!supabase || !account || ledgerId === account.ledger_id) return;
+    setBusy('account');
+    setError(null);
+    const { error: upErr } = await supabase.from('bank_accounts').update({ ledger_id: ledgerId }).eq('id', account.id);
+    setBusy(null);
+    if (upErr) return setError(upErr.message);
+    setNotice(`${account.bank_name} ··${account.account_number.slice(-4)} is now in the books as ${bankName(ledgerId)}.`);
+    await loadAccounts();
+    loadLines();
+  };
   const difference = summary?.statement_balance != null ? Number(summary.statement_balance) - Number(summary.book_balance) : null;
 
   if (loading) return <div className="flex justify-center py-10"><Loader2 className="w-5 h-5 animate-spin text-slate-500" /></div>;
@@ -253,7 +265,16 @@ export const BankReconciliation: React.FC<BankReconciliationProps> = ({ societyI
               {accounts.map(a => <option key={a.id} value={a.id}>{a.bank_name} ··{a.account_number.slice(-4)} · {bankName(a.ledger_id)}</option>)}
             </select>
           )}
-          {accounts.length === 1 && account && <span className="text-slate-400">In the books as {bankName(account.ledger_id)}</span>}
+          {account && (canManage && banks.length > 1 ? (
+            <label className="flex items-center gap-1 text-slate-400">
+              In the books as
+              <select value={account.ledger_id} disabled={busy !== null} onChange={e => repoint(e.target.value)} className={`${inputClass} w-auto`}>
+                {banks.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </label>
+          ) : (
+            <span className="text-slate-400">In the books as {bankName(account.ledger_id)}</span>
+          ))}
           {canManage && !newAccount && (
             <button onClick={() => setNewAccount({ ...ACCOUNT_BLANK, ledger_id: unusedBank() })} className="flex items-center gap-1 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold cursor-pointer">
               <Plus className="w-3.5 h-3.5" /> Bank account
