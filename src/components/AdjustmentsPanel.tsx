@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase/client';
+import { fetchBankLedgers, type BankLedger } from '../lib/banks';
 import { formatINR } from '../lib/inr';
 import { Banner } from './Banner';
 import { EmptyState } from './EmptyState';
@@ -9,10 +10,13 @@ import { CheckCircle2, Loader2, Plus, Scale, Trash2, XCircle } from 'lucide-reac
 
 interface Account { code: string; name: string; type: string; is_active: boolean; adjustable: boolean }
 interface ChartLedgerRow { code: string; name: string; nature: string; is_active: boolean; adjustable: boolean }
+type MoveType = 'payment' | 'vendor_payment' | 'tds_challan';
+interface MoveEntry { id: string; number: string; date: string; amount: number; bankId: string }
+
 interface Proposal {
   id: string;
   proposal_number: string;
-  kind: 'journal' | 'capitalise' | 'year_lock';
+  kind: 'journal' | 'capitalise' | 'year_lock' | 'bank_move';
   entry_date: string;
   reason: string;
   lines: { code: string; amount: number }[];
@@ -47,7 +51,11 @@ export const AdjustmentsPanel: React.FC<AdjustmentsPanelProps> = ({ societyId, c
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [expenses, setExpenses] = useState<RevenueExpense[]>([]);
-  const [kind, setKind] = useState<'journal' | 'capitalise'>('journal');
+  const [kind, setKind] = useState<'journal' | 'capitalise' | 'bank_move'>('journal');
+  // Moving a receipt, vendor payment or TDS challan booked to the wrong bank (028)
+  const [move, setMove] = useState<{ type: MoveType; entryId: string; toId: string }>({ type: 'payment', entryId: '', toId: '' });
+  const [moveEntries, setMoveEntries] = useState<MoveEntry[]>([]);
+  const [banks, setBanks] = useState<BankLedger[]>([]);
   const [date, setDate] = useState(today());
   const [reason, setReason] = useState('');
   const [lines, setLines] = useState([emptyLine(), emptyLine()]);
@@ -85,6 +93,30 @@ export const AdjustmentsPanel: React.FC<AdjustmentsPanelProps> = ({ societyId, c
     load();
   }, [load]);
 
+  // Entries that can move: the latest 100 of the chosen type that are in a bank
+  useEffect(() => {
+    if (!supabase || kind !== 'bank_move') return;
+    const client = supabase;
+    fetchBankLedgers(client, societyId).then(setBanks).catch(() => setBanks([]));
+    const query = move.type === 'payment'
+      ? client.from('payments').select('id, payment_number, payment_date, amount, bank_ledger_id').eq('society_id', societyId)
+          .eq('status', 'verified').neq('payment_method', 'cash').not('bank_ledger_id', 'is', null).order('payment_date', { ascending: false }).limit(100)
+      : move.type === 'vendor_payment'
+        ? client.from('vendor_payments').select('id, payment_number, paid_on, amount, bank_ledger_id').eq('society_id', societyId)
+            .eq('status', 'recorded').neq('mode', 'cash').not('bank_ledger_id', 'is', null).order('paid_on', { ascending: false }).limit(100)
+        : client.from('tds_challans').select('id, challan_number, paid_on, amount, bank_ledger_id').eq('society_id', societyId)
+            .not('bank_ledger_id', 'is', null).order('paid_on', { ascending: false }).limit(100);
+    query.then(({ data }) => setMoveEntries(((data ?? []) as Record<string, unknown>[]).map(r => ({
+      id: String(r.id),
+      number: String(r.payment_number ?? r.challan_number ?? ''),
+      date: String(r.payment_date ?? r.paid_on ?? ''),
+      amount: Number(r.amount),
+      bankId: String(r.bank_ledger_id),
+    }))));
+  }, [kind, move.type, societyId]);
+  const moveEntry = moveEntries.find(m => m.id === move.entryId);
+  const bankName = (id: string) => banks.find(b => b.id === id)?.name ?? 'bank';
+
   const typeOf = useMemo(() => new Map(accounts.map(a => [a.code, a.type])), [accounts]);
   const nameOf = useMemo(() => new Map(accounts.map(a => [a.code, a.name])), [accounts]);
   // Debiting an expense (or reversing income) lowers the surplus
@@ -109,13 +141,21 @@ export const AdjustmentsPanel: React.FC<AdjustmentsPanelProps> = ({ societyId, c
     setBusy('propose');
     const { data, error: rpcErr } = kind === 'journal'
       ? await supabase.rpc('propose_adjustment', { p_society_id: societyId, p_entry_date: date, p_reason: reason, p_lines: signedLines })
-      : await supabase.rpc('propose_capitalisation', { p_expense_id: cap.expenseId, p_asset_account_code: cap.asset, p_reason: reason, p_entry_date: date });
+      : kind === 'bank_move'
+        ? await supabase.rpc('propose_bank_move', { p_society_id: societyId, p_entity_type: move.type, p_entity_id: move.entryId, p_to_ledger_id: move.toId, p_reason: reason })
+        : await supabase.rpc('propose_capitalisation', { p_expense_id: cap.expenseId, p_asset_account_code: cap.asset, p_reason: reason, p_entry_date: date });
     setBusy(null);
     if (rpcErr) return setError(rpcErr.message);
     setReason('');
     setLines([emptyLine(), emptyLine()]);
     setCap({ expenseId: '', asset: assetTypes[0]?.code ?? '' });
-    done(`${(data as { proposal_number: string }).proposal_number} sent to the committee. Nothing is posted until they approve.`);
+    const number = (data as { proposal_number: string }).proposal_number;
+    if (kind === 'bank_move') {
+      setMove(m => ({ ...m, entryId: '', toId: '' }));
+      done(`Sent to the committee for approval as ${number}.`);
+    } else {
+      done(`${number} sent to the committee. Nothing is posted until they approve.`);
+    }
   };
 
   const decide = async (p: Proposal, approve: boolean) => {
@@ -152,7 +192,7 @@ export const AdjustmentsPanel: React.FC<AdjustmentsPanelProps> = ({ societyId, c
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="font-bold text-white">Propose an adjustment</div>
             <div role="radiogroup" className="flex gap-1 p-1 rounded-xl bg-slate-950 border border-slate-800">
-              {([['journal', 'Journal entry'], ['capitalise', 'Move an expense to assets']] as const).map(([k, label]) => (
+              {([['journal', 'Journal entry'], ['capitalise', 'Move an expense to assets'], ['bank_move', 'Move to another bank']] as const).map(([k, label]) => (
                 <button key={k} type="button" role="radio" aria-checked={kind === k} onClick={() => setKind(k)}
                   className={`px-3 py-1.5 rounded-lg font-semibold cursor-pointer ${kind === k ? 'bg-violet-600 text-white' : 'text-slate-400 hover:text-white'}`}>{label}</button>
               ))}
@@ -181,6 +221,23 @@ export const AdjustmentsPanel: React.FC<AdjustmentsPanelProps> = ({ societyId, c
               </div>
               <p className="text-slate-500">Members, vendors, advances and fixed-asset accounts are changed through their own screens, so they are not listed here.</p>
             </div>
+          ) : kind === 'bank_move' ? (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <select value={move.type} onChange={e => setMove({ type: e.target.value as MoveType, entryId: '', toId: '' })} className={inputClass}>
+                <option value="payment">Receipt</option>
+                <option value="vendor_payment">Vendor payment</option>
+                <option value="tds_challan">TDS challan</option>
+              </select>
+              <select value={move.entryId} onChange={e => setMove({ ...move, entryId: e.target.value, toId: '' })} className={`sm:col-span-2 ${inputClass}`}>
+                <option value="">Entry…</option>
+                {moveEntries.map(m => <option key={m.id} value={m.id}>{m.number} · {m.date} · {formatINR(m.amount)} · in {bankName(m.bankId)}</option>)}
+              </select>
+              <select value={move.toId} onChange={e => setMove({ ...move, toId: e.target.value })} className={inputClass} disabled={!moveEntry}>
+                <option value="">Move to…</option>
+                {banks.filter(b => b.id !== moveEntry?.bankId).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+              {moveEntry && <div className="sm:col-span-2 text-violet-200">Dated {moveEntry.date}, as the entry. On approval the entry is in the new bank and both bank ledgers are corrected.</div>}
+            </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <select value={cap.expenseId} onChange={e => setCap({ ...cap, expenseId: e.target.value })} className={`sm:col-span-2 ${inputClass}`}>
@@ -195,10 +252,12 @@ export const AdjustmentsPanel: React.FC<AdjustmentsPanelProps> = ({ societyId, c
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-[160px_1fr] gap-2">
-            <input type="date" max={today()} value={date} onChange={e => setDate(e.target.value)} className={inputClass} />
+            {kind === 'bank_move'
+              ? <div className="text-slate-500 self-center">Dated as the entry</div>
+              : <input type="date" max={today()} value={date} onChange={e => setDate(e.target.value)} className={inputClass} />}
             <input value={reason} onChange={e => setReason(e.target.value)} placeholder="Reason the committee will read (required)" className={inputClass} />
           </div>
-          <button type="submit" disabled={busy !== null || reason.trim().length < 5 || (kind === 'journal' ? (Math.abs(dr - cr) >= 0.005 || dr <= 0) : !cap.expenseId)}
+          <button type="submit" disabled={busy !== null || reason.trim().length < 5 || (kind === 'journal' ? (Math.abs(dr - cr) >= 0.005 || dr <= 0) : kind === 'bank_move' ? !move.entryId || !move.toId : !cap.expenseId)}
             className="w-full py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-bold cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2">
             {busy === 'propose' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Scale className="w-4 h-4" />} Send to committee for approval
           </button>
@@ -218,7 +277,7 @@ export const AdjustmentsPanel: React.FC<AdjustmentsPanelProps> = ({ societyId, c
               <div key={p.id} className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
-                    <div className="font-mono text-slate-400">{p.proposal_number} · {p.kind === 'year_lock' ? `lock the books up to ${new Date(`${p.entry_date}T00:00:00`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}` : `${p.entry_date} · ${p.kind === 'capitalise' ? 'move expense to assets' : 'journal'}`}</div>
+                    <div className="font-mono text-slate-400">{p.proposal_number} · {p.kind === 'year_lock' ? `lock the books up to ${new Date(`${p.entry_date}T00:00:00`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}` : `${p.entry_date} · ${p.kind === 'capitalise' ? 'move expense to assets' : p.kind === 'bank_move' ? 'move to another bank' : 'journal'}`}</div>
                     <div className="font-bold text-white text-sm">{p.reason}</div>
                     <div className="text-slate-500">by {mine ? 'you' : p.proposer?.full_name ?? 'CA'} · {new Date(p.proposed_at).toLocaleDateString('en-IN')}</div>
                   </div>
