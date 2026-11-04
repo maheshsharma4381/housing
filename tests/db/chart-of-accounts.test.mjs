@@ -159,7 +159,8 @@ test('ledgers cannot be created in automatic groups', async () => {
   await assert.rejects(createLedger(ids.ca, await groupId('sundry_creditors'), 'Eagle Guards'), /created by Sahvaas automatically/);
   const sub = await val(ids.ca, `SELECT public.create_account_group($1,$2,'Wing A dues')`, [ids.societyId, await groupId('members_dues')]);
   await assert.rejects(createLedger(ids.ca, sub, 'Flat 101 dues'), /created by Sahvaas automatically/, 'a sub-group inside an automatic group is automatic too');
-  await assert.rejects(createLedger(ids.ca, await groupId('fixed_assets'), 'Lift'), /created by Sahvaas automatically/, 'fixed-asset ledgers wait for 2C');
+  // 028: fixed-asset ledgers are asset types the CA creates
+  assert.match(await createLedger(ids.ca, await groupId('fixed_assets'), 'Lift'), /\w/);
 });
 
 test('system ledgers can be renamed, not moved or deactivated', async () => {
