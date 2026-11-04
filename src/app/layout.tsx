@@ -3,6 +3,7 @@ import './globals.css';
 import { AuthProvider } from '../context/AuthContext';
 import { RouterProvider } from '../router/RouterContext';
 import { OfflineIndicator } from '../components/OfflineIndicator';
+import { NamePrompt } from '../components/NamePrompt';
 
 export const viewport: Viewport = {
   themeColor: '#0284c7',
@@ -43,6 +44,7 @@ export default function RootLayout({
               {children}
             </div>
             <OfflineIndicator />
+            <NamePrompt />
           </AuthProvider>
         </RouterProvider>
       </body>

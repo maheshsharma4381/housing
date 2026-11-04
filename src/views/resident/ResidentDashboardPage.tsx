@@ -16,11 +16,11 @@ import {
   Receipt,
   FileText,
   MessageSquare,
-  LogOut,
   CheckCircle2,
   AlertCircle,
   FolderLock,
 } from 'lucide-react';
+import { SignOutMenu } from '../../components/SignOutMenu';
 
 const OUTSTANDING_STATUSES: Bill['status'][] = ['issued', 'partially_paid', 'overdue'];
 const UTR_PATTERN = /^\d{12}$/;
@@ -42,7 +42,6 @@ export const ResidentDashboardPage: React.FC = () => {
     profile,
     activeSociety,
     societyMemberships,
-    logout
   } = useAuth();
 
   // The resident view is about flats: use memberships that carry a unit (a secretary who
@@ -222,13 +221,7 @@ export const ResidentDashboardPage: React.FC = () => {
             if (link === 'bills' || link === 'payments') setActiveTab('bills');
             else if (link === 'notices' || link === 'complaints') setActiveTab(link);
           }} />
-          <button
-            onClick={() => logout()}
-            className="p-2 rounded-xl bg-slate-800 text-slate-300 hover:text-rose-400 cursor-pointer"
-            title="Sign Out"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
+          <SignOutMenu />
         </div>
       </div>
 

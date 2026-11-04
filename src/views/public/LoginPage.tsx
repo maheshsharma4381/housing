@@ -5,6 +5,10 @@ import { useSearchParams } from 'next/navigation';
 import { useRouter, Link } from '../../router/RouterContext';
 import { useAuth } from '../../context/AuthContext';
 import { safeInternalPath } from '../../lib/safe-redirect';
+import { MobileOtpLogin } from '../../components/MobileOtpLogin';
+
+// Mobile + WhatsApp code login (3C) once the Send SMS hook is set up; email stays as the fallback
+const PHONE_LOGIN = process.env.NEXT_PUBLIC_PHONE_LOGIN === '1';
 import { Mail, Lock, ArrowRight, AlertCircle, Loader2 } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
@@ -23,6 +27,7 @@ export const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [useEmail, setUseEmail] = useState(!PHONE_LOGIN);
 
   // Parse returnUrl from query params if present
   const returnUrl = safeInternalPath(searchParams.get('returnUrl'));
@@ -91,6 +96,14 @@ export const LoginPage: React.FC = () => {
             </div>
           )}
 
+          {!useEmail ? (
+            <div className="space-y-4">
+              <MobileOtpLogin />
+              <button type="button" onClick={() => setUseEmail(true)} className="w-full text-center text-slate-400 hover:text-white cursor-pointer">
+                Use email instead
+              </button>
+            </div>
+          ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-slate-400 mb-1.5 font-medium">Official Email Address</label>
@@ -149,7 +162,13 @@ export const LoginPage: React.FC = () => {
                 </>
               )}
             </button>
+            {PHONE_LOGIN && (
+              <button type="button" onClick={() => setUseEmail(false)} className="w-full text-center text-slate-400 hover:text-white cursor-pointer">
+                Log in with mobile instead
+              </button>
+            )}
           </form>
+          )}
 
           {/* Info note */}
           <div className="pt-4 border-t border-slate-800 text-[11px] text-slate-400 text-center space-y-1">

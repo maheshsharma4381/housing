@@ -11,6 +11,7 @@ import { BillingConsole } from '../../components/BillingConsole';
 import { AdsConsole } from '../../components/AdsConsole';
 import { AuditLog, Profile } from '../../types/database';
 import { Building2, Users, FileText, Cpu, LogOut, RefreshCw, Loader2, Search, Inbox, Percent, CreditCard, Megaphone } from 'lucide-react';
+import { LogoutEverywhereButton } from '../../components/SignOutMenu';
 
 interface SocietyOverview {
   id: string; name: string; slug: string; city: string; state: string;
@@ -144,6 +145,7 @@ export const PlatformDashboardPage: React.FC = () => {
           <button onClick={() => logout()} className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-rose-400 text-xs font-medium cursor-pointer">
             <LogOut className="w-3.5 h-3.5" /> <span>Sign Out</span>
           </button>
+          <LogoutEverywhereButton />
         </div>
       </aside>
 

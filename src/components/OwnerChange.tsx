@@ -37,17 +37,19 @@ export const OwnerChange: React.FC<{ societyId: string; unitId: string; unitLabe
     setBusy(true);
     setError(null);
     const { data, error: err } = await supabase.rpc('transfer_flat_owner', {
-      p_unit_id: unitId, p_new_owner_name: form.name, p_new_owner_email: form.email,
+      p_unit_id: unitId, p_new_owner_name: form.name, p_new_owner_email: form.email.trim() || null,
       p_new_owner_mobile: form.mobile || null, p_transfer_date: form.date,
     });
     if (err) {
       setBusy(false);
       return setError(err.message);
     }
-    // Email the invite, as Members does
-    const emailed = await notify('member_invite', (data as { invite_id: string }).invite_id);
+    // Email the invite, as Members does (an owner named by mobile alone logs in with it instead)
+    const emailed = form.email.trim() ? await notify('member_invite', (data as { invite_id: string }).invite_id) : null;
     setBusy(false);
-    setNotice(`Owner change recorded. Invite saved for ${form.email}.${describeNotify(emailed, 'person')}`);
+    setNotice(form.email.trim()
+      ? `Owner change recorded. Invite saved for ${form.email}.${describeNotify(emailed, 'person')}`
+      : `Owner change recorded. ${form.name} logs in with ${form.mobile} and joins the flat.`);
     onDone();
   };
 
@@ -68,13 +70,13 @@ export const OwnerChange: React.FC<{ societyId: string; unitId: string; unitLabe
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <label className="space-y-1"><span className="text-slate-400">New owner&apos;s name</span>
             <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className={inputClass} /></label>
-          <label className="space-y-1"><span className="text-slate-400">Mobile</span>
-            <input value={form.mobile} onChange={e => setForm({ ...form, mobile: e.target.value })} className={inputClass} /></label>
-          <label className="space-y-1"><span className="text-slate-400">Email (they join with it)</span>
+          <label className="space-y-1"><span className="text-slate-400">Mobile (they log in with it)</span>
+            <input inputMode="tel" value={form.mobile} onChange={e => setForm({ ...form, mobile: e.target.value })} className={inputClass} /></label>
+          <label className="space-y-1"><span className="text-slate-400">Email (optional)</span>
             <input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className={inputClass} /></label>
           <label className="space-y-1"><span className="text-slate-400">Transfer date</span>
             <input type="date" max={todayIso()} value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className={inputClass} /></label>
-          <button onClick={save} disabled={busy || form.name.trim().length < 2 || !form.email.includes('@') || !form.date}
+          <button onClick={save} disabled={busy || form.name.trim().length < 2 || (!form.mobile.trim() && !form.email.includes('@')) || !form.date}
             className="sm:col-span-2 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold cursor-pointer disabled:opacity-50">
             {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Record owner change
           </button>

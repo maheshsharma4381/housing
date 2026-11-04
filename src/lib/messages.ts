@@ -1,4 +1,5 @@
 import { formatINR } from './inr.ts';
+import { formatMobile } from './mobile.ts';
 
 /**
  * Message templates shared by WhatsApp share links and transactional email.
@@ -9,7 +10,9 @@ export interface InviteMessageInput {
   societyName: string;
   inviteeName?: string | null;
   role: string;
-  email: string;
+  /** an invite names an email, a mobile (3C), or both; the mobile wins in the message */
+  email?: string | null;
+  mobile?: string | null;
   appUrl: string;
   flat?: string | null;
 }
@@ -44,7 +47,9 @@ export function inviteText(i: InviteMessageInput): string {
   return [
     greet(i.inviteeName),
     `${i.societyName} has invited you to Sahvaas as ${i.role}${i.flat ? ` for flat ${i.flat}` : ''}.`,
-    `Sign up with ${i.email} at ${i.appUrl}/signup, verify your email and accept the invitation.`,
+    i.mobile
+      ? `Log in with your mobile ${formatMobile(i.mobile)} at ${i.appUrl}/login and accept the invitation.`
+      : `Sign up with ${i.email} at ${i.appUrl}/signup, verify your email and accept the invitation.`,
   ].join('\n');
 }
 

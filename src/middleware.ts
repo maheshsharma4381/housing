@@ -46,9 +46,10 @@ export async function middleware(request: NextRequest) {
     request.nextUrl.pathname.startsWith(prefix)
   );
 
-  if (isProtectedRoute) {
-    const { data: { user } } = await supabase.auth.getUser();
+  // Every page load refreshes the session here, so the server sets the cookies (iPhone / Safari keeps them, spec 8.1)
+  const { data: { user } } = await supabase.auth.getUser();
 
+  if (isProtectedRoute) {
     if (!user) {
       const loginUrl = new URL('/login', request.url);
       loginUrl.searchParams.set('returnUrl', request.nextUrl.pathname);
@@ -66,7 +67,8 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico, icon.svg, manifest.json
+     * - the service worker, and server-to-server routes that never carry a login cookie
      */
-    '/((?!_next/static|_next/image|favicon.ico|icon.svg|manifest.json).*)',
+    '/((?!_next/static|_next/image|favicon.ico|icon.svg|manifest.json|sw.js|api/auth/sms-hook|api/push/send-pending).*)',
   ],
 };

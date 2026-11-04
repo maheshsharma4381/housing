@@ -52,7 +52,8 @@ export async function POST(request: NextRequest) {
       .from('member_invites')
       .select('email, full_name, role, society_id, societies:society_id (name), units:unit_id (unit_number)')
       .eq('id', id).eq('status', 'pending').maybeSingle();
-    if (data) {
+    // An invite made by mobile only (3C) has no email to send
+    if (data?.email) {
       societyId = data.society_id;
       emails.push({
         to: data.email,
@@ -71,7 +72,7 @@ export async function POST(request: NextRequest) {
       .from('professional_invites')
       .select('invited_email, role, society_id, societies:society_id (name)')
       .eq('id', id).eq('status', 'pending').maybeSingle();
-    if (data) {
+    if (data?.invited_email) {
       societyId = data.society_id;
       emails.push({
         to: data.invited_email,

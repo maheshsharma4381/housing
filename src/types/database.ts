@@ -199,7 +199,9 @@ export type MemberInviteStatus = 'pending' | 'accepted' | 'revoked';
 export interface MemberInvite {
   id: string;
   society_id: string;
-  email: string;
+  email: string | null;
+  /** 3C: an invite may name a mobile instead of (or as well as) an email */
+  mobile?: string | null;
   full_name?: string;
   role: SocietyRole;
   unit_id?: string | null;

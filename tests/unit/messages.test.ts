@@ -13,6 +13,11 @@ test('invite text mentions the exact email to sign up with', () => {
   assert.match(t, /Sign up with r@x\.in at https:\/\/app\.sahvaas\.in\/signup/);
 });
 
+test('an invite by mobile says to log in with that mobile', () => {
+  const t = inviteText({ societyName: 'Palm Heights', role: 'Committee Member', mobile: '919811122222', appUrl: 'https://app.sahvaas.in' });
+  assert.match(t, /Log in with your mobile \+91 98111 22222 at https:\/\/app\.sahvaas\.in\/login and accept the invitation\./);
+});
+
 test('whatsapp links normalise Indian numbers and fall back to the contact picker', () => {
   assert.equal(whatsappLink('hi', '98200 00000'), 'https://wa.me/919820000000?text=hi');
   assert.equal(whatsappLink('hi', '+91-98200-00000'), 'https://wa.me/919820000000?text=hi');

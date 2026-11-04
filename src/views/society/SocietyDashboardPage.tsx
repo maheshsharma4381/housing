@@ -66,6 +66,7 @@ import {
   Tags,
   BookOpen,
 } from 'lucide-react';
+import { SignOutMenu, LogoutEverywhereButton } from '../../components/SignOutMenu';
 
 type Tab = SocietyTab;
 
@@ -223,13 +224,7 @@ export const SocietyDashboardPage: React.FC = () => {
         <div className="flex items-center gap-2">
           <NotificationBell onOpen={openFromNotification} />
           <WorkspaceSelector />
-          <button
-            onClick={() => logout()}
-            className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-rose-400 cursor-pointer"
-            title="Sign Out"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
+          <SignOutMenu />
         </div>
       </div>
 
@@ -304,6 +299,7 @@ export const SocietyDashboardPage: React.FC = () => {
             <LogOut className="w-3.5 h-3.5" />
             <span>Sign Out</span>
           </button>
+          <LogoutEverywhereButton />
         </div>
       </aside>
 

@@ -10,9 +10,10 @@ import { EmptyState } from '../../../components/EmptyState';
 import { RemarksPanel } from '../../../components/RemarksPanel';
 import { ProfessionalRole } from '../../../types/database';
 import { describeNotify, notify } from '../../../lib/notify';
+import { normalizeMobile, formatMobile } from '../../../lib/mobile';
 import { Briefcase, UserPlus, Loader2, XCircle, Eye, Save } from 'lucide-react';
 
-interface InviteRow { id: string; invited_email: string; role: string; permissions: string[]; expires_at: string; access_until: string | null; status: string }
+interface InviteRow { id: string; invited_email: string | null; invited_mobile: string | null; role: string; permissions: string[]; expires_at: string; access_until: string | null; status: string }
 interface GrantRow {
   id: string; professional_user_id: string; role: string; status: string; permissions: string[];
   granted_at: string; expires_at: string | null; revoked_at: string | null;
@@ -30,6 +31,7 @@ export const ProfessionalsTab: React.FC<ProfessionalsTabProps> = ({ societyId, c
   const [grants, setGrants] = useState<GrantRow[]>([]);
   const [logs, setLogs] = useState<LogRow[]>([]);
   const [email, setEmail] = useState('');
+  const [mobile, setMobile] = useState('');
   const [role, setRole] = useState<ProfessionalRole>('ca');
   const [perms, setPerms] = useState<ProfessionalPermission[]>(ROLE_PRESETS.ca);
   const [accessUntil, setAccessUntil] = useState(() => {
@@ -68,10 +70,14 @@ export const ProfessionalsTab: React.FC<ProfessionalsTabProps> = ({ societyId, c
     e.preventDefault();
     if (!supabase || !currentUserId) return;
     if (perms.length === 0) return setError('Select at least one permission.');
+    const mobileDigits = mobile.trim() ? normalizeMobile(mobile) : null;
+    if (mobile.trim() && !mobileDigits) return setError(`Mobile ${mobile} is not a valid number`);
+    if (!mobileDigits && !email.trim()) return setError('Enter their mobile or email — they log in with it.');
     setBusy('invite');
     const { data: created, error: insErr } = await supabase.from('professional_invites').insert({
       society_id: societyId,
-      invited_email: email.trim().toLowerCase(),
+      invited_email: email.trim().toLowerCase() || null,
+      invited_mobile: mobileDigits,
       role,
       permissions: perms,
       invited_by: currentUserId,
@@ -82,11 +88,14 @@ export const ProfessionalsTab: React.FC<ProfessionalsTabProps> = ({ societyId, c
       setBusy(null);
       return setError(insErr.code === '23505' ? 'This email already has a pending invite.' : insErr.message);
     }
-    const emailed = await notify('professional_invite', created.id);
+    const emailed = email.trim() ? await notify('professional_invite', created.id) : null;
     setBusy(null);
     setError(null);
-    setNotice(`Invite saved.${describeNotify(emailed, 'person')} ${email.trim()} signs up at Sahvaas with this email, verifies it and accepts the invitation (valid 30 days).`);
+    setNotice(mobileDigits
+      ? `Invite saved. ${formatMobile(mobileDigits)} logs in at Sahvaas with this mobile and accepts the invitation (valid 30 days).`
+      : `Invite saved.${describeNotify(emailed, 'person')} ${email.trim()} signs up at Sahvaas with this email, verifies it and accepts the invitation (valid 30 days).`);
     setEmail('');
+    setMobile('');
     load();
   };
 
@@ -141,7 +150,8 @@ export const ProfessionalsTab: React.FC<ProfessionalsTabProps> = ({ societyId, c
       <form onSubmit={invite} className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
         <div className="font-bold text-white text-sm flex items-center gap-2"><UserPlus className="w-4 h-4 text-amber-400" /> Invite a Professional</div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-          <input required type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="ca@firm.in" className={inputClass} />
+          <input inputMode="tel" value={mobile} onChange={e => setMobile(e.target.value)} placeholder="Mobile, e.g. 98765 43210" aria-label="Mobile" className={inputClass} />
+          <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder={mobile.trim() ? 'Email (optional)' : 'ca@firm.in'} aria-label="Email" className={inputClass} />
           <select value={role} onChange={e => { const r = e.target.value as ProfessionalRole; setRole(r); setPerms(ROLE_PRESETS[r]); }} className={inputClass}>
             {PROFESSIONAL_ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
           </select>
@@ -169,7 +179,7 @@ export const ProfessionalsTab: React.FC<ProfessionalsTabProps> = ({ societyId, c
           {invites.map(i => (
             <div key={i.id} className="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <div className="font-semibold text-white truncate">{i.invited_email}</div>
+                <div className="font-semibold text-white truncate">{[i.invited_mobile ? formatMobile(i.invited_mobile) : null, i.invited_email].filter(Boolean).join(' · ')}</div>
                 <div className="text-slate-400">{roleLabel(i.role)} • {i.permissions.length} permissions • invite expires {new Date(i.expires_at).toLocaleDateString('en-IN')}</div>
               </div>
               <button onClick={() => cancelInvite(i.id)} className="flex items-center gap-1 text-rose-400 hover:text-rose-300 cursor-pointer shrink-0"><XCircle className="w-3.5 h-3.5" /> Cancel</button>

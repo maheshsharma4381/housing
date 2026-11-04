@@ -22,6 +22,7 @@ import { BankReconciliation } from '../../components/BankReconciliation';
 import { YearLockPanel } from '../../components/YearLockPanel';
 import { Expense } from '../../types/database';
 import { Briefcase, FileSpreadsheet, Landmark, Receipt, FolderLock, LogOut, ShieldCheck, Lock, Boxes, Scale, ListTree, Tags, BookOpen, BarChart3 } from 'lucide-react';
+import { LogoutEverywhereButton } from '../../components/SignOutMenu';
 
 type Tab = 'gst' | 'financials' | 'ledgers' | 'billtypes' | 'opening' | 'expenses' | 'assets' | 'bank' | 'adjustments' | 'documents' | 'remarks' | 'my_societies';
 
@@ -135,6 +136,7 @@ export const ProfessionalDashboardPage: React.FC = () => {
           <button onClick={() => logout()} className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-rose-400 font-medium cursor-pointer transition">
             <LogOut className="w-3.5 h-3.5" /> <span>Sign Out</span>
           </button>
+          <LogoutEverywhereButton />
         </div>
       </aside>
 

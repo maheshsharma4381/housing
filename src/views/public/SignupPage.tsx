@@ -3,6 +3,9 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { safeInternalPath } from '../../lib/safe-redirect';
+import { MobileOtpLogin } from '../../components/MobileOtpLogin';
+
+const PHONE_LOGIN = process.env.NEXT_PUBLIC_PHONE_LOGIN === '1';
 import { useRouter, Link } from '../../router/RouterContext';
 import { useAuth } from '../../context/AuthContext';
 import { Mail, Lock, User, ArrowRight, AlertCircle, Loader2, CheckCircle2 } from 'lucide-react';
@@ -21,6 +24,8 @@ export const SignupPage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [verifyEmailSent, setVerifyEmailSent] = useState(false);
+  // A mobile login makes the account on first use (3C); email signup stays as the fallback
+  const [useEmail, setUseEmail] = useState(!PHONE_LOGIN);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -92,6 +97,14 @@ export const SignupPage: React.FC = () => {
               <Link href={loginHref} className="inline-block pt-2 text-sky-400 font-semibold hover:underline">
                 Go to Sign In
               </Link>
+            </div>
+          ) : !useEmail ? (
+            <div className="space-y-4">
+              <p className="text-slate-400">Enter your mobile number. A new number gets an account when you log in.</p>
+              <MobileOtpLogin />
+              <button type="button" onClick={() => setUseEmail(true)} className="w-full text-center text-slate-400 hover:text-white cursor-pointer">
+                Use email instead
+              </button>
             </div>
           ) : (
             <>

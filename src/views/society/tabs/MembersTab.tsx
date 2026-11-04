@@ -7,6 +7,7 @@ import { MemberInvite, SocietyRole, Unit } from '../../../types/database';
 import { inviteText, whatsappLink } from '../../../lib/messages';
 import { describeNotify, notify } from '../../../lib/notify';
 import { JoinLinkCard } from '../../../components/JoinLinkCard';
+import { normalizeMobile, formatMobile } from '../../../lib/mobile';
 import { Users, UserPlus, Mail, AlertCircle, CheckCircle2, Loader2, XCircle, MessageCircle } from 'lucide-react';
 
 const ROLE_OPTIONS: { value: SocietyRole; label: string }[] = [
@@ -54,6 +55,7 @@ export const MembersTab: React.FC<MembersTabProps> = ({ societyId, societyName, 
   const [notice, setNotice] = useState<string | null>(null);
 
   const [email, setEmail] = useState('');
+  const [mobile, setMobile] = useState('');
   const [fullName, setFullName] = useState('');
   const [role, setRole] = useState<SocietyRole>('resident_owner');
   const [unitId, setUnitId] = useState('');
@@ -98,11 +100,21 @@ export const MembersTab: React.FC<MembersTabProps> = ({ societyId, societyName, 
       setError('Select the flat this resident belongs to.');
       return;
     }
+    const mobileDigits = mobile.trim() ? normalizeMobile(mobile) : null;
+    if (mobile.trim() && !mobileDigits) {
+      setError(`Mobile ${mobile} is not a valid number`);
+      return;
+    }
+    if (!mobileDigits && !email.trim()) {
+      setError('Enter their mobile or email — they log in with it.');
+      return;
+    }
 
     setSending(true);
     const { data: created, error: insertError } = await supabase.from('member_invites').insert({
       society_id: societyId,
-      email: email.trim().toLowerCase(),
+      email: email.trim().toLowerCase() || null,
+      mobile: mobileDigits,
       full_name: fullName.trim() || null,
       role,
       unit_id: unitId || null,
@@ -113,19 +125,22 @@ export const MembersTab: React.FC<MembersTabProps> = ({ societyId, societyName, 
       setSending(false);
       setError(
         insertError.code === '23505'
-          ? 'This email already has a pending invite for that flat.'
+          ? 'This person already has a pending invite for that flat.'
           : insertError.message
       );
       return;
     }
 
-    const emailed = await notify('member_invite', created.id);
+    const emailed = email.trim() ? await notify('member_invite', created.id) : null;
     setSending(false);
     setNotice(
-      `Invite saved for ${email.trim()}.${describeNotify(emailed, 'person')} ` +
-        'They sign up at Sahvaas with this email, verify it and tap Accept on the invitation. Use "WhatsApp" below to send them the link.'
+      mobileDigits
+        ? `Invite saved for ${formatMobile(mobileDigits)}. They log in with this mobile and tap Accept on the invitation. Use "WhatsApp" below to send them the link.`
+        : `Invite saved for ${email.trim()}.${describeNotify(emailed, 'person')} ` +
+          'They sign up at Sahvaas with this email, verify it and tap Accept on the invitation. Use "WhatsApp" below to send them the link.'
     );
     setEmail('');
+    setMobile('');
     setFullName('');
     setUnitId('');
     load();
@@ -189,8 +204,12 @@ export const MembersTab: React.FC<MembersTabProps> = ({ societyId, societyName, 
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="space-y-1">
-            <span className="block text-slate-400 font-medium">Email *</span>
-            <input required type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="resident@gmail.com" className={inputClass} />
+            <span className="block text-slate-400 font-medium">Mobile</span>
+            <input inputMode="tel" value={mobile} onChange={e => setMobile(e.target.value)} placeholder="98765 43210" className={inputClass} />
+          </label>
+          <label className="space-y-1">
+            <span className="block text-slate-400 font-medium">Email {mobile.trim() ? '(optional)' : ''}</span>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="resident@gmail.com" className={inputClass} />
           </label>
           <label className="space-y-1">
             <span className="block text-slate-400 font-medium">Name</span>
@@ -230,8 +249,8 @@ export const MembersTab: React.FC<MembersTabProps> = ({ societyId, societyName, 
           {invites.map(inv => (
             <div key={inv.id} className="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <div className="font-semibold text-white truncate">{inv.full_name || inv.email}</div>
-                <div className="text-slate-400 truncate">{inv.email} • {roleLabel(inv.role)} • Flat {unitLabel(inv.unit_id)}</div>
+                <div className="font-semibold text-white truncate">{inv.full_name || inv.email || formatMobile(inv.mobile)}</div>
+                <div className="text-slate-400 truncate">{[inv.mobile ? formatMobile(inv.mobile) : null, inv.email].filter(Boolean).join(' · ')} • {roleLabel(inv.role)} • Flat {unitLabel(inv.unit_id)}</div>
               </div>
               <div className="flex items-center gap-3 shrink-0">
                 <a
@@ -240,6 +259,7 @@ export const MembersTab: React.FC<MembersTabProps> = ({ societyId, societyName, 
                     inviteeName: inv.full_name,
                     role: roleLabel(inv.role),
                     email: inv.email,
+                    mobile: inv.mobile,
                     flat: inv.unit_id ? unitLabel(inv.unit_id) : null,
                     appUrl: typeof window !== 'undefined' ? window.location.origin : '',
                   }))}

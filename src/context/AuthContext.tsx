@@ -62,6 +62,8 @@ export interface AuthContextType {
   forgotPassword: (email: string) => Promise<{ error: Error | null; message?: string }>;
   resetPassword: (newPassword: string) => Promise<{ error: Error | null }>;
   logout: () => Promise<void>;
+  /** Lost phone (spec 8.1): ends every session of this account, on every device */
+  logoutEverywhere: () => Promise<void>;
   selectSociety: (societyId: string) => void;
   clearAuthError: () => void;
   refreshUserData: (preferSocietyId?: string) => Promise<void>;
@@ -156,6 +158,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     loadedUserIdRef.current = sbUser.id;
 
     try {
+      // A mobile login takes the flats the committee registered against that mobile (3C)
+      if (sbUser.phone) {
+        const { error: claimErr } = await supabase.rpc('claim_my_flats');
+        if (claimErr) console.warn('Claim flats warning:', claimErr.message);
+      }
+
       // 0. Invitations wait for an explicit Accept / Decline (never auto-joined)
       const { data: invitesData, error: invitesErr } = await supabase.rpc('my_pending_invites');
       if (invitesErr) console.warn('Pending invites warning:', invitesErr.message);
@@ -539,6 +547,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(false);
   };
 
+  const logoutEverywhere = async (): Promise<void> => {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await forgetPush();
+        await supabase.auth.signOut({ scope: 'global' });
+      } catch (err) {
+        console.warn('Supabase global sign out error:', err);
+      }
+    }
+    await logout();
+  };
+
   // Action: Select Active Society (Strictly verified against authorized memberships/grants)
   const selectSociety = (societyId: string) => {
     const matchedMembership = societyMemberships.find(m => m.society_id === societyId);
@@ -602,6 +622,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         forgotPassword,
         resetPassword,
         logout,
+        logoutEverywhere,
         selectSociety,
         clearAuthError,
         refreshUserData,
