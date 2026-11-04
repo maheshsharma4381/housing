@@ -42,11 +42,13 @@ const fmtDate = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString('en-
 
 interface BankReconciliationProps {
   societyId: string;
-  /** committee admins; committee members and CAs only read */
+  /** import statements and match lines: the committee, the CA or the Accountant */
   canManage: boolean;
+  /** verify residents' payments (and record a credit as a payment): the committee only; defaults to canManage */
+  canVerify?: boolean;
 }
 
-export const BankReconciliation: React.FC<BankReconciliationProps> = ({ societyId, canManage }) => {
+export const BankReconciliation: React.FC<BankReconciliationProps> = ({ societyId, canManage, canVerify = canManage }) => {
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
   const [accountId, setAccountId] = useState('');
   const [newAccount, setNewAccount] = useState<typeof ACCOUNT_BLANK | null>(null);
@@ -341,7 +343,7 @@ export const BankReconciliation: React.FC<BankReconciliationProps> = ({ societyI
             </p>
           )}
 
-          {canManage && Number(summary?.ready_to_verify) > 0 && (
+          {canVerify && Number(summary?.ready_to_verify) > 0 && (
             <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex flex-wrap items-center justify-between gap-3">
               <div className="text-emerald-200">
                 <span className="font-bold">{summary!.ready_to_verify} resident payment{summary!.ready_to_verify === 1 ? '' : 's'}</span> found in the bank with the same UTR and amount.
@@ -452,7 +454,7 @@ export const BankReconciliation: React.FC<BankReconciliationProps> = ({ societyI
                             <Link2 className="w-3.5 h-3.5" /> Match with…
                           </button>
                         )}
-                        {l.type === 'credit' && (
+                        {l.type === 'credit' && canVerify && (
                           <button onClick={() => setAction(acting?.kind === 'record' ? null : { lineId: l.id, kind: 'record', value: '' })} className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-800 text-emerald-300 font-semibold cursor-pointer">
                             <Plus className="w-3.5 h-3.5" /> Record as a flat&apos;s payment
                           </button>

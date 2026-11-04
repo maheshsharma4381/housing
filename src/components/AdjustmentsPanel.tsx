@@ -13,7 +13,7 @@ interface ChartLedgerRow { code: string; name: string; nature: string; is_active
 interface Proposal {
   id: string;
   proposal_number: string;
-  kind: 'journal' | 'capitalise';
+  kind: 'journal' | 'capitalise' | 'year_lock';
   entry_date: string;
   reason: string;
   lines: { code: string; amount: number }[];
@@ -213,12 +213,13 @@ export const AdjustmentsPanel: React.FC<AdjustmentsPanelProps> = ({ societyId, c
               <div key={p.id} className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
-                    <div className="font-mono text-slate-400">{p.proposal_number} · {p.entry_date} · {p.kind === 'capitalise' ? 'move expense to assets' : 'journal'}</div>
+                    <div className="font-mono text-slate-400">{p.proposal_number} · {p.kind === 'year_lock' ? `lock the books up to ${new Date(`${p.entry_date}T00:00:00`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}` : `${p.entry_date} · ${p.kind === 'capitalise' ? 'move expense to assets' : 'journal'}`}</div>
                     <div className="font-bold text-white text-sm">{p.reason}</div>
                     <div className="text-slate-500">by {mine ? 'you' : p.proposer?.full_name ?? 'CA'} · {new Date(p.proposed_at).toLocaleDateString('en-IN')}</div>
                   </div>
                   <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-semibold ${STATUS[p.status]}`}>{p.status}</span>
                 </div>
+                {p.kind !== 'year_lock' && (
                 <table className="w-full text-slate-300">
                   <tbody>
                     {[...p.lines].sort((a, b) => b.amount - a.amount).map((l, i) => (
@@ -230,7 +231,10 @@ export const AdjustmentsPanel: React.FC<AdjustmentsPanelProps> = ({ societyId, c
                     ))}
                   </tbody>
                 </table>
-                <div className="text-violet-200">Effect on this year&apos;s surplus: {effect >= 0 ? '+' : '−'}{formatINR(Math.abs(effect))}{p.kind === 'capitalise' && ' · asset added to the register'}</div>
+                )}
+                {p.kind !== 'year_lock' && (
+                  <div className="text-violet-200">Effect on this year&apos;s surplus: {effect >= 0 ? '+' : '−'}{formatINR(Math.abs(effect))}{p.kind === 'capitalise' && ' · asset added to the register'}</div>
+                )}
                 {p.decision_note && <div className="text-slate-400">{p.decider?.full_name ?? 'Committee'}: “{p.decision_note}”</div>}
 
                 {p.status === 'pending' && (

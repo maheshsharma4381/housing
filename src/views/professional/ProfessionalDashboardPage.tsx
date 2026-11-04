@@ -18,16 +18,20 @@ import { ChartOfAccounts } from '../../components/ChartOfAccounts';
 import { BillTypes } from '../../components/BillTypes';
 import { PartyLedgers } from '../../components/PartyLedgers';
 import { OpeningBalanceEditor } from '../../components/OpeningBalanceEditor';
+import { BankReconciliation } from '../../components/BankReconciliation';
+import { YearLockPanel } from '../../components/YearLockPanel';
 import { Expense } from '../../types/database';
-import { Briefcase, FileSpreadsheet, Landmark, Receipt, FolderLock, LogOut, ShieldCheck, Lock, Boxes, Scale, ListTree, Tags, BookOpen } from 'lucide-react';
+import { Briefcase, FileSpreadsheet, Landmark, Receipt, FolderLock, LogOut, ShieldCheck, Lock, Boxes, Scale, ListTree, Tags, BookOpen, BarChart3 } from 'lucide-react';
 
-type Tab = 'gst' | 'financials' | 'ledgers' | 'billtypes' | 'opening' | 'expenses' | 'assets' | 'adjustments' | 'documents' | 'remarks' | 'my_societies';
+type Tab = 'gst' | 'financials' | 'ledgers' | 'billtypes' | 'opening' | 'expenses' | 'assets' | 'bank' | 'adjustments' | 'documents' | 'remarks' | 'my_societies';
 
 export const ProfessionalDashboardPage: React.FC = () => {
   const { user, profile, professionalGrants, activeSociety, logout } = useAuth();
 
   const currentGrant = professionalGrants.find(g => activeSociety && g.society_id === activeSociety.id);
   const permissions = currentGrant?.permissions ?? [];
+  const [bankMatch, setBankMatch] = useState(false);
+  const bankPermission = permissions.includes('manage_accounts') || permissions.includes('view_bank_reconciliation');
   const allowed: Record<Tab, boolean> = {
     gst: permissions.includes('audit_gst'),
     financials: permissions.includes('view_reports') || permissions.includes('view_ledger'),
@@ -36,6 +40,7 @@ export const ProfessionalDashboardPage: React.FC = () => {
     opening: permissions.includes('manage_accounts') || permissions.includes('view_reports') || permissions.includes('view_ledger'),
     expenses: permissions.includes('view_expenses'),
     assets: permissions.includes('view_expenses') || permissions.includes('view_reports') || permissions.includes('view_ledger'),
+    bank: bankPermission && bankMatch,
     adjustments: permissions.includes('view_reports') || permissions.includes('view_ledger'),
     documents: permissions.includes('view_documents'),
     remarks: Boolean(currentGrant),
@@ -46,10 +51,17 @@ export const ProfessionalDashboardPage: React.FC = () => {
 
   // Land on the first module this grant allows when switching society
   useEffect(() => {
-    const first = (['financials', 'ledgers', 'billtypes', 'opening', 'gst', 'expenses', 'assets', 'adjustments', 'documents', 'remarks'] as Tab[]).find(t => allowed[t]);
+    const first = (['financials', 'ledgers', 'billtypes', 'opening', 'gst', 'expenses', 'assets', 'bank', 'adjustments', 'documents', 'remarks'] as Tab[]).find(t => allowed[t]);
     setActiveTab(first ?? 'my_societies');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSociety?.id]);
+
+  // Bank statement match follows the society's plan, as it does for the secretary
+  useEffect(() => {
+    if (!supabase || !activeSociety) return;
+    supabase.rpc('society_has_feature', { p_society_id: activeSociety.id, p_key: 'bank_match' })
+      .then(({ data }) => setBankMatch(Boolean(data)));
+  }, [activeSociety]);
 
   // Access log: the committee sees which modules their professional opened
   useEffect(() => {
@@ -65,14 +77,15 @@ export const ProfessionalDashboardPage: React.FC = () => {
   }, [activeTab, activeSociety, currentGrant, user]);
 
   const tabs: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-    { id: 'financials', label: 'Financial Reports', icon: Landmark },
+    { id: 'financials', label: 'Financial Reports', icon: BarChart3 },
     { id: 'ledgers', label: 'Groups & Ledgers', icon: ListTree },
     { id: 'billtypes', label: 'Bill Types', icon: Tags },
     { id: 'opening', label: 'Opening Balance', icon: BookOpen },
     { id: 'gst', label: 'GST (GSTR-2B)', icon: FileSpreadsheet },
     { id: 'expenses', label: 'Expenses & TDS', icon: Receipt },
     { id: 'assets', label: 'Fixed Assets', icon: Boxes },
-    { id: 'adjustments', label: 'Adjustments & Last Year', icon: Scale },
+    { id: 'bank', label: 'Bank Reconciliation', icon: Landmark },
+    { id: 'adjustments', label: 'Audit & Year Close', icon: Scale },
     { id: 'documents', label: 'Audit Vault', icon: FolderLock },
     { id: 'remarks', label: 'Audit Remarks', icon: ShieldCheck },
     { id: 'my_societies', label: 'My Client Societies', icon: Briefcase },
@@ -102,7 +115,7 @@ export const ProfessionalDashboardPage: React.FC = () => {
                   key={tab.id}
                   onClick={() => ok && setActiveTab(tab.id)}
                   disabled={!ok}
-                  title={ok ? undefined : 'Not included in the access granted by this society'}
+                  title={ok ? undefined : tab.id === 'bank' && bankPermission ? 'Bank statement match is part of the Pro plan' : 'Not included in the access granted by this society'}
                   className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-medium transition ${
                     isActive ? 'bg-amber-600 text-white shadow-sm'
                       : ok ? 'text-slate-400 hover:text-slate-200 hover:bg-slate-800 cursor-pointer'
@@ -157,10 +170,14 @@ export const ProfessionalDashboardPage: React.FC = () => {
           <Gstr2bPanel societyId={activeSociety.id} societyName={activeSociety.name} />
         )}
         {activeTab === 'expenses' && activeSociety && allowed.expenses && <ExpensesReadOnly societyId={activeSociety.id} />}
-        {activeTab === 'assets' && activeSociety && allowed.assets && <AssetRegister societyId={activeSociety.id} canManage={false} />}
+        {activeTab === 'assets' && activeSociety && allowed.assets && <AssetRegister societyId={activeSociety.id} canManage={permissions.includes('manage_accounts')} />}
+        {activeTab === 'bank' && activeSociety && allowed.bank && (
+          <BankReconciliation societyId={activeSociety.id} canManage={permissions.includes('manage_accounts')} canVerify={false} />
+        )}
         {activeTab === 'adjustments' && activeSociety && allowed.adjustments && (
           <div className="space-y-8">
             <AdjustmentsPanel societyId={activeSociety.id} currentUserId={user?.id} canDecide={false} canPropose />
+            <YearLockPanel societyId={activeSociety.id} canLock={permissions.includes('manage_accounts')} />
             <PriorYearEditor societyId={activeSociety.id} canEdit={permissions.includes('view_reports')} />
           </div>
         )}
