@@ -12,6 +12,7 @@ import { ProfessionalRole } from '../../../types/database';
 import { describeNotify, notify } from '../../../lib/notify';
 import { normalizeMobile, formatMobile } from '../../../lib/mobile';
 import { Briefcase, UserPlus, Loader2, XCircle, Eye, Save } from 'lucide-react';
+import { PHONE_LOGIN_ON } from '../../../lib/phone-login';
 
 interface InviteRow { id: string; invited_email: string | null; invited_mobile: string | null; role: string; permissions: string[]; expires_at: string; access_until: string | null; status: string }
 interface GrantRow {
@@ -73,6 +74,7 @@ export const ProfessionalsTab: React.FC<ProfessionalsTabProps> = ({ societyId, c
     const mobileDigits = mobile.trim() ? normalizeMobile(mobile) : null;
     if (mobile.trim() && !mobileDigits) return setError(`Mobile ${mobile} is not a valid number`);
     if (!mobileDigits && !email.trim()) return setError('Enter their mobile or email — they log in with it.');
+    if (!PHONE_LOGIN_ON && !email.trim()) return setError('Enter their email — logging in with a mobile is not switched on yet.');
     setBusy('invite');
     const { data: created, error: insErr } = await supabase.from('professional_invites').insert({
       society_id: societyId,

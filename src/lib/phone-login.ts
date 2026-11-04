@@ -13,3 +13,6 @@ export function resendWait(lastSentMs: number | null, nowMs: number): number {
   if (lastSentMs === null) return 0;
   return Math.max(0, Math.ceil((lastSentMs + RESEND_SECONDS * 1000 - nowMs) / 1000));
 }
+
+/** Mobile login is switched on (the Send SMS hook works): until then nobody can log in with a mobile alone. */
+export const PHONE_LOGIN_ON = process.env.NEXT_PUBLIC_PHONE_LOGIN === '1';

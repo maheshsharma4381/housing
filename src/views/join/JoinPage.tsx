@@ -40,12 +40,13 @@ export const JoinPage: React.FC<{ code: string }> = ({ code }) => {
   }, [user]);
 
   useEffect(() => {
-    if (!supabase || !isAuthenticated) return;
+    // after the account has loaded (a mobile login has claimed its flats by then)
+    if (!supabase || !isAuthenticated || isLoading) return;
     supabase.rpc('join_status', { p_code: code }).then(({ data, error: err }) => {
       if (err) setLinkError(err.message);
       else setStatus(data as JoinStatus);
     });
-  }, [code, isAuthenticated]);
+  }, [code, isAuthenticated, isLoading]);
 
   const join = async (e: React.FormEvent) => {
     e.preventDefault();

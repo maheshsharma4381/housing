@@ -7,6 +7,32 @@
 -- ============================================================================
 
 -- ============================================================================
+-- 0. MOBILES FROM OTHER COUNTRIES (owners living abroad, spec 8.1)
+-- ============================================================================
+-- from 031; + a number typed with + or 00 already carries its country code (+65 9123 4567 is not Indian)
+CREATE OR REPLACE FUNCTION public.normalize_mobile(p TEXT)
+RETURNS TEXT AS $$
+    SELECT CASE
+        WHEN d IS NULL THEN NULL
+        WHEN intl THEN CASE WHEN length(d) BETWEEN 8 AND 15 THEN d END
+        WHEN length(d) < 10 THEN NULL
+        WHEN length(d) = 10 THEN '91' || d
+        WHEN length(d) = 11 AND left(d, 1) = '0' THEN '91' || substr(d, 2)
+        ELSE d
+    END
+    FROM (SELECT ltrim(coalesce(p, '')) ~ '^(\+|00)' AS intl,
+                 nullif(regexp_replace(regexp_replace(ltrim(coalesce(p, '')), '^00', ''), '[^0-9]', '', 'g'), '') AS d) x
+$$ LANGUAGE sql IMMUTABLE;
+
+-- from 031; + Supabase stores the confirmed phone as international digits: never re-guess the country
+CREATE OR REPLACE FUNCTION public.current_verified_phone()
+RETURNS TEXT AS $$
+    SELECT CASE WHEN length(d) BETWEEN 8 AND 15 THEN d END
+    FROM (SELECT nullif(regexp_replace(coalesce(phone, ''), '[^0-9]', '', 'g'), '') AS d
+          FROM auth.users WHERE id = auth.uid() AND phone_confirmed_at IS NOT NULL) x
+$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
+
+-- ============================================================================
 -- 1. ACCOUNTS WITHOUT AN EMAIL
 -- ============================================================================
 ALTER TABLE profiles ALTER COLUMN email DROP NOT NULL;
@@ -37,12 +63,24 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 -- ============================================================================
 ALTER TABLE member_invites ALTER COLUMN email DROP NOT NULL;
 ALTER TABLE member_invites ADD COLUMN IF NOT EXISTS mobile TEXT;
+-- New rows only (NOT VALID): an older invite is never refused by the live database while 032 applies
 ALTER TABLE member_invites DROP CONSTRAINT IF EXISTS member_invites_contact_check;
 ALTER TABLE member_invites ADD CONSTRAINT member_invites_contact_check
-    CHECK ((email IS NOT NULL AND length(trim(email)) > 0) OR normalize_mobile(mobile) IS NOT NULL);
+    CHECK ((email IS NOT NULL AND length(trim(email)) > 0) OR normalize_mobile(mobile) IS NOT NULL) NOT VALID;
 ALTER TABLE member_invites DROP CONSTRAINT IF EXISTS member_invites_mobile_check;
 ALTER TABLE member_invites ADD CONSTRAINT member_invites_mobile_check
-    CHECK (mobile IS NULL OR normalize_mobile(mobile) IS NOT NULL);
+    CHECK (mobile IS NULL OR normalize_mobile(mobile) IS NOT NULL) NOT VALID;
+-- A blank email would match every phone login (their JWT email is empty)
+ALTER TABLE member_invites DROP CONSTRAINT IF EXISTS member_invites_email_check;
+ALTER TABLE member_invites ADD CONSTRAINT member_invites_email_check
+    CHECK (email IS NULL OR length(trim(email)) > 0) NOT VALID;
+DROP POLICY IF EXISTS member_invites_select ON member_invites;
+CREATE POLICY member_invites_select ON member_invites
+    FOR SELECT USING (
+        is_platform_admin()
+        OR is_society_admin(society_id)
+        OR lower(email) = lower(nullif(auth.jwt() ->> 'email', ''))
+    );
 -- One pending invite per mobile per flat (the email index already does this for emails)
 CREATE UNIQUE INDEX IF NOT EXISTS uq_member_invite_pending_mobile
     ON member_invites (society_id, normalize_mobile(mobile), coalesce(unit_id, '00000000-0000-0000-0000-000000000000'::uuid))
@@ -52,10 +90,20 @@ ALTER TABLE professional_invites ALTER COLUMN invited_email DROP NOT NULL;
 ALTER TABLE professional_invites ADD COLUMN IF NOT EXISTS invited_mobile TEXT;
 ALTER TABLE professional_invites DROP CONSTRAINT IF EXISTS professional_invites_contact_check;
 ALTER TABLE professional_invites ADD CONSTRAINT professional_invites_contact_check
-    CHECK ((invited_email IS NOT NULL AND length(trim(invited_email)) > 0) OR normalize_mobile(invited_mobile) IS NOT NULL);
+    CHECK ((invited_email IS NOT NULL AND length(trim(invited_email)) > 0) OR normalize_mobile(invited_mobile) IS NOT NULL) NOT VALID;
 ALTER TABLE professional_invites DROP CONSTRAINT IF EXISTS professional_invites_mobile_check;
 ALTER TABLE professional_invites ADD CONSTRAINT professional_invites_mobile_check
-    CHECK (invited_mobile IS NULL OR normalize_mobile(invited_mobile) IS NOT NULL);
+    CHECK (invited_mobile IS NULL OR normalize_mobile(invited_mobile) IS NOT NULL) NOT VALID;
+ALTER TABLE professional_invites DROP CONSTRAINT IF EXISTS professional_invites_email_check;
+ALTER TABLE professional_invites ADD CONSTRAINT professional_invites_email_check
+    CHECK (invited_email IS NULL OR length(trim(invited_email)) > 0) NOT VALID;
+DROP POLICY IF EXISTS professional_invites_select ON professional_invites;
+CREATE POLICY professional_invites_select ON professional_invites
+    FOR SELECT USING (
+        is_platform_admin()
+        OR is_society_admin(society_id)
+        OR lower(invited_email) = lower(nullif(auth.jwt() ->> 'email', ''))
+    );
 
 -- from 012_consent_and_roles.sql; + invites by mobile reach the confirmed login phone
 CREATE OR REPLACE FUNCTION public.my_pending_invites()
@@ -240,6 +288,40 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
+-- from 031_joining_link.sql; + a phone login takes the flat's owner name instead of "Member"
+CREATE OR REPLACE FUNCTION public.attach_flat_owner(p_society_id UUID, p_unit_id UUID, p_uid UUID, p_invite_id UUID DEFAULT NULL)
+RETURNS VOID AS $$
+DECLARE
+    v_waiting_since TIMESTAMPTZ;
+BEGIN
+    -- A mobile login starts as "Member": take the name the committee typed for the flat (032)
+    UPDATE profiles p SET full_name = c.owner_name, updated_at = timezone('utc'::text, now())
+    FROM unit_owner_contacts c
+    WHERE p.id = p_uid AND p.full_name = 'Member' AND c.unit_id = p_unit_id AND nullif(trim(c.owner_name), '') IS NOT NULL;
+    UPDATE units SET current_owner_id = p_uid, updated_at = timezone('utc'::text, now()) WHERE id = p_unit_id;
+    -- An owner change waiting on this flat is completed by whoever joins as its owner
+    UPDATE unit_ownerships o
+    SET owner_user_id = p_uid,
+        owner_email = coalesce((SELECT email FROM profiles WHERE id = p_uid), o.owner_email),
+        invite_id = coalesce(p_invite_id, o.invite_id)
+    WHERE o.unit_id = p_unit_id AND o.to_date IS NULL AND o.owner_user_id IS NULL
+    RETURNING o.created_at INTO v_waiting_since;
+    IF FOUND THEN
+        -- The dues stay with the flat: its unpaid bills are now the new owner's to pay
+        UPDATE bills SET user_id = p_uid, updated_at = timezone('utc'::text, now())
+        WHERE unit_id = p_unit_id AND balance_due > 0 AND status IN ('issued', 'partially_paid', 'overdue');
+        -- Receipts recorded for the flat while the change waited are the new owner's too
+        UPDATE payments SET user_id = p_uid
+        WHERE unit_id = p_unit_id AND created_at >= v_waiting_since AND user_id IS DISTINCT FROM p_uid;
+    ELSIF NOT EXISTS (SELECT 1 FROM unit_ownerships WHERE unit_id = p_unit_id AND to_date IS NULL) THEN
+        INSERT INTO unit_ownerships (society_id, unit_id, owner_user_id, owner_name, owner_email, owner_mobile, from_date)
+        SELECT p_society_id, p_unit_id, p_uid, coalesce(nullif(p.full_name, 'Member'), c.owner_name, p.email, 'Owner'), p.email, c.owner_mobile, current_date
+        FROM units u LEFT JOIN profiles p ON p.id = p_uid LEFT JOIN unit_owner_contacts c ON c.unit_id = u.id
+        WHERE u.id = p_unit_id;
+    END IF;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
 -- ============================================================================
 -- 3. FLATS CLAIMED BY THE LOGIN'S PHONE
 -- ============================================================================
@@ -267,6 +349,8 @@ CREATE TABLE IF NOT EXISTS otp_settings (
     unknown_per_number_daily INT NOT NULL DEFAULT 3 CHECK (unknown_per_number_daily > 0),
     platform_daily_cap INT NOT NULL DEFAULT 2000 CHECK (platform_daily_cap >= 0),
     resend_seconds INT NOT NULL DEFAULT 60 CHECK (resend_seconds >= 0),
+    -- an emergency bound on codes to registered numbers, platform-wide
+    known_daily_cap INT NOT NULL DEFAULT 20000 CHECK (known_daily_cap >= 0),
     -- rupees per message before GST (spec 3, Oct 2026)
     cost_whatsapp NUMERIC(8,3) NOT NULL DEFAULT 0.115,
     cost_sms NUMERIC(8,3) NOT NULL DEFAULT 0.200,
@@ -296,7 +380,7 @@ CREATE TABLE IF NOT EXISTS otp_log (
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
 CREATE INDEX IF NOT EXISTS idx_otp_log_mobile ON otp_log (mobile, created_at);
-CREATE INDEX IF NOT EXISTS idx_otp_log_counted ON otp_log (created_at) WHERE status IN ('claimed', 'sent');
+CREATE INDEX IF NOT EXISTS idx_otp_log_counted ON otp_log (known, created_at) WHERE status IN ('claimed', 'sent');
 CREATE INDEX IF NOT EXISTS idx_otp_log_society ON otp_log (society_id, created_at) WHERE society_id IS NOT NULL;
 
 -- Read only through otp_overview (platform owner); written only by the hook's service role
@@ -316,9 +400,10 @@ DECLARE
     v_foreign BOOLEAN;
     v_reason TEXT;
     v_id UUID;
+    v_prefer_sms BOOLEAN;
 BEGIN
     IF v_m IS NULL THEN
-        RETURN jsonb_build_object('allowed', false, 'reason', 'Enter a valid mobile number', 'log_id', NULL, 'foreign', false, 'known', false);
+        RETURN jsonb_build_object('allowed', false, 'reason', 'Enter a valid mobile number', 'log_id', NULL, 'foreign', false, 'known', false, 'prefer_sms', false);
     END IF;
     -- one decision at a time per number, so two quick taps cannot both pass the limits
     PERFORM pg_advisory_xact_lock(hashtext('otp:' || v_m));
@@ -359,16 +444,30 @@ BEGIN
              AND created_at > timezone('utc'::text, now()) - interval '1 day')
           >= (CASE WHEN v_known THEN v_s.per_number_daily ELSE v_s.unknown_per_number_daily END) THEN
         v_reason := 'Too many codes for this number today — try again tomorrow';
-    ELSIF (SELECT count(*) FROM otp_log WHERE status IN ('claimed', 'sent')
+    -- Unregistered numbers share the platform cap; registered ones never wait behind them
+    ELSIF NOT v_known AND (SELECT count(*) FROM otp_log WHERE NOT known AND status IN ('claimed', 'sent')
              AND created_at > timezone('utc'::text, now()) - interval '1 day') >= v_s.platform_daily_cap THEN
         v_reason := 'Mobile login is busy right now — try again later';
+    -- Anyone can register a society and its numbers, so each society's numbers have their own bound
+    ELSIF v_soc IS NOT NULL AND (SELECT count(*) FROM otp_log WHERE society_id = v_soc AND status IN ('claimed', 'sent')
+             AND created_at > timezone('utc'::text, now()) - interval '1 day')
+          >= (2 * greatest((SELECT count(*) FROM units WHERE society_id = v_soc), 1) + 20) THEN
+        v_reason := 'Too many codes for your society today — try again tomorrow';
+    ELSIF v_known AND (SELECT count(*) FROM otp_log WHERE known AND status IN ('claimed', 'sent')
+             AND created_at > timezone('utc'::text, now()) - interval '1 day') >= v_s.known_daily_cap THEN
+        v_reason := 'Mobile login is busy right now — try again later';
     END IF;
+    -- WhatsApp accepts a message for a number that is not on WhatsApp and never delivers it:
+    -- an Indian number asking again soon after a WhatsApp code gets this one by SMS
+    v_prefer_sms := NOT v_foreign AND EXISTS (
+        SELECT 1 FROM otp_log WHERE mobile = v_m AND status = 'sent' AND channel = 'whatsapp'
+          AND created_at > timezone('utc'::text, now()) - interval '10 minutes');
 
     INSERT INTO otp_log (mobile, society_id, known, foreign_number, status, reason)
     VALUES (v_m, v_soc, v_known, v_foreign, CASE WHEN v_reason IS NULL THEN 'claimed' ELSE 'refused' END, v_reason)
     RETURNING id INTO v_id;
     RETURN jsonb_build_object('allowed', v_reason IS NULL, 'reason', v_reason,
-        'log_id', CASE WHEN v_reason IS NULL THEN v_id END, 'foreign', v_foreign, 'known', v_known);
+        'log_id', CASE WHEN v_reason IS NULL THEN v_id END, 'foreign', v_foreign, 'known', v_known, 'prefer_sms', v_prefer_sms);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
@@ -450,6 +549,7 @@ BEGIN
         unknown_per_number_daily = coalesce((p ->> 'unknown_per_number_daily')::int, unknown_per_number_daily),
         platform_daily_cap = coalesce((p ->> 'platform_daily_cap')::int, platform_daily_cap),
         resend_seconds = coalesce((p ->> 'resend_seconds')::int, resend_seconds),
+        known_daily_cap = coalesce((p ->> 'known_daily_cap')::int, known_daily_cap),
         cost_whatsapp = coalesce((p ->> 'cost_whatsapp')::numeric, cost_whatsapp),
         cost_sms = coalesce((p ->> 'cost_sms')::numeric, cost_sms),
         cost_foreign = coalesce((p ->> 'cost_foreign')::numeric, cost_foreign),

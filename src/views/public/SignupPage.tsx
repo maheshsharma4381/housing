@@ -11,7 +11,7 @@ import { useAuth } from '../../context/AuthContext';
 import { Mail, Lock, User, ArrowRight, AlertCircle, Loader2, CheckCircle2 } from 'lucide-react';
 
 export const SignupPage: React.FC = () => {
-  const { signUp, isAuthenticated, getRedirectPath, authError, clearAuthError, isSupabaseConfigured } = useAuth();
+  const { signUp, isAuthenticated, isLoading, getRedirectPath, authError, clearAuthError, isSupabaseConfigured } = useAuth();
   const { navigate } = useRouter();
   // e.g. a joining link: come back to it after signing up
   const returnUrl = safeInternalPath(useSearchParams().get('returnUrl'));
@@ -28,10 +28,10 @@ export const SignupPage: React.FC = () => {
   const [useEmail, setUseEmail] = useState(!PHONE_LOGIN);
 
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && !isLoading) {
       navigate(returnUrl || getRedirectPath(), { replace: true });
     }
-  }, [isAuthenticated, navigate, getRedirectPath, returnUrl]);
+  }, [isAuthenticated, isLoading, navigate, getRedirectPath, returnUrl]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,7 +101,7 @@ export const SignupPage: React.FC = () => {
           ) : !useEmail ? (
             <div className="space-y-4">
               <p className="text-slate-400">Enter your mobile number. A new number gets an account when you log in.</p>
-              <MobileOtpLogin />
+              <MobileOtpLogin onSignedIn={(path) => navigate(returnUrl || path, { replace: true })} />
               <button type="button" onClick={() => setUseEmail(true)} className="w-full text-center text-slate-400 hover:text-white cursor-pointer">
                 Use email instead
               </button>

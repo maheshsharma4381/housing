@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase/client';
+import { useAuth } from '../context/AuthContext';
 import { toE164, resendWait } from '../lib/phone-login';
 import { Banner } from './Banner';
 import { Loader2, MessageCircle, ArrowRight, Smartphone } from 'lucide-react';
@@ -12,7 +13,8 @@ const inputClass = 'w-full bg-slate-950 border border-slate-700 rounded-xl px-3 
  * Log in with a mobile number and a one-time code (3C). Supabase sends the code through our Send SMS hook
  * (WhatsApp first, SMS backup). A new number gets an account; AuthContext loads it on SIGNED_IN.
  */
-export const MobileOtpLogin: React.FC<{ onSignedIn?: () => void }> = ({ onSignedIn }) => {
+export const MobileOtpLogin: React.FC<{ onSignedIn?: (redirectPath: string) => void }> = ({ onSignedIn }) => {
+  const { verifyOtp } = useAuth();
   const [mobile, setMobile] = useState('');
   const [phone, setPhone] = useState<string | null>(null);
   const [code, setCode] = useState('');
@@ -49,12 +51,12 @@ export const MobileOtpLogin: React.FC<{ onSignedIn?: () => void }> = ({ onSigned
     if (!supabase || !phone) return;
     setBusy(true);
     setError(null);
-    const { error: err } = await supabase.auth.verifyOtp({ phone, token: code.trim(), type: 'sms' });
+    const { error: err, redirectPath } = await verifyOtp(phone, code.trim());
     setBusy(false);
     if (err) return setError(err.message.toLowerCase().includes('expired') || err.message.toLowerCase().includes('invalid')
       ? 'That code is wrong or has expired — check it or ask for a new one'
       : err.message);
-    onSignedIn?.();
+    onSignedIn?.(redirectPath ?? '/');
   };
 
   if (!phone) {
@@ -69,7 +71,8 @@ export const MobileOtpLogin: React.FC<{ onSignedIn?: () => void }> = ({ onSigned
           {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageCircle className="w-4 h-4" />}
           <span>Send code on WhatsApp</span>
         </button>
-        <p className="text-slate-500 text-center">Numbers outside India get the code on WhatsApp only.</p>
+        <p className="text-slate-500 text-center">Numbers outside India: type the country code, e.g. +65. They get the code on WhatsApp only.</p>
+        <p className="text-slate-500 text-center">Already use Sahvaas with email? Log in with email first and add your mobile, so you keep one account.</p>
       </form>
     );
   }

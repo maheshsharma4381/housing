@@ -6,6 +6,7 @@ import { formatINR } from '../lib/inr';
 import { describeNotify, notify } from '../lib/notify';
 import { Banner } from './Banner';
 import { Loader2, UserRoundCog } from 'lucide-react';
+import { PHONE_LOGIN_ON } from '../lib/phone-login';
 
 const todayIso = () => {
   const d = new Date();
@@ -72,11 +73,11 @@ export const OwnerChange: React.FC<{ societyId: string; unitId: string; unitLabe
             <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className={inputClass} /></label>
           <label className="space-y-1"><span className="text-slate-400">Mobile (they log in with it)</span>
             <input inputMode="tel" value={form.mobile} onChange={e => setForm({ ...form, mobile: e.target.value })} className={inputClass} /></label>
-          <label className="space-y-1"><span className="text-slate-400">Email (optional)</span>
+          <label className="space-y-1"><span className="text-slate-400">{PHONE_LOGIN_ON ? 'Email (optional)' : 'Email (they join with it)'}</span>
             <input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className={inputClass} /></label>
           <label className="space-y-1"><span className="text-slate-400">Transfer date</span>
             <input type="date" max={todayIso()} value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className={inputClass} /></label>
-          <button onClick={save} disabled={busy || form.name.trim().length < 2 || (!form.mobile.trim() && !form.email.includes('@')) || !form.date}
+          <button onClick={save} disabled={busy || form.name.trim().length < 2 || ((!PHONE_LOGIN_ON || !form.mobile.trim()) && !form.email.includes('@')) || !form.date}
             className="sm:col-span-2 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold cursor-pointer disabled:opacity-50">
             {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Record owner change
           </button>

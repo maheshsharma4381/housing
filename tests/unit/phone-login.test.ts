@@ -8,6 +8,8 @@ test('a typed mobile becomes +<country><number>', () => {
   assert.equal(toE164('+91-98765-43210'), '+919876543210');
   assert.equal(toE164('+44 7700 900123'), '+447700900123');
   assert.equal(toE164('12345'), null);
+  assert.equal(toE164('+65 9123 4567'), '+6591234567', 'Singapore, not India');
+  assert.equal(toE164('0047 412 34 567'), '+4741234567');
 });
 
 test('resend opens 60 seconds after the last code', () => {

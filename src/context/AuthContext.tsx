@@ -57,6 +57,8 @@ export interface AuthContextType {
 
   // Actions
   login: (email: string, password: string) => Promise<{ error: Error | null; redirectPath?: string }>;
+  /** Mobile login (3C): checks the code, loads the account (claiming flats registered to the phone), then says where to go */
+  verifyOtp: (phone: string, token: string) => Promise<{ error: Error | null; redirectPath?: string }>;
   /** returnUrl: an internal path the email-verification link brings the new user back to (e.g. a joining link) */
   signUp: (email: string, password: string, fullName: string, returnUrl?: string | null) => Promise<{ error: Error | null; message?: string }>;
   forgotPassword: (email: string) => Promise<{ error: Error | null; message?: string }>;
@@ -137,6 +139,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Refs let the auth listener read current values without re-subscribing
   const loadedUserIdRef = useRef<string | null>(null);
+  // claim_my_flats runs once per login, even when two loads overlap (SIGNED_IN and verifyOtp)
+  const claimedForRef = useRef<string | null>(null);
   const activeSocietyIdRef = useRef<string | null>(null);
   useEffect(() => {
     activeSocietyIdRef.current = activeSociety?.id ?? null;
@@ -158,8 +162,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     loadedUserIdRef.current = sbUser.id;
 
     try {
-      // A mobile login takes the flats the committee registered against that mobile (3C)
-      if (sbUser.phone) {
+      // A mobile login takes the flats the committee registered against that mobile (3C) — once per login
+      if (sbUser.phone && claimedForRef.current !== sbUser.id) {
+        claimedForRef.current = sbUser.id;
         const { error: claimErr } = await supabase.rpc('claim_my_flats');
         if (claimErr) console.warn('Claim flats warning:', claimErr.message);
       }
@@ -364,6 +369,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [loadUserAuthorizations]);
 
   // Action: Login via Supabase
+  const verifyOtp = async (phone: string, token: string): Promise<{ error: Error | null; redirectPath?: string }> => {
+    if (!isSupabaseConfigured || !supabase) return { error: new Error('Supabase is not configured.') };
+    setIsLoading(true);
+    setAuthError(null);
+    try {
+      const { data, error } = await supabase.auth.verifyOtp({ phone, token, type: 'sms' });
+      if (error || !data.user) {
+        setIsLoading(false);
+        return { error: error ?? new Error('Could not log in') };
+      }
+      setUser(data.user);
+      setSession(data.session);
+      // Wait for memberships (and flats claimed by this phone) before anyone decides where to go
+      const loaded = await loadUserAuthorizations(data.user);
+      setIsLoading(false);
+      return { error: null, redirectPath: computeRedirectPath(loaded) };
+    } catch (err: unknown) {
+      setIsLoading(false);
+      return { error: err instanceof Error ? err : new Error(String(err)) };
+    }
+  };
+
   const login = async (email: string, password: string): Promise<{ error: Error | null; redirectPath?: string }> => {
     setIsLoading(true);
     setAuthError(null);
@@ -623,6 +650,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         resetPassword,
         logout,
         logoutEverywhere,
+        verifyOtp,
         selectSociety,
         clearAuthError,
         refreshUserData,

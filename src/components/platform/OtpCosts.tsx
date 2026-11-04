@@ -19,7 +19,8 @@ interface Overview {
 const SETTING_FIELDS: { key: string; label: string; step?: string }[] = [
   { key: 'per_number_daily', label: 'Codes per number a day' },
   { key: 'unknown_per_number_daily', label: 'Codes a day for an unregistered number' },
-  { key: 'platform_daily_cap', label: 'Codes a day, whole platform' },
+  { key: 'platform_daily_cap', label: 'Codes a day to unregistered numbers, whole platform' },
+  { key: 'known_daily_cap', label: 'Codes a day to registered numbers, whole platform' },
   { key: 'resend_seconds', label: 'Seconds before "Resend"' },
   { key: 'cost_whatsapp', label: '₹ per WhatsApp code', step: '0.001' },
   { key: 'cost_sms', label: '₹ per SMS code', step: '0.001' },

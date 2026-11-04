@@ -4,6 +4,7 @@ import { AuthProvider } from '../context/AuthContext';
 import { RouterProvider } from '../router/RouterContext';
 import { OfflineIndicator } from '../components/OfflineIndicator';
 import { NamePrompt } from '../components/NamePrompt';
+import { AddMobilePrompt } from '../components/AddMobilePrompt';
 
 export const viewport: Viewport = {
   themeColor: '#0284c7',
@@ -45,6 +46,7 @@ export default function RootLayout({
             </div>
             <OfflineIndicator />
             <NamePrompt />
+            <AddMobilePrompt />
           </AuthProvider>
         </RouterProvider>
       </body>

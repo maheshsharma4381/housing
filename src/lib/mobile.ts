@@ -1,8 +1,16 @@
 // Mobiles in the same shape as the database's normalize_mobile (031): digits with the country code.
 
-/** 10 Indian digits get 91; a leading + or 0 is dropped; fewer than 10 digits is not a mobile. */
+/**
+ * A number typed with + or 00 already carries its country code (+65 9123 4567 stays Singaporean).
+ * Otherwise: 10 Indian digits get 91; a leading 0 is dropped; fewer than 10 digits is not a mobile.
+ */
 export function normalizeMobile(input: string | null | undefined): string | null {
-  const d = (input ?? '').replace(/\D/g, '');
+  const raw = (input ?? '').trimStart();
+  if (/^(\+|00)/.test(raw)) {
+    const intl = raw.replace(/^00/, '').replace(/\D/g, '');
+    return intl.length >= 8 && intl.length <= 15 ? intl : null;
+  }
+  const d = raw.replace(/\D/g, '');
   if (d.length < 10) return null;
   if (d.length === 10) return `91${d}`;
   if (d.length === 11 && d.startsWith('0')) return `91${d.slice(1)}`;

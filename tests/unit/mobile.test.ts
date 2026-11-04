@@ -10,6 +10,13 @@ test('mobiles are digits with the country code', () => {
   assert.equal(normalizeMobile('+44 7700 900123'), '447700900123');
 });
 
+test('a number typed with + or 00 keeps its own country code', () => {
+  assert.equal(normalizeMobile('+65 9123 4567'), '6591234567');
+  assert.equal(normalizeMobile('0065 9123 4567'), '6591234567');
+  assert.equal(normalizeMobile('+91 98765 43210'), '919876543210');
+  assert.equal(normalizeMobile('+12 345'), null);
+});
+
 test('owners pasted from Excel match flats by number', async () => {
   const { parseOwnerPaste } = await import('../../src/lib/mobile.ts');
   const units = [{ id: 'u1', unit_number: 'A-101' }, { id: 'u2', unit_number: '102' }];

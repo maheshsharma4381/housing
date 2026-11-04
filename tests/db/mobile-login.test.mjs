@@ -35,6 +35,25 @@ before(async () => {
   ids.admin = admin;
 });
 
+test('numbers typed with + or 00 keep their own country code', async () => {
+  const n = async (m) => (await db.query('SELECT public.normalize_mobile($1) AS v', [m])).rows[0].v;
+  assert.equal(await n('+65 9123 4567'), '6591234567');
+  assert.equal(await n('0065 9123 4567'), '6591234567');
+  assert.equal(await n('+91 98765 43210'), '919876543210');
+  assert.equal(await n('98765 43210'), '919876543210');
+  assert.equal(await n('+12 345'), null);
+  // what otp_claim receives from the hook is already international
+  assert.equal((await claim('+6591234567')).foreign, true);
+});
+
+test('a foreign login phone never matches an Indian flat mobile', async () => {
+  // Supabase stores phones as international digits: 6591234567 is Singapore, not 91 65912 34567
+  await q(ids.secretary, 'SELECT public.set_flat_owner_contacts($1,$2)', [ids.societyId, JSON.stringify([{ unit_id: ids.u102, name: 'Indian Owner', mobile: '65912 34567' }])]);
+  const sg = await phoneUser('6591234567');
+  assert.deepEqual(await val(sg, 'SELECT public.claim_my_flats()'), []);
+  await q(ids.secretary, 'SELECT public.set_flat_owner_contacts($1,$2)', [ids.societyId, JSON.stringify([{ unit_id: ids.u102, mobile: '' }])]);
+});
+
 test('a phone-only login gets a profile', async () => {
   const id = await phoneUser('919811100000');
   const p = (await db.query('SELECT full_name, email, phone FROM profiles WHERE id=$1', [id])).rows[0];
@@ -45,6 +64,9 @@ test('logging in with the flat owner mobile claims the flat', async () => {
   const asha = await phoneUser('919876543210');
   const r = await val(asha, 'SELECT public.claim_my_flats()');
   assert.deepEqual(r, [{ society_name: 'Mobile Heights', flat: '101' }]);
+  // the name the committee typed, not "Member"
+  assert.equal((await db.query('SELECT full_name FROM profiles WHERE id=$1', [asha])).rows[0].full_name, 'Asha');
+  assert.equal((await db.query('SELECT owner_name FROM unit_ownerships WHERE unit_id=$1 AND to_date IS NULL', [ids.u101])).rows[0].owner_name, 'Asha');
   const m = (await db.query(`SELECT role FROM society_memberships WHERE user_id=$1 AND unit_id=$2 AND is_active`, [asha, ids.u101])).rows[0];
   assert.equal(m.role, 'resident_owner');
   assert.deepEqual(await val(asha, 'SELECT public.claim_my_flats()'), [], 'nothing new the second time');
@@ -54,6 +76,9 @@ test('an invite by mobile reaches only a confirmed phone', async () => {
   await assert.rejects(q(ids.secretary, `INSERT INTO member_invites (society_id, role, invited_by) VALUES ($1,'committee_member',$2)`,
     [ids.societyId, ids.secretary]), /check/i);
   await assert.rejects(q(ids.secretary, `INSERT INTO member_invites (society_id, mobile, role, invited_by) VALUES ($1,'123','committee_member',$2)`,
+    [ids.societyId, ids.secretary]), /check/i);
+  // a blank email would match every phone login's empty JWT email
+  await assert.rejects(q(ids.secretary, `INSERT INTO member_invites (society_id, email, mobile, role, invited_by) VALUES ($1,'','98111 33333','committee_member',$2)`,
     [ids.societyId, ids.secretary]), /check/i);
   await q(ids.secretary, `INSERT INTO member_invites (society_id, mobile, full_name, role, invited_by) VALUES ($1,'98111 22222','Ravi','committee_member',$2)`,
     [ids.societyId, ids.secretary]);
@@ -135,9 +160,31 @@ test('the platform owner blocks numbers and caps the day', async () => {
 
   const used = (await db.query(`SELECT count(*)::int n FROM otp_log WHERE status IN ('claimed','sent') AND created_at > now() - interval '1 day'`)).rows[0].n;
   await assert.rejects(q(ids.secretary, `SELECT public.set_otp_settings($1)`, [JSON.stringify({ platform_daily_cap: used })]), /Only the platform owner/);
-  await q(ids.admin, `SELECT public.set_otp_settings($1)`, [JSON.stringify({ platform_daily_cap: used })]);
+  await q(ids.admin, `SELECT public.set_otp_settings($1)`, [JSON.stringify({ platform_daily_cap: 0 })]);
   assert.equal((await claim('919000066666')).reason, 'Mobile login is busy right now — try again later');
+  // the cap for unregistered numbers never locks out a registered resident
+  await q(ids.secretary, 'SELECT public.set_flat_owner_contacts($1,$2)', [ids.societyId, JSON.stringify([{ unit_id: ids.u102, name: 'Bina', mobile: '98222 44444' }])]);
+  assert.equal((await claim('919822244444')).allowed, true);
   await q(ids.admin, `SELECT public.set_otp_settings($1)`, [JSON.stringify({ platform_daily_cap: 2000 })]);
+  // a society's registered numbers have their own daily bound: 2 per flat + 20
+  const soc = (await db.query(`SELECT count(*)::int n FROM otp_log WHERE society_id=$1 AND status IN ('claimed','sent') AND created_at > now() - interval '1 day'`, [ids.societyId])).rows[0].n;
+  for (let i = soc; i < 24; i += 1) {
+    await db.query(`INSERT INTO otp_log (mobile, society_id, known, status, created_at) VALUES ('919800000000',$1,true,'sent', now() - interval '1 hour')`, [ids.societyId]);
+  }
+  await age('919822244444');
+  assert.equal((await claim('919822244444')).reason, 'Too many codes for your society today — try again tomorrow');
+});
+
+test('a resend goes by SMS when WhatsApp did not reach an Indian number', async () => {
+  const c1 = await claim('919000077777');
+  assert.equal(c1.prefer_sms, false);
+  await db.query(`SELECT public.otp_result($1,'whatsapp',true,NULL)`, [c1.log_id]);
+  await age('919000077777');
+  assert.equal((await claim('919000077777')).prefer_sms, true);
+  const f = await claim('447700900555');
+  await db.query(`SELECT public.otp_result($1,'whatsapp',true,NULL)`, [f.log_id]);
+  await age('447700900555');
+  assert.equal((await claim('447700900555')).prefer_sms, false, 'foreign numbers are WhatsApp only');
 });
 
 test('the overview splits channels and flags a society over 5 codes per flat a year', async () => {
@@ -152,6 +199,7 @@ test('the overview splits channels and flags a society over 5 codes per flat a y
   assert.equal(s.flats, 2);
   assert.equal(s.alert, true);
   assert.equal(o.settings.per_number_daily, 5);
+  assert.equal(o.settings.known_daily_cap, 20000);
 });
 
 test('only the server may claim a code', async () => {

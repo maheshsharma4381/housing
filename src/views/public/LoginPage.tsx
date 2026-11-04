@@ -33,11 +33,12 @@ export const LoginPage: React.FC = () => {
   const returnUrl = safeInternalPath(searchParams.get('returnUrl'));
 
   useEffect(() => {
-    if (isAuthenticated) {
+    // Wait until the account has loaded, or a fresh login is sent to "Register your society"
+    if (isAuthenticated && !isLoading) {
       const destination = returnUrl || getRedirectPath();
       navigate(destination, { replace: true });
     }
-  }, [isAuthenticated, navigate, returnUrl, getRedirectPath]);
+  }, [isAuthenticated, isLoading, navigate, returnUrl, getRedirectPath]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,7 +99,7 @@ export const LoginPage: React.FC = () => {
 
           {!useEmail ? (
             <div className="space-y-4">
-              <MobileOtpLogin />
+              <MobileOtpLogin onSignedIn={(path) => navigate(returnUrl || path, { replace: true })} />
               <button type="button" onClick={() => setUseEmail(true)} className="w-full text-center text-slate-400 hover:text-white cursor-pointer">
                 Use email instead
               </button>

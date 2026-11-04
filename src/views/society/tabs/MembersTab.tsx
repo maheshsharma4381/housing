@@ -9,6 +9,7 @@ import { describeNotify, notify } from '../../../lib/notify';
 import { JoinLinkCard } from '../../../components/JoinLinkCard';
 import { normalizeMobile, formatMobile } from '../../../lib/mobile';
 import { Users, UserPlus, Mail, AlertCircle, CheckCircle2, Loader2, XCircle, MessageCircle } from 'lucide-react';
+import { PHONE_LOGIN_ON } from '../../../lib/phone-login';
 
 const ROLE_OPTIONS: { value: SocietyRole; label: string }[] = [
   { value: 'resident_owner', label: 'Resident (Owner)' },
@@ -107,6 +108,11 @@ export const MembersTab: React.FC<MembersTabProps> = ({ societyId, societyName, 
     }
     if (!mobileDigits && !email.trim()) {
       setError('Enter their mobile or email — they log in with it.');
+      return;
+    }
+    // Until mobile login is on, a mobile alone is no way in
+    if (!PHONE_LOGIN_ON && !email.trim()) {
+      setError('Enter their email — logging in with a mobile is not switched on yet.');
       return;
     }
 
