@@ -61,3 +61,61 @@ Nothing was pushed to GitHub. No migration was applied to the live database: run
 - A deactivated society still produces notifications.
 - Test gaps: the complaint, proposal and opening-balance triggers, and the sender's partial failures.
 - The cron secret comparison is not constant-time. This is harmless: the route answers 401.
+
+---
+
+## Phase 3B — owners' mobiles and one joining link (migration 031)
+
+**Built**
+- **Owner mobiles (Flats tab).**
+  - Each flat has an expected owner name and mobile, editable inline under "Owner mobile".
+  - "Paste owners from Excel" takes three columns: flat number, name, mobile. It shows a preview of matched flats and lists unknown flat numbers and bad mobiles. An empty cell leaves what is saved alone.
+  - The contacts sit in a committee-only table (`unit_owner_contacts`), so residents never see each other's mobiles.
+- **One joining link (top of Members).**
+  - Copy, "Share on WhatsApp", and "Make a new link" (the old one stops working).
+- **`/join/<code>`.** The person logs in or signs up and comes straight back to the link.
+  - **Joins at once:** when their **confirmed login phone** matches a flat's owner mobile, they join that flat as owner, provided the flat has no joined owner yet and the committee never removed them.
+  - **Request:** everyone else becomes a request in **Approvals**. A typed mobile never attaches anyone.
+  - **What the link shows:** already a member, waiting, or turned down with the reason plus "Ask again".
+- **Join requests in Approvals.**
+  - Approve as Owner or Tenant on a chosen flat, or reject with a reason.
+  - A tenant gets no bills.
+  - At most 30 waiting requests per society, or 2 per flat in a bigger society; decided requests don't count.
+- **Owner change (2F) and the link.** An owner change sets the flat's expected mobile to the new owner's. When the new owner joins through the link, the waiting change completes and the flat's open bills become theirs.
+
+**What you need to set**
+- Nothing new. The link uses the app's own address.
+- If you want sign-up through the link to return to the link after email verification, check Supabase → Authentication → URL Configuration: the redirect allow-list must accept query strings (`https://<your-app>/**`).
+- When phone login is on (3C), keep **"Confirm phone"** on in Supabase. The link trusts only a confirmed phone.
+
+**Rulings I made (cost if wrong)**
+1. The join code is 12 random hex characters. Cost: none.
+2. One mobile entered on several flats joins all of them in one go. Cost: a mistyped mobile hands a second flat to that person until the committee removes them.
+3. Someone already in the society cannot use the link again; a second flat goes through Members. Cost: one extra step for owners of two flats.
+4. Login and signup come back through the existing `returnUrl`. Cost: none.
+5. The mobile typed on the join page is shown to the committee only and never attaches anyone. Cost: until phone login (3C) is live, every resident goes through Approvals.
+6. A phone match never overrides the committee. A flat whose owner has already joined, or a person the committee removed, goes to Approvals. Cost: joint owners are approved by hand.
+7. Correcting a flat's mobile also corrects a waiting owner change, so the old number stops working. Cost: none.
+
+**Reviewer findings fixed:**
+- the join code needed pgcrypto, which Supabase keeps in the `extensions` schema, so the link would not have worked on the live database;
+- the daily cap would have blocked normal sign-ups;
+- residents could read owners' mobiles;
+- a phone match could bring back removed members and add silent co-owners;
+- a corrected mobile still worked;
+- an open redirect through `returnUrl`;
+- a rejected person never saw the reason;
+- pasting names only wiped saved mobiles.
+
+**Deferred minors**
+- A waiting request blocks a later phone match until the committee decides.
+- Approving a stale request ignores an existing membership.
+- Joining by invite or link does not close a waiting request.
+- The new owner's email invite stays pending after the change completes through the link.
+- The Approve screen does not show the flat's current owner or a waiting owner change.
+- Two simultaneous first loads of the link can show a link that is replaced at once.
+- No length limits on the request's name, mobile and flat.
+- Mobiles typed as `0091…` or `+91 0…` are not normalised.
+- The owner-contacts audit records a count, not each old and new mobile.
+- A changed link is reported only after logging in.
+- Test gaps: read-only committee and other-society refusals, RLS on reading join requests, receipts moving through the link.

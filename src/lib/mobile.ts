@@ -16,7 +16,8 @@ export function formatMobile(stored: string | null | undefined): string {
   return `+${stored}`;
 }
 
-export interface OwnerContactRow { unit_id: string; name: string; mobile: string }
+/** A key that is left out is not changed (a paste with no mobile column keeps the saved mobiles). */
+export interface OwnerContactRow { unit_id: string; name?: string; mobile?: string }
 
 /**
  * Lines copied from Excel: flat number, owner name, mobile — separated by tabs or commas.
@@ -36,12 +37,15 @@ export function parseOwnerPaste(text: string, units: { id: string; unit_number: 
       if (!/^(flat|unit)/i.test(flat)) unknownFlats.push(flat);
       continue;
     }
-    const mobile = mobileRaw ? normalizeMobile(mobileRaw) : '';
+    const mobile = mobileRaw ? normalizeMobile(mobileRaw) : undefined;
     if (mobile === null) {
       badMobiles.push(`${flat}: ${mobileRaw}`);
       continue;
     }
-    rows.push({ unit_id: unitId, name, mobile });
+    const row: OwnerContactRow = { unit_id: unitId };
+    if (name) row.name = name;
+    if (mobile) row.mobile = mobile;
+    rows.push(row);
   }
   return { rows, unknownFlats, badMobiles };
 }

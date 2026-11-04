@@ -8,12 +8,14 @@ import { Banner } from '../../components/Banner';
 import { Loader2, CheckCircle2, Clock } from 'lucide-react';
 
 type JoinResult = { status: 'joined' | 'requested'; society_name: string; flat: string | null };
+/** Where this person stands with the society before they fill anything in */
+type JoinStatus = { status: 'member' | 'pending' | 'rejected' | 'none'; society_name: string; note?: string | null };
 
 const inputClass = 'w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-white outline-none focus:border-sky-500';
 
 /** /join/<code>: the society's one joining link (031). */
 export const JoinPage: React.FC<{ code: string }> = ({ code }) => {
-  const { user, isAuthenticated, isLoading, refreshUserData } = useAuth();
+  const { user, isAuthenticated, isLoading, refreshUserData, getRedirectPath } = useAuth();
   const [form, setForm] = useState({
     name: (user?.user_metadata?.full_name as string | undefined) ?? '',
     mobile: user?.phone ?? '',
@@ -22,6 +24,9 @@ export const JoinPage: React.FC<{ code: string }> = ({ code }) => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<JoinResult | null>(null);
+  const [status, setStatus] = useState<JoinStatus | null>(null);
+  const [linkError, setLinkError] = useState<string | null>(null);
+  const [askAgain, setAskAgain] = useState(false);
   const back = encodeURIComponent(`/join/${code}`);
 
   // The login finishes after the first render: fill in what the account already knows
@@ -33,6 +38,14 @@ export const JoinPage: React.FC<{ code: string }> = ({ code }) => {
       mobile: f.mobile || (user.phone ?? ''),
     }));
   }, [user]);
+
+  useEffect(() => {
+    if (!supabase || !isAuthenticated) return;
+    supabase.rpc('join_status', { p_code: code }).then(({ data, error: err }) => {
+      if (err) setLinkError(err.message);
+      else setStatus(data as JoinStatus);
+    });
+  }, [code, isAuthenticated]);
 
   const join = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,6 +89,29 @@ export const JoinPage: React.FC<{ code: string }> = ({ code }) => {
               <p className="text-white text-sm">
                 Your request has gone to the {result.society_name} committee. You will get a notification when they approve it.
               </p>
+            </div>
+          ) : linkError ? (
+            <Banner tone="error">{linkError}</Banner>
+          ) : status?.status === 'member' ? (
+            <div className="space-y-3 text-center">
+              <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto" />
+              <p className="text-white text-sm">You are already a member of {status.society_name}.</p>
+              <Link href={getRedirectPath()} className="inline-block px-4 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold">Open Sahvaas</Link>
+            </div>
+          ) : status?.status === 'pending' ? (
+            <div className="space-y-3 text-center">
+              <Clock className="w-10 h-10 text-amber-400 mx-auto" />
+              <p className="text-white text-sm">
+                Your request has gone to the {status.society_name} committee. You will get a notification when they approve it.
+              </p>
+            </div>
+          ) : status?.status === 'rejected' && !askAgain ? (
+            <div className="space-y-3 text-center">
+              <p className="text-white text-sm">The {status.society_name} committee did not approve your request.</p>
+              {status.note && <p className="text-slate-300">Reason: {status.note}</p>}
+              <button onClick={() => setAskAgain(true)} className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold cursor-pointer">
+                Ask again
+              </button>
             </div>
           ) : !isAuthenticated ? (
             <div className="space-y-3 text-center">

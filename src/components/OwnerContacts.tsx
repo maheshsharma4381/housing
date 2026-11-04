@@ -2,13 +2,13 @@
 
 import React, { useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase/client';
-import { normalizeMobile, parseOwnerPaste, formatMobile } from '../lib/mobile';
+import { normalizeMobile, parseOwnerPaste, formatMobile, type OwnerContactRow } from '../lib/mobile';
 import { Banner } from './Banner';
 import { Loader2, ClipboardPaste } from 'lucide-react';
 
 const inputClass = 'w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-sky-500';
 
-const saveRows = async (societyId: string, rows: { unit_id: string; name: string; mobile: string }[]) => {
+const saveRows = async (societyId: string, rows: OwnerContactRow[]) => {
   if (!supabase) return { error: 'Not connected', count: 0 };
   const { data, error } = await supabase.rpc('set_flat_owner_contacts', { p_society_id: societyId, p_rows: rows });
   return { error: error?.message ?? null, count: Number(data ?? 0) };
@@ -71,6 +71,7 @@ export const OwnerPaste: React.FC<{
     <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3 text-xs">
       <p className="text-slate-400">
         Copy three columns from Excel — <strong className="text-white">flat number, owner name, mobile</strong> — and paste them here.
+        An empty cell leaves what is saved for that flat as it is.
       </p>
       <Banner tone="error">{error}</Banner>
       <Banner tone="success">{notice}</Banner>

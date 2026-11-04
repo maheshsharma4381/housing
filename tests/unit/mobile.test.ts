@@ -15,9 +15,10 @@ test('owners pasted from Excel match flats by number', async () => {
   const units = [{ id: 'u1', unit_number: 'A-101' }, { id: 'u2', unit_number: '102' }];
   const text = 'Flat\tOwner\tMobile\na-101\tAsha Rao\t98765 43210\n102, Ravi K, \n999\tNobody\t9000000000\nA-101\tBad\t123\n';
   const r = parseOwnerPaste(text, units);
+  // an empty cell leaves what is saved alone (it is not sent)
   assert.deepEqual(r.rows, [
     { unit_id: 'u1', name: 'Asha Rao', mobile: '919876543210' },
-    { unit_id: 'u2', name: 'Ravi K', mobile: '' },
+    { unit_id: 'u2', name: 'Ravi K' },
   ]);
   assert.deepEqual(r.unknownFlats, ['999']);
   assert.deepEqual(r.badMobiles, ['A-101: 123']);

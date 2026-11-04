@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../../lib/supabase/client';
 import { parseUnitCsv, UNIT_CSV_TEMPLATE } from '../../../lib/unit-csv';
 import { EmptyState } from '../../../components/EmptyState';
@@ -27,6 +27,13 @@ export const UnitsTab: React.FC<UnitsTabProps> = ({ societyId, societyName, unit
     setPanel(p => (p && p.unitId === unitId && p.kind === kind ? null : { unitId, kind }));
   const [showImport, setShowImport] = useState(false);
   const [showPaste, setShowPaste] = useState(false);
+  // The owner each flat expects (031): committee-only, so it is not part of units
+  const [contacts, setContacts] = useState<Record<string, { owner_name: string | null; owner_mobile: string | null }>>({});
+  useEffect(() => {
+    if (!supabase || !canManage) return;
+    supabase.from('unit_owner_contacts').select('unit_id, owner_name, owner_mobile').eq('society_id', societyId)
+      .then(({ data }) => setContacts(Object.fromEntries((data ?? []).map(c => [c.unit_id, c]))));
+  }, [societyId, canManage, units]);
   const [csvText, setCsvText] = useState('');
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<string | null>(null);
@@ -181,9 +188,9 @@ export const UnitsTab: React.FC<UnitsTabProps> = ({ societyId, societyName, unit
                 <div className="text-slate-400">
                   Type: <strong className="text-white">{u.unit_type}</strong> • Area: {u.carpet_area_sqft} sqft
                 </div>
-                {(u.owner_name || u.owner_mobile) && (
+                {(contacts[u.id]?.owner_name || contacts[u.id]?.owner_mobile) && (
                   <div className="text-slate-400">
-                    Owner: <strong className="text-white">{[u.owner_name, formatMobile(u.owner_mobile)].filter(Boolean).join(' · ')}</strong>
+                    Owner: <strong className="text-white">{[contacts[u.id]?.owner_name, formatMobile(contacts[u.id]?.owner_mobile)].filter(Boolean).join(' · ')}</strong>
                   </div>
                 )}
                 <div className="flex flex-wrap gap-3">
@@ -194,7 +201,7 @@ export const UnitsTab: React.FC<UnitsTabProps> = ({ societyId, societyName, unit
                 {panel?.unitId === u.id && panel.kind === 'owners' && <OwnerHistory societyId={societyId} unitId={u.id} />}
                 {panel?.unitId === u.id && panel.kind === 'contact' && (
                   <OwnerContactEdit
-                    societyId={societyId} unitId={u.id} name={u.owner_name} mobile={u.owner_mobile}
+                    societyId={societyId} unitId={u.id} name={contacts[u.id]?.owner_name} mobile={contacts[u.id]?.owner_mobile}
                     onDone={() => { setPanel(null); onChanged(); }}
                   />
                 )}

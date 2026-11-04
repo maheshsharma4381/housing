@@ -13912,14 +13912,48 @@ RETURNS TEXT AS $$
     FROM (SELECT nullif(regexp_replace(coalesce(p, ''), '[^0-9]', '', 'g'), '') AS d) x
 $$ LANGUAGE sql IMMUTABLE;
 
-ALTER TABLE units ADD COLUMN IF NOT EXISTS owner_name TEXT;
-ALTER TABLE units ADD COLUMN IF NOT EXISTS owner_mobile TEXT;
-CREATE INDEX IF NOT EXISTS idx_units_owner_mobile ON units (society_id, owner_mobile) WHERE owner_mobile IS NOT NULL;
+-- The owner the committee expects on each flat. Committee-only: residents never see each other's mobiles
+-- (every member can read units, so these are not columns there).
+CREATE TABLE IF NOT EXISTS unit_owner_contacts (
+    unit_id UUID PRIMARY KEY REFERENCES units(id) ON DELETE CASCADE,
+    society_id UUID NOT NULL REFERENCES societies(id) ON DELETE CASCADE,
+    owner_name TEXT,
+    owner_mobile TEXT CHECK (owner_mobile IS NULL OR owner_mobile ~ '^[0-9]{10,15}$'),
+    updated_by UUID REFERENCES profiles(id),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+CREATE INDEX IF NOT EXISTS idx_unit_owner_contacts_mobile ON unit_owner_contacts (owner_mobile) WHERE owner_mobile IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_unit_owner_contacts_society ON unit_owner_contacts (society_id);
+ALTER TABLE unit_owner_contacts ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS unit_owner_contacts_select ON unit_owner_contacts;
+CREATE POLICY unit_owner_contacts_select ON unit_owner_contacts
+    FOR SELECT USING (is_platform_admin() OR is_committee_viewer(society_id));
+REVOKE INSERT, UPDATE, DELETE ON unit_owner_contacts FROM PUBLIC, anon, authenticated;
+
+-- The expected owner of a flat: name and mobile (only the keys given change)
+CREATE OR REPLACE FUNCTION public.put_owner_contact(p_society_id UUID, p_unit_id UUID, p_set_name BOOLEAN, p_name TEXT, p_set_mobile BOOLEAN, p_mobile TEXT)
+RETURNS VOID AS $$
+BEGIN
+    INSERT INTO unit_owner_contacts (unit_id, society_id, owner_name, owner_mobile, updated_by)
+    VALUES (p_unit_id, p_society_id, CASE WHEN p_set_name THEN p_name END, CASE WHEN p_set_mobile THEN p_mobile END, auth.uid())
+    ON CONFLICT (unit_id) DO UPDATE SET
+        owner_name = CASE WHEN p_set_name THEN EXCLUDED.owner_name ELSE unit_owner_contacts.owner_name END,
+        owner_mobile = CASE WHEN p_set_mobile THEN EXCLUDED.owner_mobile ELSE unit_owner_contacts.owner_mobile END,
+        updated_by = EXCLUDED.updated_by,
+        updated_at = timezone('utc'::text, now());
+    IF p_set_mobile THEN
+        -- A waiting owner change follows the corrected mobile (the old number must stop working)
+        UPDATE unit_ownerships SET owner_mobile = p_mobile
+        WHERE unit_id = p_unit_id AND to_date IS NULL AND owner_user_id IS NULL;
+    END IF;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 CREATE OR REPLACE FUNCTION public.set_flat_owner_contacts(p_society_id UUID, p_rows JSONB)
 RETURNS INT AS $$
 DECLARE
     v_row JSONB;
+    v_unit UUID;
     v_mobile TEXT;
     v_count INT := 0;
 BEGIN
@@ -13927,6 +13961,8 @@ BEGIN
         RAISE EXCEPTION 'Only the society committee can change flats';
     END IF;
     FOR v_row IN SELECT * FROM jsonb_array_elements(coalesce(p_rows, '[]'::jsonb)) LOOP
+        SELECT id INTO v_unit FROM units WHERE id::text = v_row ->> 'unit_id' AND society_id = p_society_id;
+        CONTINUE WHEN v_unit IS NULL;
         v_mobile := NULL;
         IF length(trim(coalesce(v_row ->> 'mobile', ''))) > 0 THEN
             v_mobile := normalize_mobile(v_row ->> 'mobile');
@@ -13934,12 +13970,10 @@ BEGIN
                 RAISE EXCEPTION 'Mobile % is not a valid number', v_row ->> 'mobile';
             END IF;
         END IF;
-        UPDATE units SET owner_name = nullif(trim(coalesce(v_row ->> 'name', '')), ''), owner_mobile = v_mobile,
-                         updated_at = timezone('utc'::text, now())
-        WHERE id::text = v_row ->> 'unit_id' AND society_id = p_society_id;
-        IF FOUND THEN
-            v_count := v_count + 1;
-        END IF;
+        -- A key that is absent leaves that field as it was; an empty value clears it
+        PERFORM put_owner_contact(p_society_id, v_unit, v_row ? 'name', nullif(trim(coalesce(v_row ->> 'name', '')), ''),
+                                  v_row ? 'mobile', v_mobile);
+        v_count := v_count + 1;
     END LOOP;
     INSERT INTO audit_logs (society_id, user_id, action, entity_type, entity_id, new_value)
     VALUES (p_society_id, auth.uid(), 'units.owner_contacts', 'society', p_society_id::text, jsonb_build_object('flats', v_count));
@@ -13972,8 +14006,8 @@ BEGIN
         WHERE unit_id = p_unit_id AND created_at >= v_waiting_since AND user_id IS DISTINCT FROM p_uid;
     ELSIF NOT EXISTS (SELECT 1 FROM unit_ownerships WHERE unit_id = p_unit_id AND to_date IS NULL) THEN
         INSERT INTO unit_ownerships (society_id, unit_id, owner_user_id, owner_name, owner_email, owner_mobile, from_date)
-        SELECT p_society_id, p_unit_id, p_uid, coalesce(p.full_name, u.owner_name, p.email, 'Owner'), p.email, u.owner_mobile, current_date
-        FROM units u LEFT JOIN profiles p ON p.id = p_uid
+        SELECT p_society_id, p_unit_id, p_uid, coalesce(p.full_name, c.owner_name, p.email, 'Owner'), p.email, c.owner_mobile, current_date
+        FROM units u LEFT JOIN profiles p ON p.id = p_uid LEFT JOIN unit_owner_contacts c ON c.unit_id = u.id
         WHERE u.id = p_unit_id;
     END IF;
 END;
@@ -14008,14 +14042,16 @@ BEGIN
         RETURN;
     END IF;
     FOR v_unit IN
-        SELECT u.id, u.society_id, u.unit_number, s.name FROM units u JOIN societies s ON s.id = u.society_id AND s.is_active
-        WHERE (p_society_id IS NULL OR u.society_id = p_society_id)
-          AND (u.owner_mobile = p_phone
-               OR EXISTS (SELECT 1 FROM unit_ownerships o WHERE o.unit_id = u.id AND o.to_date IS NULL
-                            AND o.owner_user_id IS NULL AND normalize_mobile(o.owner_mobile) = p_phone))
-          -- already this user's flat: nothing to do
-          AND NOT EXISTS (SELECT 1 FROM society_memberships m WHERE m.user_id = p_uid AND m.unit_id = u.id
-                            AND m.role = 'resident_owner' AND m.is_active)
+        SELECT u.id, u.society_id, u.unit_number, s.name
+        FROM unit_owner_contacts c
+        JOIN units u ON u.id = c.unit_id
+        JOIN societies s ON s.id = u.society_id AND s.is_active
+        WHERE c.owner_mobile = p_phone
+          AND (p_society_id IS NULL OR u.society_id = p_society_id)
+          -- any membership of this person on the flat: already theirs, or the committee removed them (only it brings them back)
+          AND NOT EXISTS (SELECT 1 FROM society_memberships m WHERE m.user_id = p_uid AND m.unit_id = u.id)
+          -- a flat whose owner has already joined is not shared with a second person without the committee
+          AND NOT EXISTS (SELECT 1 FROM society_memberships m WHERE m.unit_id = u.id AND m.role = 'resident_owner' AND m.is_active)
         ORDER BY s.name, u.unit_number
     LOOP
         PERFORM upsert_flat_membership(v_unit.society_id, p_uid, v_unit.id, 'resident_owner');
@@ -14126,7 +14162,7 @@ BEGIN
 
     v_balance := flat_balance(p_unit_id);
     -- The joining link now matches the new owner's mobile, not the seller's (031)
-    UPDATE units SET owner_name = v_name, owner_mobile = normalize_mobile(p_new_owner_mobile) WHERE id = p_unit_id;
+    PERFORM put_owner_contact(v_unit.society_id, p_unit_id, true, v_name, true, normalize_mobile(p_new_owner_mobile));
 
     IF v_waiting THEN
         IF v_has_prev THEN
@@ -14196,6 +14232,7 @@ CREATE TABLE IF NOT EXISTS join_requests (
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
 CREATE INDEX IF NOT EXISTS idx_join_requests_society ON join_requests (society_id, status, created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_join_requests_waiting ON join_requests (society_id, user_id) WHERE status = 'pending';
 ALTER TABLE join_requests ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS join_requests_select ON join_requests;
 CREATE POLICY join_requests_select ON join_requests
@@ -14211,7 +14248,7 @@ BEGIN
     END IF;
     SELECT join_code INTO v_code FROM societies WHERE id = p_society_id;
     IF v_code IS NULL THEN
-        v_code := encode(gen_random_bytes(6), 'hex');
+        v_code := left(replace(gen_random_uuid()::text, '-', ''), 12);
         UPDATE societies SET join_code = v_code WHERE id = p_society_id;
     END IF;
     RETURN v_code;
@@ -14221,7 +14258,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 CREATE OR REPLACE FUNCTION public.new_join_code(p_society_id UUID)
 RETURNS TEXT AS $$
 DECLARE
-    v_code TEXT := encode(gen_random_bytes(6), 'hex');
+    v_code TEXT := left(replace(gen_random_uuid()::text, '-', ''), 12);
 BEGIN
     IF NOT (is_platform_admin() OR is_society_admin(p_society_id)) THEN
         RAISE EXCEPTION 'Only the society committee can change the joining link';
@@ -14262,20 +14299,53 @@ BEGIN
         RETURN jsonb_build_object('status', 'joined', 'society_name', v_soc.name, 'flat', array_to_string(v_flats, ', '));
     END IF;
 
-    IF (SELECT count(*) FROM join_requests WHERE society_id = v_soc.id AND created_at > timezone('utc'::text, now()) - interval '1 day') >= 30 THEN
-        RAISE EXCEPTION 'Too many join requests today — ask your secretary';
+    -- Requests the committee has not decided yet: at most 30, or 2 per flat in a bigger society
+    IF (SELECT count(*) FROM join_requests WHERE society_id = v_soc.id AND status = 'pending')
+       >= greatest(30, 2 * (SELECT count(*) FROM units WHERE society_id = v_soc.id)) THEN
+        RAISE EXCEPTION 'Too many join requests waiting — ask your secretary';
     END IF;
     IF length(v_name) < 2 THEN
         RAISE EXCEPTION 'Enter your name';
     END IF;
     INSERT INTO join_requests (society_id, user_id, full_name, mobile, flat_hint)
     VALUES (v_soc.id, auth.uid(), v_name, coalesce(normalize_mobile(p_mobile), nullif(trim(coalesce(p_mobile, '')), '')), v_hint)
+    ON CONFLICT (society_id, user_id) WHERE status = 'pending' DO NOTHING
     RETURNING id INTO v_req;
+    IF v_req IS NULL THEN
+        -- the same person asked twice at once: one request is enough
+        RETURN jsonb_build_object('status', 'requested', 'society_name', v_soc.name, 'flat', v_hint);
+    END IF;
     PERFORM notify_users(v_soc.id, committee_admin_ids(v_soc.id), 'join_request', 'Join request: ' || v_name,
         concat_ws(' · ', 'Flat ' || v_hint, nullif(trim(coalesce(p_mobile, '')), '')), 'approvals', v_req);
     RETURN jsonb_build_object('status', 'requested', 'society_name', v_soc.name, 'flat', v_hint);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- What the joining link means for the person who opened it: already a member, waiting, turned down (with the reason), or new
+CREATE OR REPLACE FUNCTION public.join_status(p_code TEXT)
+RETURNS JSONB AS $$
+DECLARE
+    v_soc societies%ROWTYPE;
+    v_last join_requests%ROWTYPE;
+BEGIN
+    IF auth.uid() IS NULL THEN
+        RAISE EXCEPTION 'Log in first';
+    END IF;
+    SELECT * INTO v_soc FROM societies WHERE join_code = p_code AND is_active;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'This joining link has changed — ask your secretary for the new one';
+    END IF;
+    IF EXISTS (SELECT 1 FROM society_memberships WHERE society_id = v_soc.id AND user_id = auth.uid() AND is_active) THEN
+        RETURN jsonb_build_object('status', 'member', 'society_name', v_soc.name, 'society_id', v_soc.id);
+    END IF;
+    SELECT * INTO v_last FROM join_requests WHERE society_id = v_soc.id AND user_id = auth.uid() ORDER BY created_at DESC LIMIT 1;
+    IF FOUND AND v_last.status IN ('pending', 'rejected') THEN
+        RETURN jsonb_build_object('status', v_last.status, 'society_name', v_soc.name, 'note', v_last.decision_note,
+                                  'flat', v_last.flat_hint, 'decided_at', v_last.decided_at);
+    END IF;
+    RETURN jsonb_build_object('status', 'none', 'society_name', v_soc.name);
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public;
 
 CREATE OR REPLACE FUNCTION public.decide_join_request(
     p_request_id UUID, p_approve BOOLEAN, p_unit_id UUID DEFAULT NULL, p_role TEXT DEFAULT 'resident_owner', p_note TEXT DEFAULT NULL
@@ -14340,6 +14410,9 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 REVOKE ALL ON FUNCTION public.attach_flat_owner(UUID, UUID, UUID, UUID) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.upsert_flat_membership(UUID, UUID, UUID, TEXT) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.current_verified_phone() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.put_owner_contact(UUID, UUID, BOOLEAN, TEXT, BOOLEAN, TEXT) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.join_status(TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.join_status(TEXT) TO authenticated;
 REVOKE ALL ON FUNCTION public.attach_flats_by_phone(UUID, UUID, TEXT) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.set_flat_owner_contacts(UUID, JSONB) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.society_join_code(UUID) FROM PUBLIC, anon;
