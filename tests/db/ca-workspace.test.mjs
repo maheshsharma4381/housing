@@ -182,13 +182,16 @@ test('locking an audited year: manual entries refused, late system entries move 
   const lastYear = (lines) => q(ids.ca, `SELECT public.propose_adjustment($1,'2026-03-15','Year-end provision',$2)`, [ids.societyId, JSON.stringify(lines)]);
   const pending = (await lastYear([{ code: '5300', amount: 1500 }, { code: '5900', amount: -1500 }]))[0].propose_adjustment;
 
-  await assert.rejects(q(ids.ca, `SELECT public.lock_financial_year($1,'2026-03-31')`, [ids.societyId]), /Only the society committee/);
+  await assert.rejects(q(ids.ca, `SELECT public.lock_financial_year($1,'2026-03-31')`, [ids.societyId]), /Only the committee or the society's CA can propose a year lock/);
   await assert.rejects(q(ids.secretary, `SELECT public.lock_financial_year($1,'2027-03-31')`, [ids.societyId]), /has ended/);
   await assert.rejects(q(ids.secretary, `SELECT public.lock_financial_year($1,'2026-03-31')`, [ids.societyId]), /pending adjustment/);
   await val(ids.treasurer, `SELECT public.decide_adjustment($1,false,'Provision not required')`, [pending.id]);
 
-  const locked = await val(ids.secretary, `SELECT public.lock_financial_year($1,'2026-03-31','Audited by Priya CA')`, [ids.societyId]);
-  assert.equal(locked.locked_until, '2026-03-31');
+  // 027: the secretary proposes the lock; another committee member approves it
+  const proposal = await val(ids.secretary, `SELECT public.lock_financial_year($1,'2026-03-31','Audited by Priya CA')`, [ids.societyId]);
+  assert.equal(proposal.status, 'pending');
+  await val(ids.treasurer, 'SELECT public.decide_adjustment($1,true)', [proposal.id]);
+  assert.equal(await val(ids.ca, 'SELECT public.books_locked_until($1)::text', [ids.societyId]), '2026-03-31');
   await assert.rejects(q(ids.secretary, `SELECT public.lock_financial_year($1,'2026-03-31')`, [ids.societyId]), /already locked/);
 
   // Manual entries into the locked year are refused

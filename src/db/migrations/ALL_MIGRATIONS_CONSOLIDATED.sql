@@ -12364,6 +12364,131 @@ CREATE POLICY bank_transactions_select ON bank_transactions FOR SELECT USING (
     OR can_manage_accounts(society_id));
 
 -- ============================================================================
+-- 3. A YEAR LOCK IS PROPOSED; ANOTHER COMMITTEE MEMBER APPROVES IT (in Approvals)
+-- ============================================================================
+ALTER TABLE adjustment_proposals DROP CONSTRAINT IF EXISTS adjustment_proposals_kind_check;
+ALTER TABLE adjustment_proposals ADD CONSTRAINT adjustment_proposals_kind_check
+    CHECK (kind IN ('journal', 'capitalise', 'year_lock'));
+
+-- from 014_ca_workspace.sql; now proposes the lock (same checks, same signature); decide_adjustment locks
+CREATE OR REPLACE FUNCTION public.lock_financial_year(p_society_id UUID, p_fy_end DATE, p_note TEXT DEFAULT NULL)
+RETURNS JSONB AS $$
+DECLARE
+    v_pending INT;
+    v_id UUID;
+    v_number TEXT;
+    v_reason TEXT;
+BEGIN
+    IF NOT can_keep_books(p_society_id) THEN
+        RAISE EXCEPTION 'Only the committee or the society''s CA can propose a year lock';
+    END IF;
+    IF p_fy_end IS NULL OR extract(month FROM p_fy_end) <> 3 OR extract(day FROM p_fy_end) <> 31 OR p_fy_end >= current_date THEN
+        RAISE EXCEPTION 'Only a financial year that has ended (31 March) can be locked';
+    END IF;
+    IF EXISTS (SELECT 1 FROM financial_year_locks WHERE society_id = p_society_id AND fy_end >= p_fy_end) THEN
+        RAISE EXCEPTION 'This year is already locked';
+    END IF;
+    SELECT count(*) INTO v_pending FROM adjustment_proposals
+    WHERE society_id = p_society_id AND status = 'pending' AND kind <> 'year_lock' AND entry_date <= p_fy_end;
+    IF v_pending > 0 THEN
+        RAISE EXCEPTION 'Decide the % pending adjustment(s) for this year first', v_pending;
+    END IF;
+    IF EXISTS (SELECT 1 FROM adjustment_proposals
+               WHERE society_id = p_society_id AND status = 'pending' AND kind = 'year_lock' AND entry_date = p_fy_end) THEN
+        RAISE EXCEPTION 'A lock for this year is already waiting for the committee';
+    END IF;
+
+    v_reason := CASE WHEN length(trim(coalesce(p_note, ''))) >= 5 THEN trim(p_note)
+                     ELSE 'Lock the books up to ' || to_char(p_fy_end, 'DD Mon YYYY') END;
+    v_number := 'AP-' || lpad(next_society_number(p_society_id, 'adjustment_proposals', 'proposal_number', 'AP-')::text, 4, '0');
+    INSERT INTO adjustment_proposals (society_id, proposal_number, kind, entry_date, reason, lines, proposed_by)
+    VALUES (p_society_id, v_number, 'year_lock', p_fy_end, v_reason, '[]'::jsonb, auth.uid())
+    RETURNING id INTO v_id;
+
+    INSERT INTO audit_logs (society_id, user_id, action, entity_type, entity_id, new_value)
+    VALUES (p_society_id, auth.uid(), 'books.year_lock_proposed', 'adjustment_proposal', v_id::text,
+            jsonb_build_object('number', v_number, 'fy_end', p_fy_end, 'note', p_note));
+    RETURN jsonb_build_object('id', v_id, 'proposal_number', v_number, 'status', 'pending');
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- from 014_ca_workspace.sql; + a year_lock proposal locks the books instead of posting a journal
+CREATE OR REPLACE FUNCTION public.decide_adjustment(p_proposal_id UUID, p_approve BOOLEAN, p_note TEXT DEFAULT NULL)
+RETURNS JSONB AS $$
+DECLARE
+    v_p adjustment_proposals%ROWTYPE;
+    v_exp expenses%ROWTYPE;
+    v_journal UUID;
+    v_who TEXT;
+    v_pending INT;
+BEGIN
+    SELECT * INTO v_p FROM adjustment_proposals WHERE id = p_proposal_id FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Proposal not found';
+    END IF;
+    IF NOT (is_platform_admin() OR is_society_admin(v_p.society_id)) THEN
+        RAISE EXCEPTION 'Only the society committee can approve adjustments';
+    END IF;
+    IF v_p.status <> 'pending' THEN
+        RAISE EXCEPTION 'This proposal is already %', v_p.status;
+    END IF;
+    IF v_p.proposed_by = auth.uid() THEN
+        RAISE EXCEPTION 'You proposed this adjustment; another committee member must decide';
+    END IF;
+    IF NOT p_approve AND length(trim(coalesce(p_note, ''))) = 0 THEN
+        RAISE EXCEPTION 'Give a reason for rejecting';
+    END IF;
+
+    IF p_approve AND v_p.kind = 'year_lock' THEN
+        -- A year lock: checked again now, then the books up to entry_date are locked; no journal
+        IF EXISTS (SELECT 1 FROM financial_year_locks WHERE society_id = v_p.society_id AND fy_end >= v_p.entry_date) THEN
+            RAISE EXCEPTION 'This year is already locked';
+        END IF;
+        SELECT count(*) INTO v_pending FROM adjustment_proposals
+        WHERE society_id = v_p.society_id AND status = 'pending' AND kind <> 'year_lock' AND entry_date <= v_p.entry_date;
+        IF v_pending > 0 THEN
+            RAISE EXCEPTION 'Decide the % pending adjustment(s) for this year first', v_pending;
+        END IF;
+        INSERT INTO financial_year_locks (society_id, fy_end, locked_by, note)
+        VALUES (v_p.society_id, v_p.entry_date, v_p.proposed_by, v_p.reason);
+        INSERT INTO audit_logs (society_id, user_id, action, entity_type, entity_id, new_value)
+        VALUES (v_p.society_id, auth.uid(), 'books.year_locked', 'society', v_p.society_id::text,
+                jsonb_build_object('fy_end', v_p.entry_date, 'note', v_p.reason, 'proposal', v_p.proposal_number));
+    ELSIF p_approve THEN
+        IF v_p.kind = 'capitalise' THEN
+            SELECT * INTO v_exp FROM expenses WHERE id = v_p.expense_id FOR UPDATE;
+            IF v_exp.status NOT IN ('approved', 'paid') OR v_exp.expense_type <> 'revenue' THEN
+                RAISE EXCEPTION 'The expense has changed since this proposal (now %) — ask for a new proposal', v_exp.status;
+            END IF;
+        END IF;
+        SELECT full_name INTO v_who FROM profiles WHERE id = v_p.proposed_by;
+        v_journal := post_journal(v_p.society_id, v_p.entry_date, 'adjustment.approved', v_p.id,
+                                  v_p.proposal_number || ' (' || coalesce(v_who, 'CA') || '): ' || v_p.reason, v_p.lines);
+        IF v_p.kind = 'capitalise' THEN
+            PERFORM set_config('sahvaas.expense_workflow', 'on', true);
+            UPDATE expenses SET expense_type = 'capital', asset_account_code = v_p.asset_account_code,
+                                updated_at = timezone('utc'::text, now())
+            WHERE id = v_exp.id;
+            PERFORM set_config('sahvaas.expense_workflow', 'off', true);
+            PERFORM create_asset_for_expense(v_exp.id);
+        END IF;
+    END IF;
+
+    UPDATE adjustment_proposals
+    SET status = CASE WHEN p_approve THEN 'approved' ELSE 'rejected' END,
+        decided_by = auth.uid(), decided_at = timezone('utc'::text, now()),
+        decision_note = nullif(trim(coalesce(p_note, '')), ''), journal_id = v_journal
+    WHERE id = p_proposal_id;
+
+    INSERT INTO audit_logs (society_id, user_id, action, entity_type, entity_id, new_value, reason)
+    VALUES (v_p.society_id, auth.uid(), CASE WHEN p_approve THEN 'adjustment.approved' ELSE 'adjustment.rejected' END,
+            'adjustment_proposal', p_proposal_id::text, jsonb_build_object('number', v_p.proposal_number, 'journal', v_journal),
+            nullif(trim(coalesce(p_note, '')), ''));
+    RETURN jsonb_build_object('status', CASE WHEN p_approve THEN 'approved' ELSE 'rejected' END, 'journal_id', v_journal);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- ============================================================================
 -- PRIVILEGES
 -- ============================================================================
 REVOKE ALL ON FUNCTION public.can_keep_books(UUID) FROM PUBLIC, anon, authenticated;

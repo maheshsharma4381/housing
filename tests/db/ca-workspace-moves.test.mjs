@@ -66,3 +66,30 @@ test('the CA matches bank lines but never verifies a payment', async () => {
   await assert.rejects(q(ids.resident, 'SELECT public.unlink_bank_line($1)', [charges]));
   assert.ok((await q(ids.ca, `SELECT id FROM bank_transactions WHERE bank_account_id=$1`, [bank])).length === 2, 'the CA reads the statement');
 });
+
+const locked = (s) => val(s.ca, 'SELECT public.books_locked_until($1)::text', [s.societyId]);
+
+test('a year lock is proposed, then a committee member approves it', async () => {
+  const p = await val(ids.ca, `SELECT public.lock_financial_year($1,'2026-03-31','Audited by Priya CA')`, [ids.societyId]);
+  assert.equal(p.status, 'pending');
+  assert.match(p.proposal_number, /^AP-\d{4}$/);
+  assert.equal(await locked(ids), null);
+  await assert.rejects(q(ids.ca, `SELECT public.lock_financial_year($1,'2026-03-31')`, [ids.societyId]), /already waiting for the committee/);
+  await q(ids.secretary, 'SELECT public.decide_adjustment($1,true)', [p.id]);
+  assert.equal(await locked(ids), '2026-03-31');
+  const row = (await db.query(`SELECT locked_by, note FROM financial_year_locks WHERE society_id=$1`, [ids.societyId])).rows[0];
+  assert.deepEqual([row.locked_by, row.note], [ids.ca, 'Audited by Priya CA']);
+  await assert.rejects(q(ids.ca, `SELECT public.lock_financial_year($1,'2026-03-31')`, [ids.societyId]), /already locked/);
+  await assert.rejects(q(ids.resident, `SELECT public.lock_financial_year($1,'2026-03-31')`, [ids.societyId]),
+    /Only the committee or the society's CA can propose a year lock/);
+});
+
+test('an adjustment raised after the lock was proposed blocks the approval', async () => {
+  const S = await makeSociety('lock2');
+  const lock = await val(S.secretary, `SELECT public.lock_financial_year($1,'2026-03-31')`, [S.societyId]);
+  await assert.rejects(q(S.secretary, 'SELECT public.decide_adjustment($1,true)', [lock.id]), /another committee member must decide/);
+  await q(S.ca, `SELECT public.propose_adjustment($1,'2026-03-15','Year-end provision',$2)`, [S.societyId,
+    JSON.stringify([{ code: '5300', amount: 1500 }, { code: '5900', amount: -1500 }])]);
+  await assert.rejects(q(S.treasurer, 'SELECT public.decide_adjustment($1,true)', [lock.id]), /Decide the 1 pending adjustment/);
+  assert.equal(await locked(S), null);
+});

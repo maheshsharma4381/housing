@@ -147,8 +147,9 @@ test('a locked audited year stops approval and nothing is half-posted', async ()
   const B = await makeSociety('b');
   await save(B, B.ca, { audited: AUDITED, catchup: CATCHUP, flats: [{ unit_id: B.u101, amount: 5000 }, { unit_id: B.u102, amount: -1500 }] });
   await submit(B, B.ca);
-  await q(B.secretary, `SELECT public.lock_financial_year($1,'2026-03-31')`, [B.societyId]);
-  await assert.rejects(decide(B, B.treasurer, true), /locked after audit/);
+  const lock = await val(B.secretary, `SELECT public.lock_financial_year($1,'2026-03-31')`, [B.societyId]); // 027: proposed…
+  await q(B.treasurer, 'SELECT public.decide_adjustment($1,true)', [lock.id]); // …and approved by another member
+  await assert.rejects(decide(B, B.secretary, true), /locked after audit/);
   assert.equal((await show(B, B.ca)).status, 'submitted');
   const n = await db.query(`SELECT (SELECT count(*) FROM journal_entries WHERE society_id=$1 AND reference_event_type LIKE 'opening.%')::int j,
     (SELECT count(*) FROM bills WHERE society_id=$1)::int b`, [B.societyId]);
