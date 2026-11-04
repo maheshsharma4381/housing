@@ -471,7 +471,8 @@ export interface Vendor {
 }
 
 export type TdsNature = 'none' | 'goods' | 'contract' | 'professional' | 'technical' | 'rent_building' | 'rent_machinery';
-export type AssetAccountCode = '1500' | '1510' | '1520' | '1530' | '1540' | '1550';
+/** Phase 2E: an asset type is any fixed-asset ledger code (the standard ones are 1500–1550) */
+export type AssetAccountCode = string;
 
 export interface ExpenseCategory {
   id: string;

@@ -4,7 +4,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase/client';
 import { formatINR } from '../lib/inr';
 import { downloadCsv, toCsv } from '../lib/csv-export';
-import { ASSET_TYPES, assetTypeLabel, fyEndFor, fyLabel } from '../lib/tds';
+import { assetTypeLabel, fyEndFor, fyLabel } from '../lib/tds';
+import { defaultBankId, fetchBankLedgers, type BankLedger } from '../lib/banks';
 import { Banner } from './Banner';
 import { EmptyState } from './EmptyState';
 import { AssetAccountCode, DepreciationPreviewRow, FixedAsset } from '../types/database';
@@ -12,13 +13,14 @@ import { Boxes, Download, Loader2, Plus } from 'lucide-react';
 
 interface AssetRegisterProps {
   societyId: string;
-  /** Committee can add, re-rate, dispose and post depreciation; CAs and committee viewers read only */
+  /** The committee, the CA or the Accountant can add, re-rate, dispose and post depreciation; viewers read only */
   canManage: boolean;
 }
 
 interface Run { fy_end: string; total: number; posted_at: string }
+interface AssetType { code: string; name: string; dep_rate: number }
 type RowEdit = { id: string; kind: 'rate'; rate: number; method: 'wdv' | 'slm'; reason: string }
-  | { id: string; kind: 'dispose'; date: string; amount: number; mode: 'bank' | 'cash'; reason: string };
+  | { id: string; kind: 'dispose'; date: string; amount: number; mode: 'bank' | 'cash'; bankId: string; reason: string };
 
 const today = () => new Date().toISOString().slice(0, 10);
 const emptyExisting = { name: '', code: '1500' as AssetAccountCode, purchased: '', cost: 0, wdv: 0, asOf: '', location: '' };
@@ -34,27 +36,39 @@ export const AssetRegister: React.FC<AssetRegisterProps> = ({ societyId, canMana
   const [busy, setBusy] = useState<string | null>(null);
   const [edit, setEdit] = useState<RowEdit | null>(null);
   const [existing, setExisting] = useState<typeof emptyExisting | null>(null);
+  const [assetTypes, setAssetTypes] = useState<AssetType[]>([]);
+  const [banks, setBanks] = useState<BankLedger[]>([]);
+  const [rateDrafts, setRateDrafts] = useState<Record<string, string>>({});
+  const [newType, setNewType] = useState({ name: '', rate: '10' });
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!supabase) return;
     setLoading(true);
-    const [aRes, pRes, rRes] = await Promise.all([
+    const [aRes, pRes, rRes, tRes, bankList] = await Promise.all([
       supabase.from('fixed_assets').select('*').eq('society_id', societyId).neq('status', 'voided').order('asset_number'),
       supabase.rpc('preview_depreciation', { p_society_id: societyId, p_fy_end: fyEnd }),
       supabase.from('depreciation_runs').select('fy_end, total, posted_at').eq('society_id', societyId).order('fy_end', { ascending: false }),
+      supabase.rpc('asset_ledgers', { p_society_id: societyId }),
+      canManage ? fetchBankLedgers(supabase, societyId).catch(() => [] as BankLedger[]) : Promise.resolve([] as BankLedger[]),
     ]);
+    setAssetTypes(((tRes.data ?? []) as AssetType[]).map(t => ({ ...t, dep_rate: Number(t.dep_rate) })));
+    setBanks(bankList);
+    setRateDrafts({});
     setLoading(false);
     if (aRes.error) return setError(aRes.error.message);
     setAssets((aRes.data ?? []) as FixedAsset[]);
     setPreview((pRes.data ?? []) as DepreciationPreviewRow[]);
     setRuns((rRes.data ?? []) as Run[]);
-  }, [societyId, fyEnd]);
+  }, [societyId, fyEnd, canManage]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  // An asset type is a fixed-asset ledger; older codes fall back to the standard names
+  const typeLabel = (code: string) => assetTypes.find(t => t.code === code)?.name ?? assetTypeLabel(code);
 
   const done = (msg: string) => {
     setError(null);
@@ -90,7 +104,7 @@ export const AssetRegister: React.FC<AssetRegisterProps> = ({ societyId, canMana
   const exportCsv = () => downloadCsv(`fixed-assets-${fyLabel(fyEnd).replace(' ', '-')}.csv`, toCsv(preview, [
     { header: 'Asset no.', value: p => p.asset_number },
     { header: 'Name', value: p => p.name },
-    { header: 'Type', value: p => assetTypeLabel(p.account_code) },
+    { header: 'Type', value: p => typeLabel(p.account_code) },
     { header: 'Put to use', value: p => p.put_to_use_date },
     { header: 'Opening WDV', value: p => p.opening_wdv },
     { header: 'Additions', value: p => p.additions },
@@ -143,7 +157,7 @@ export const AssetRegister: React.FC<AssetRegisterProps> = ({ societyId, canMana
                     <tr className="border-t border-slate-800">
                       <td className="p-2.5">
                         <span className="font-mono text-slate-500">{a.asset_number}</span> <span className="font-semibold text-white">{a.name}</span>
-                        <div className="text-slate-500">{assetTypeLabel(a.account_code)}{a.location ? ` · ${a.location}` : ''}{a.opening_as_of ? ' · brought in with opening balances' : ''}</div>
+                        <div className="text-slate-500">{typeLabel(a.account_code)}{a.location ? ` · ${a.location}` : ''}{a.opening_as_of ? ' · brought in with opening balances' : ''}</div>
                         {a.status === 'disposed' && <div className="text-rose-300">Disposed {a.disposed_on} for {formatINR(a.disposal_amount)}</div>}
                       </td>
                       <td className="p-2.5">{a.put_to_use_date}</td>
@@ -157,7 +171,7 @@ export const AssetRegister: React.FC<AssetRegisterProps> = ({ societyId, canMana
                           {a.status === 'active' && (
                             <>
                               <button onClick={() => setEdit({ id: a.id, kind: 'rate', rate: Number(a.dep_rate), method: a.dep_method, reason: '' })} className="text-sky-400 hover:underline cursor-pointer mr-2">Rate</button>
-                              <button onClick={() => setEdit({ id: a.id, kind: 'dispose', date: today(), amount: 0, mode: 'bank', reason: '' })} className="text-slate-400 hover:text-rose-300 cursor-pointer">Dispose</button>
+                              <button onClick={() => setEdit({ id: a.id, kind: 'dispose', date: today(), amount: 0, mode: 'bank', bankId: defaultBankId(banks, 'receipt') ?? '', reason: '' })} className="text-slate-400 hover:text-rose-300 cursor-pointer">Dispose</button>
                             </>
                           )}
                         </td>
@@ -186,8 +200,14 @@ export const AssetRegister: React.FC<AssetRegisterProps> = ({ societyId, canMana
                               <label className="space-y-1"><span className="text-slate-400">Money received in</span>
                                 <select value={edit.mode} onChange={e => setEdit({ ...edit, mode: e.target.value as 'bank' | 'cash' })} className={inputClass}>
                                   <option value="bank">Bank</option><option value="cash">Cash</option></select></label>
+                              {edit.mode === 'bank' && banks.length > 1 && (
+                                <label className="space-y-1 col-span-2"><span className="text-slate-400">Received in</span>
+                                  <select value={edit.bankId} onChange={e => setEdit({ ...edit, bankId: e.target.value })} className={inputClass}>
+                                    {banks.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                                  </select></label>
+                              )}
                               <input value={edit.reason} onChange={e => setEdit({ ...edit, reason: e.target.value })} placeholder="Reason (e.g. sold as scrap)" className={`col-span-2 ${inputClass}`} />
-                              <button onClick={() => rpc(a.id, 'dispose_asset', { p_asset_id: a.id, p_disposed_on: edit.date, p_sale_amount: edit.amount, p_mode: edit.mode, p_reason: edit.reason }, `${a.asset_number} disposed; gain or loss posted.`)}
+                              <button onClick={() => rpc(a.id, 'dispose_asset', { p_asset_id: a.id, p_disposed_on: edit.date, p_sale_amount: edit.amount, p_mode: edit.mode, p_reason: edit.reason, p_bank_ledger_id: edit.mode === 'bank' && edit.bankId ? edit.bankId : null }, `${a.asset_number} disposed; gain or loss posted.`)}
                                 disabled={busy !== null || !edit.reason.trim()} className="py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold cursor-pointer disabled:opacity-50">Dispose</button>
                             </div>
                           )}
@@ -223,6 +243,41 @@ export const AssetRegister: React.FC<AssetRegisterProps> = ({ societyId, canMana
         )}
       </div>
 
+      {canManage && (
+        <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
+          <div className="font-bold text-white">Asset types</div>
+          <p className="text-slate-400">Each asset type is a ledger under Fixed Assets. A new asset takes its type&apos;s rate; you can still change an asset&apos;s own rate.</p>
+          <table className="w-full">
+            <thead className="text-slate-500 text-left"><tr><th className="py-1">Type</th><th className="py-1 text-right">Depreciation (%)</th><th /></tr></thead>
+            <tbody className="divide-y divide-slate-800">
+              {assetTypes.map(t => (
+                <tr key={t.code}>
+                  <td className="py-1.5 text-slate-200">{t.name} <span className="text-slate-500">({t.code})</span></td>
+                  <td className="py-1.5 text-right">
+                    <input type="number" min={0} max={100} step="0.01" value={rateDrafts[t.code] ?? String(t.dep_rate)}
+                      onChange={e => setRateDrafts(d => ({ ...d, [t.code]: e.target.value }))} className={`w-24 text-right ${inputClass}`} />
+                  </td>
+                  <td className="py-1.5 text-right">
+                    {rateDrafts[t.code] !== undefined && Number(rateDrafts[t.code]) !== t.dep_rate && (
+                      <button onClick={() => rpc(`rate-${t.code}`, 'set_ledger_dep_rate', { p_society_id: societyId, p_code: t.code, p_rate: Number(rateDrafts[t.code]) }, `${t.name}: depreciation rate saved.`)}
+                        disabled={busy !== null} className="text-sky-400 hover:underline cursor-pointer disabled:opacity-50">Save</button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="flex flex-wrap items-center gap-2">
+            <input value={newType.name} onChange={e => setNewType({ ...newType, name: e.target.value })} placeholder="New asset type, e.g. Solar Panels" className={`flex-1 min-w-[200px] ${inputClass}`} />
+            <input type="number" min={0} max={100} step="0.01" value={newType.rate} onChange={e => setNewType({ ...newType, rate: e.target.value })} className={`w-24 text-right ${inputClass}`} />
+            <button onClick={async () => { await rpc('newtype', 'add_asset_ledger', { p_society_id: societyId, p_name: newType.name, p_rate: Number(newType.rate) }, `${newType.name} added as an asset type.`); setNewType({ name: '', rate: '10' }); }}
+              disabled={busy !== null || newType.name.trim().length < 2} className="flex items-center gap-1 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white cursor-pointer disabled:opacity-50">
+              <Plus className="w-3.5 h-3.5" /> Add asset type
+            </button>
+          </div>
+        </div>
+      )}
+
       {canManage && (existing ? (
         <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
           <div className="font-bold text-white">Add an asset the society already owns</div>
@@ -230,7 +285,7 @@ export const AssetRegister: React.FC<AssetRegisterProps> = ({ societyId, canMana
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <input value={existing.name} onChange={e => setExisting({ ...existing, name: e.target.value })} placeholder="e.g. Diesel generator 62.5 kVA" className={`col-span-2 ${inputClass}`} />
             <select value={existing.code} onChange={e => setExisting({ ...existing, code: e.target.value as AssetAccountCode })} className={`col-span-2 ${inputClass}`}>
-              {ASSET_TYPES.map(t => <option key={t.code} value={t.code}>{t.label} ({t.rate}%)</option>)}
+              {assetTypes.map(t => <option key={t.code} value={t.code}>{t.name} ({t.dep_rate}%)</option>)}
             </select>
             <label className="space-y-1"><span className="text-slate-400">Bought on</span>
               <input type="date" value={existing.purchased} onChange={e => setExisting({ ...existing, purchased: e.target.value })} className={inputClass} /></label>

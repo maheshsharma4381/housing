@@ -3,7 +3,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase/client';
 import { formatINR } from '../lib/inr';
-import { ASSET_TYPES } from '../lib/tds';
 import { Banner } from './Banner';
 import { EmptyState } from './EmptyState';
 import { CheckCircle2, Loader2, Plus, Scale, Trash2, XCircle } from 'lucide-react';
@@ -52,7 +51,9 @@ export const AdjustmentsPanel: React.FC<AdjustmentsPanelProps> = ({ societyId, c
   const [date, setDate] = useState(today());
   const [reason, setReason] = useState('');
   const [lines, setLines] = useState([emptyLine(), emptyLine()]);
-  const [cap, setCap] = useState({ expenseId: '', asset: '1500' });
+  const [cap, setCap] = useState({ expenseId: '', asset: '' });
+  // Asset types are the society's fixed-asset ledgers (028)
+  const [assetTypes, setAssetTypes] = useState<{ code: string; name: string }[]>([]);
   const [deciding, setDeciding] = useState<{ id: string; note: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -60,13 +61,14 @@ export const AdjustmentsPanel: React.FC<AdjustmentsPanelProps> = ({ societyId, c
 
   const load = useCallback(async () => {
     if (!supabase) return;
-    const [pRes, aRes, eRes] = await Promise.all([
+    const [pRes, aRes, eRes, tRes] = await Promise.all([
       supabase.from('adjustment_proposals').select('*, proposer:proposed_by (full_name), decider:decided_by (full_name)')
         .eq('society_id', societyId).order('proposed_at', { ascending: false }).limit(200),
       supabase.rpc('chart_of_accounts', { p_society_id: societyId }),
       supabase.from('expenses').select('id, expense_number, title, subtotal, gst_amount, gst_claimable, invoice_date')
         .eq('society_id', societyId).eq('expense_type', 'revenue').in('status', ['approved', 'paid'])
         .order('created_at', { ascending: false }).limit(300),
+      supabase.rpc('asset_ledgers', { p_society_id: societyId }),
     ]);
     if (pRes.error) setError(pRes.error.message);
     setProposals((pRes.data ?? []) as unknown as Proposal[]);
@@ -74,6 +76,9 @@ export const AdjustmentsPanel: React.FC<AdjustmentsPanelProps> = ({ societyId, c
     const ledgers = ((aRes.data as { ledgers?: ChartLedgerRow[] } | null)?.ledgers ?? []);
     setAccounts(ledgers.map(l => ({ code: l.code, name: l.name, type: l.nature, is_active: l.is_active, adjustable: l.adjustable })));
     setExpenses((eRes.data ?? []) as RevenueExpense[]);
+    const types = (tRes.data ?? []) as { code: string; name: string }[];
+    setAssetTypes(types);
+    setCap(c => (c.asset ? c : { ...c, asset: types[0]?.code ?? '' }));
   }, [societyId]);
 
   useEffect(() => {
@@ -109,7 +114,7 @@ export const AdjustmentsPanel: React.FC<AdjustmentsPanelProps> = ({ societyId, c
     if (rpcErr) return setError(rpcErr.message);
     setReason('');
     setLines([emptyLine(), emptyLine()]);
-    setCap({ expenseId: '', asset: '1500' });
+    setCap({ expenseId: '', asset: assetTypes[0]?.code ?? '' });
     done(`${(data as { proposal_number: string }).proposal_number} sent to the committee. Nothing is posted until they approve.`);
   };
 
@@ -183,7 +188,7 @@ export const AdjustmentsPanel: React.FC<AdjustmentsPanelProps> = ({ societyId, c
                 {expenses.map(e => <option key={e.id} value={e.id}>{e.expense_number} · {e.title} · {formatINR(Number(e.subtotal) + Number(e.gst_amount))}</option>)}
               </select>
               <select value={cap.asset} onChange={e => setCap({ ...cap, asset: e.target.value })} className={inputClass}>
-                {ASSET_TYPES.map(a => <option key={a.code} value={a.code}>{a.label}</option>)}
+                {assetTypes.map(a => <option key={a.code} value={a.code}>{a.name}</option>)}
               </select>
               {capExpense && <div className="sm:col-span-3 text-violet-200">Dr {nameOf.get(cap.asset)} {formatINR(capAmount)} · Cr the expense head · surplus +{formatINR(capAmount)} · on approval the bill joins the asset register.</div>}
             </div>
