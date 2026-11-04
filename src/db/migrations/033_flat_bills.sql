@@ -260,7 +260,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
--- from 031_joining_link.sql; + the joining owner takes the flat's unclaimed bills
+-- from 032_mobile_login.sql; + the joining owner takes the flat's unclaimed bills
 CREATE OR REPLACE FUNCTION public.attach_flat_owner(p_society_id UUID, p_unit_id UUID, p_uid UUID, p_invite_id UUID DEFAULT NULL)
 RETURNS VOID AS $$
 DECLARE
@@ -268,6 +268,10 @@ DECLARE
     v_claimed INT;
     v_due NUMERIC;
 BEGIN
+    -- A mobile login starts as "Member": take the name the committee typed for the flat (032)
+    UPDATE profiles p SET full_name = c.owner_name, updated_at = timezone('utc'::text, now())
+    FROM unit_owner_contacts c
+    WHERE p.id = p_uid AND p.full_name = 'Member' AND c.unit_id = p_unit_id AND nullif(trim(c.owner_name), '') IS NOT NULL;
     UPDATE units SET current_owner_id = p_uid, updated_at = timezone('utc'::text, now()) WHERE id = p_unit_id;
     -- An owner change waiting on this flat is completed by whoever joins as its owner
     UPDATE unit_ownerships o
@@ -285,7 +289,7 @@ BEGIN
         WHERE unit_id = p_unit_id AND created_at >= v_waiting_since AND user_id IS DISTINCT FROM p_uid;
     ELSIF NOT EXISTS (SELECT 1 FROM unit_ownerships WHERE unit_id = p_unit_id AND to_date IS NULL) THEN
         INSERT INTO unit_ownerships (society_id, unit_id, owner_user_id, owner_name, owner_email, owner_mobile, from_date)
-        SELECT p_society_id, p_unit_id, p_uid, coalesce(p.full_name, c.owner_name, p.email, 'Owner'), p.email, c.owner_mobile, current_date
+        SELECT p_society_id, p_unit_id, p_uid, coalesce(nullif(p.full_name, 'Member'), c.owner_name, p.email, 'Owner'), p.email, c.owner_mobile, current_date
         FROM units u LEFT JOIN profiles p ON p.id = p_uid LEFT JOIN unit_owner_contacts c ON c.unit_id = u.id
         WHERE u.id = p_unit_id;
     END IF;
