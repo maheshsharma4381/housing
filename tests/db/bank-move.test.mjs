@@ -119,3 +119,60 @@ test('approval re-checks the entry: matched after the proposal, nothing moves', 
   assert.equal((await db.query(`SELECT count(*)::int n FROM journal_entries WHERE reference_event_id=$1`, [p.id])).rows[0].n, 0);
   assert.equal((await db.query('SELECT bank_ledger_id FROM payments WHERE id=$1', [ids.pay2])).rows[0].bank_ledger_id, await ledgerId('1000'));
 });
+
+/** Import one credit line into a statement account and make sure it is linked to `payment` (auto-match or by hand). */
+async function matchOn(account, utr, amount, payment) {
+  const today = (await db.query('SELECT current_date::text AS d')).rows[0].d;
+  await val(ids.secretary, `SELECT public.import_bank_statement($1,'stmt.csv','hdfc',$2)`,
+    [account, JSON.stringify([{ date: today, description: `UPI/${utr}/moved`, credit: amount, debit: 0 }])]);
+  const line = (await db.query(`SELECT id, reconciled_payment_id FROM bank_transactions WHERE bank_account_id=$1 AND description LIKE $2`,
+    [account, `%${utr}/moved%`])).rows[0];
+  if (line.reconciled_payment_id !== payment) await q(ids.secretary, 'SELECT public.link_bank_line($1,$2,$3)', [line.id, 'payment', payment]);
+  return (await db.query('SELECT reconciled_payment_id FROM bank_transactions WHERE id=$1', [line.id])).rows[0].reconciled_payment_id;
+}
+
+test("a moved receipt is matched on its new bank's statement, not the old one", async () => {
+  // ids.pay moved to HDFC Savings in the first test
+  await assert.rejects(matchOn(ids.stmt1000, '412345678901', 4170, ids.pay), /is in HDFC Savings in the books/);
+  const stmtHdfc = await val(ids.secretary, `INSERT INTO bank_accounts (society_id, bank_name, account_number, ifsc_code, branch_name, is_primary, ledger_id)
+    VALUES ($1,'HDFC','20000000002','HDFC0000001','Baner',false,$2) RETURNING id`, [ids.societyId, ids.hdfcId]);
+  assert.equal(await matchOn(stmtHdfc, '412345678901', 4170, ids.pay), ids.pay);
+});
+
+test('a vendor payment voided after the move was proposed is not moved', async () => {
+  const vendor = (await db.query(`SELECT id FROM vendors WHERE society_id=$1 LIMIT 1`, [ids.societyId])).rows[0].id;
+  const bill = await val(ids.treasurer, `INSERT INTO expenses (society_id, vendor_id, category, title, subtotal, tds_amount, invoice_number, invoice_date)
+    VALUES ($1,$2,'repairs','Tap repair',2000,0,'PR-2',current_date) RETURNING id`, [ids.societyId, vendor]);
+  await q(ids.secretary, 'SELECT public.decide_expense($1, true)', [bill]);
+  await q(ids.treasurer, `SELECT public.record_vendor_payment($1,2000,0,'neft','UTR-V2',current_date)`, [bill]);
+  const vp = (await db.query('SELECT id FROM vendor_payments WHERE expense_id=$1', [bill])).rows[0].id;
+  const p = await val(ids.ca, `SELECT public.propose_bank_move($1,'vendor_payment',$2,$3,'Paid from HDFC')`, [ids.societyId, vp, ids.hdfcId]);
+  await q(ids.secretary, `SELECT public.void_expense($1,'Wrong vendor')`, [bill]);
+  await assert.rejects(q(ids.secretary, 'SELECT public.decide_adjustment($1,true)', [p.id]), /changed since the proposal/);
+  assert.equal((await db.query(`SELECT count(*)::int n FROM journal_entries WHERE reference_event_id=$1`, [p.id])).rows[0].n, 0);
+});
+
+test('a TDS challan moves out of the old bank', async () => {
+  // TDS of 800 deducted on a vendor payment is waiting to be deposited
+  const vendor = (await db.query(`SELECT id FROM vendors WHERE society_id=$1 LIMIT 1`, [ids.societyId])).rows[0].id;
+  const bill = await val(ids.treasurer, `INSERT INTO expenses (society_id, vendor_id, category, title, subtotal, tds_amount, invoice_number, invoice_date)
+    VALUES ($1,$2,'repairs','Tank cleaning',40000,800,'PR-3',current_date) RETURNING id`, [ids.societyId, vendor]);
+  await q(ids.secretary, 'SELECT public.decide_expense($1, true)', [bill]);
+  await q(ids.treasurer, `SELECT public.record_vendor_payment($1,39200,800,'neft','UTR-V3',current_date)`, [bill]);
+  await q(ids.treasurer, `SELECT public.record_tds_challan($1,'CH-1',800,current_date,date_trunc('month', current_date)::date,'194C')`, [ids.societyId]);
+  const ch = (await db.query(`SELECT id FROM tds_challans WHERE society_id=$1 AND challan_number='CH-1'`, [ids.societyId])).rows[0].id;
+  const p = await val(ids.ca, `SELECT public.propose_bank_move($1,'tds_challan',$2,$3,'Paid from HDFC per challan')`, [ids.societyId, ch, ids.hdfcId]);
+  const row = (await db.query('SELECT lines FROM adjustment_proposals WHERE id=$1', [p.id])).rows[0];
+  assert.deepEqual(Object.fromEntries(row.lines.map((l) => [l.code, Number(l.amount)])), { 1000: 800, [ids.hdfc]: -800 });
+  await q(ids.treasurer, 'SELECT public.decide_adjustment($1,true)', [p.id]);
+  assert.equal((await db.query('SELECT bank_ledger_id FROM tds_challans WHERE id=$1', [ch])).rows[0].bank_ledger_id, ids.hdfcId);
+});
+
+test('an entry dated in a locked year cannot be moved', async () => {
+  const old = await val(ids.resident, `INSERT INTO payments (society_id, unit_id, user_id, payment_number, amount, transaction_reference_utr, payment_method, payment_date, status)
+    VALUES ($1,$2,$3,'PAY-OLD',1000,'412345678999','upi','2026-03-15','pending_verification') RETURNING id`, [ids.societyId, ids.unit, ids.resident]);
+  await q(ids.treasurer, 'SELECT public.verify_payment($1, true)', [old]);
+  const lock = await val(ids.ca, `SELECT public.lock_financial_year($1,'2026-03-31','Audited')`, [ids.societyId]);
+  await q(ids.secretary, 'SELECT public.decide_adjustment($1,true)', [lock.id]);
+  await assert.rejects(q(ids.ca, `SELECT public.propose_bank_move($1,'payment',$2,$3,'Into HDFC')`, [ids.societyId, old, ids.hdfcId]), /locked after audit/);
+});

@@ -4,7 +4,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../../lib/supabase/client';
 import { formatINR } from '../../../lib/inr';
 import { deleteSocietyFile, uploadSocietyFile } from '../../../lib/storage';
-import { ASSET_TYPES, explainTds, suggestsAsset, vendorPan, panEntity } from '../../../lib/tds';
+import { explainTds, suggestsAsset, vendorPan, panEntity } from '../../../lib/tds';
+import { assetTypeOptions, type AssetTypeRow } from '../../../lib/asset-types';
 import type { ExtractedInvoice } from '../../../lib/invoice-extract';
 import { AssetAccountCode, BillType, TdsSuggestion, Vendor } from '../../../types/database';
 import { Banner } from '../../../components/Banner';
@@ -44,6 +45,13 @@ const Tag: React.FC<{ source?: Source }> = ({ source }) =>
   source ? <span className={`ml-1 px-1.5 py-px rounded-full text-[9px] font-bold uppercase ${SOURCE_STYLE[source]}`}>{source}</span> : null;
 
 export const ExpenseBillForm: React.FC<ExpenseBillFormProps> = ({ societyId, vendors, categories, requiredApprovals, onVendorsChanged, onCreated }) => {
+  // Asset types are the society's fixed-asset ledgers with their own rates (028)
+  const [assetRows, setAssetRows] = useState<AssetTypeRow[]>([]);
+  useEffect(() => {
+    if (!supabase) return;
+    supabase.rpc('asset_ledgers', { p_society_id: societyId }).then(({ data }) => setAssetRows((data ?? []) as AssetTypeRow[]));
+  }, [societyId]);
+  const assetOptions = assetTypeOptions(assetRows);
   const [mode, setMode] = useState<Mode>('invoice');
   const [form, setForm] = useState(emptyForm);
   const [sources, setSources] = useState<Partial<Record<Field, Source>>>({});
@@ -372,7 +380,7 @@ export const ExpenseBillForm: React.FC<ExpenseBillFormProps> = ({ societyId, ven
             {([['revenue', 'Regular expense', 'Security, cleaning, repairs, AMC — goes to Income & Expenditure'],
                ['capital', 'New asset', 'Lasts years — goes to the Balance Sheet, depreciated yearly']] as const).map(([value, label, hint]) => (
               <button key={value} type="button" role="radio" aria-checked={form.expenseType === value}
-                onClick={() => { set('expenseType', value, 'type'); if (value === 'capital' && !form.assetCode) set('assetCode', category?.asset_account_code ?? '1500', 'assetCode'); }}
+                onClick={() => { set('expenseType', value, 'type'); if (value === 'capital' && !form.assetCode) set('assetCode', category?.asset_account_code ?? assetOptions[0]?.code ?? '', 'assetCode'); }}
                 className={`p-3 rounded-xl text-left cursor-pointer border ${form.expenseType === value ? 'border-sky-500 bg-sky-950 text-white' : 'border-slate-800 bg-slate-950 text-slate-300'}`}>
                 <div className="font-bold">{label}{form.expenseType === value ? ' ✓' : ''}</div>
                 <div className="text-slate-400">{hint}</div>
@@ -388,7 +396,7 @@ export const ExpenseBillForm: React.FC<ExpenseBillFormProps> = ({ societyId, ven
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <label className={labelClass}><span className="text-slate-400">Asset type<Tag source={sources.assetCode} /></span>
                 <select value={form.assetCode} onChange={e => set('assetCode', e.target.value as AssetAccountCode, 'assetCode')} className={inputClass}>
-                  {ASSET_TYPES.map(a => <option key={a.code} value={a.code}>{a.label} ({a.rate}%)</option>)}
+                  {assetOptions.map(a => <option key={a.code} value={a.code}>{a.label} ({a.rate}%)</option>)}
                 </select></label>
               <label className={labelClass}><span className="text-slate-400">Paid from</span>
                 <select value={form.fundedFrom} onChange={e => set('fundedFrom', e.target.value as typeof form.fundedFrom)} className={inputClass}>
