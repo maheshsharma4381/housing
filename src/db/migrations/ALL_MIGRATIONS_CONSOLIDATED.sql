@@ -11238,8 +11238,309 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- ============================================================================
+-- 5. A LEDGER LINE CAN NAME ITS FLAT OR VENDOR
+--    Used by the opening party journal; party_entries prefers it.
+-- ============================================================================
+ALTER TABLE ledger_entries ADD COLUMN IF NOT EXISTS party_key TEXT;
+
+-- from 020_ledger_management.sql; + a line's "party" is kept in ledger_entries.party_key
+CREATE OR REPLACE FUNCTION public.post_journal(
+    p_society_id UUID,
+    p_entry_date DATE,
+    p_event_type TEXT,
+    p_event_id UUID,
+    p_narration TEXT,
+    p_lines JSONB
+)
+RETURNS UUID AS $$
+DECLARE
+    v_journal_id UUID;
+    v_line JSONB;
+    v_amount NUMERIC;
+    v_sum NUMERIC := 0;
+    v_count INT := 0;
+    v_account_id UUID;
+    v_active BOOLEAN;
+    v_prev NUMERIC;
+    v_next INT;
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM journal_entries
+        WHERE society_id = p_society_id AND reference_event_type = p_event_type AND reference_event_id = p_event_id
+    ) THEN
+        RETURN NULL; -- already posted
+    END IF;
+
+    FOR v_line IN SELECT * FROM jsonb_array_elements(p_lines) LOOP
+        v_amount := round(coalesce((v_line ->> 'amount')::NUMERIC, 0), 2);
+        IF v_amount <> 0 THEN
+            v_sum := v_sum + v_amount;
+            v_count := v_count + 1;
+        END IF;
+    END LOOP;
+
+    IF v_count = 0 THEN
+        RETURN NULL; -- nothing to post (zero-value event)
+    END IF;
+    IF v_sum <> 0 THEN
+        RAISE EXCEPTION 'Unbalanced journal for % %: debits and credits differ by %', p_event_type, p_event_id, v_sum;
+    END IF;
+
+    -- Serialize journal numbering per society
+    PERFORM 1 FROM societies WHERE id = p_society_id FOR UPDATE;
+    SELECT count(*) + 1 INTO v_next FROM journal_entries WHERE society_id = p_society_id;
+
+    INSERT INTO journal_entries (society_id, entry_number, entry_date, reference_event_type, reference_event_id, narration, is_posted)
+    VALUES (p_society_id, 'JV-' || lpad(v_next::text, 6, '0'), p_entry_date, p_event_type, p_event_id, p_narration, true)
+    RETURNING id INTO v_journal_id;
+
+    FOR v_line IN SELECT * FROM jsonb_array_elements(p_lines) LOOP
+        v_amount := round(coalesce((v_line ->> 'amount')::NUMERIC, 0), 2);
+        CONTINUE WHEN v_amount = 0;
+
+        v_account_id := NULL;
+        SELECT id, is_active INTO v_account_id, v_active FROM accounts WHERE society_id = p_society_id AND code = v_line ->> 'code';
+        IF v_account_id IS NULL THEN
+            RAISE EXCEPTION 'Account % is missing for society %', v_line ->> 'code', p_society_id;
+        END IF;
+        IF NOT v_active THEN
+            RAISE EXCEPTION 'Ledger % is inactive', v_line ->> 'code';
+        END IF;
+
+        SELECT coalesce(sum(amount), 0) INTO v_prev FROM ledger_entries WHERE account_id = v_account_id;
+
+        INSERT INTO ledger_entries (society_id, account_id, journal_entry_id, date, amount, balance_after, narration, party_key)
+        VALUES (p_society_id, v_account_id, v_journal_id, p_entry_date, v_amount, v_prev + v_amount,
+                coalesce(v_line ->> 'narration', p_narration), nullif(v_line ->> 'party', ''));
+    END LOOP;
+
+    RETURN v_journal_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- from 025_party_ledgers.sql; + a line's party_key wins; opening lines without one stay "Not linked"
+-- (the opening split now comes from the tagged opening.parties journal)
+CREATE OR REPLACE FUNCTION public.party_entries(p_society_id UUID)
+RETURNS TABLE (kind TEXT, party_key TEXT, ledger_entry_id UUID, code TEXT, entry_date DATE,
+               entry_number TEXT, narration TEXT, amount NUMERIC) AS $$
+    WITH lines AS (
+        SELECT l.id, l.amount, l.date, a.code::text AS code, j.entry_number::text AS entry_number,
+               coalesce(l.narration, j.narration)::text AS narration,
+               j.reference_event_type AS ev, j.reference_event_id AS ref, l.party_key AS party
+        FROM ledger_entries l
+        JOIN accounts a ON a.id = l.account_id
+        JOIN journal_entries j ON j.id = l.journal_entry_id
+        WHERE l.society_id = p_society_id AND a.code IN ('1200', '2300', '2000')
+    )
+    -- Flats: bills, late fees, cancellations, advances applied, payments, opening lines
+    SELECT 'flat'::text,
+           coalesce(x.party, CASE
+               WHEN x.ev IN ('bill.issued', 'bill.cancelled', 'bill.late_fee', 'bill.late_fee_cancelled', 'advance.applied')
+                   THEN (SELECT b.unit_id::text FROM bills b WHERE b.id = x.ref AND b.society_id = p_society_id)
+               WHEN x.ev = 'payment.verified'
+                   THEN (SELECT p.unit_id::text FROM payments p WHERE p.id = x.ref AND p.society_id = p_society_id)
+           END, 'unlinked'),
+           x.id, x.code, x.date, x.entry_number, x.narration, x.amount
+    FROM lines x
+    WHERE x.code IN ('1200', '2300')
+    UNION ALL
+    -- Vendors: bills (and their voids), payments (and their voids), opening lines
+    SELECT 'vendor',
+           coalesce(x.party, CASE
+               WHEN x.ev IN ('expense.approved', 'expense.voided', 'expense.paid')
+                   THEN (SELECT coalesce(e.vendor_id::text, 'payee') FROM expenses e WHERE e.id = x.ref AND e.society_id = p_society_id)
+               WHEN x.ev IN ('vendor_payment.recorded', 'vendor_payment.voided')
+                   THEN (SELECT coalesce(e.vendor_id::text, 'payee') FROM vendor_payments vp JOIN expenses e ON e.id = vp.expense_id
+                         WHERE vp.id = x.ref AND vp.society_id = p_society_id)
+           END, 'unlinked'),
+           x.id, x.code, x.date, x.entry_number, x.narration, x.amount
+    FROM lines x
+    WHERE x.code = '2000'
+$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
+
+-- from 014_ca_workspace.sql; + the opening catch-up, party and advance entries are manual too
+CREATE OR REPLACE FUNCTION public.trg_journal_respect_lock()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_lock DATE := books_locked_until(NEW.society_id);
+BEGIN
+    IF v_lock IS NOT NULL AND NEW.entry_date <= v_lock THEN
+        IF NEW.reference_event_type IN ('adjustment.approved', 'opening.balance', 'opening.catchup', 'opening.parties',
+                                        'opening_advance.applied', 'depreciation.run') THEN
+            RAISE EXCEPTION 'The books up to % are locked after audit — date this entry on or after %',
+                to_char(v_lock, 'DD Mon YYYY'), to_char(v_lock + 1, 'DD Mon YYYY');
+        END IF;
+        NEW.narration := NEW.narration || ' [dated ' || to_char(NEW.entry_date, 'DD-Mon-YYYY') || '; that year is locked]';
+        NEW.entry_date := v_lock + 1;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- from 010_launch.sql; retired: the committee no longer posts opening balances
+CREATE OR REPLACE FUNCTION public.post_opening_balances(
+    p_society_id UUID,
+    p_as_of DATE,
+    p_accounts JSONB,
+    p_member_dues JSONB DEFAULT '[]'::jsonb
+)
+RETURNS JSONB AS $$
+BEGIN
+    RAISE EXCEPTION 'Opening balances are now entered by the society''s CA under Opening Balance in the CA login';
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- ============================================================================
+-- 6. THE COMMITTEE DECIDES; APPROVAL POSTS THE BOOKS
+--    opening.balance  audited sheet, dated the 31 March
+--    opening.catchup  the months up to go-live, dated go-live
+--    opening.parties  go-live dues / advances / payables moved onto flats and vendors
+-- ============================================================================
+CREATE OR REPLACE FUNCTION public.decide_opening_balance(p_society_id UUID, p_approve BOOLEAN, p_note TEXT DEFAULT NULL)
+RETURNS JSONB AS $$
+DECLARE
+    v_ob opening_balances%ROWTYPE;
+    v_problem TEXT;
+    v_line RECORD;
+    v_cycle UUID;
+    v_bill UUID;
+    v_seq INT := 0;
+    v_dues NUMERIC := 0;
+    v_advance NUMERIC := 0;
+    v_payable NUMERIC := 0;
+    v_tagged JSONB := '[]'::jsonb;
+    v_lines JSONB := '[]'::jsonb;
+BEGIN
+    IF NOT (is_platform_admin() OR is_society_admin(p_society_id)) THEN
+        RAISE EXCEPTION 'Only the society committee can approve the opening balance';
+    END IF;
+    SELECT * INTO v_ob FROM opening_balances WHERE society_id = p_society_id FOR UPDATE;
+    IF NOT FOUND OR v_ob.status <> 'submitted' THEN
+        RAISE EXCEPTION 'There is no opening balance waiting for approval';
+    END IF;
+    IF v_ob.submitted_by = auth.uid() THEN
+        RAISE EXCEPTION 'You submitted this opening balance; another committee member must approve it';
+    END IF;
+
+    IF NOT p_approve THEN
+        IF length(trim(coalesce(p_note, ''))) = 0 THEN
+            RAISE EXCEPTION 'Give a reason for rejecting';
+        END IF;
+        UPDATE opening_balances
+        SET status = 'draft', decision_note = trim(p_note), decided_by = auth.uid(),
+            decided_at = timezone('utc'::text, now()), updated_at = timezone('utc'::text, now())
+        WHERE society_id = p_society_id;
+        INSERT INTO audit_logs (society_id, user_id, action, entity_type, entity_id, new_value, reason)
+        VALUES (p_society_id, auth.uid(), 'opening_balance.rejected', 'opening_balance', p_society_id::text, '{}'::jsonb, trim(p_note));
+        RETURN jsonb_build_object('status', 'rejected');
+    END IF;
+
+    v_problem := opening_balance_problem(p_society_id);
+    IF v_problem IS NOT NULL THEN
+        RAISE EXCEPTION '%', v_problem;
+    END IF;
+
+    -- 1. The audited balance sheet, exactly as entered
+    PERFORM post_journal(p_society_id, v_ob.audited_as_of, 'opening.balance', p_society_id,
+        'Opening balances as on ' || to_char(v_ob.audited_as_of, 'DD-Mon-YYYY') || ' (audited balance sheet)',
+        (SELECT coalesce(jsonb_agg(jsonb_build_object('code', x ->> 'code', 'amount', (x ->> 'amount')::numeric)), '[]'::jsonb)
+         FROM jsonb_array_elements(v_ob.audited_lines) x));
+
+    -- 2. The catch-up entry
+    IF jsonb_array_length(v_ob.catchup_lines) > 0 THEN
+        PERFORM post_journal(p_society_id, v_ob.live_on, 'opening.catchup', p_society_id,
+            'Catch-up entry from ' || to_char(v_ob.audited_as_of + 1, 'DD-Mon-YYYY') || ' to ' || to_char(v_ob.live_on - 1, 'DD-Mon-YYYY'),
+            v_ob.catchup_lines);
+    END IF;
+
+    -- 3. Flat-wise dues become opening bills the owners can pay (they post nothing themselves)
+    FOR v_line IN
+        SELECT u.id AS unit_id, (x ->> 'amount')::numeric AS amount
+        FROM jsonb_array_elements(v_ob.flat_lines) x
+        JOIN units u ON u.id::text = x ->> 'unit_id'
+        JOIN wings w ON w.id = u.wing_id
+        WHERE (x ->> 'amount')::numeric > 0
+        ORDER BY w.name, u.unit_number
+    LOOP
+        IF v_cycle IS NULL THEN
+            INSERT INTO billing_cycles (society_id, cycle_name, period_start, period_end, due_date, status)
+            VALUES (p_society_id, 'Opening balance (dues)', v_ob.live_on, v_ob.live_on, v_ob.live_on, 'published')
+            RETURNING id INTO v_cycle;
+        END IF;
+        v_seq := v_seq + 1;
+        INSERT INTO bills (society_id, cycle_id, unit_id, user_id, bill_number, bill_date, due_date,
+                           subtotal_amount, total_amount, amount_paid, balance_due, status, is_opening_balance)
+        VALUES (p_society_id, v_cycle, v_line.unit_id, opening_unit_owner(v_line.unit_id), 'OB-' || lpad(v_seq::text, 4, '0'),
+                v_ob.live_on, v_ob.live_on, v_line.amount, v_line.amount, 0, v_line.amount, 'issued', true)
+        RETURNING id INTO v_bill;
+        INSERT INTO bill_items (bill_id, description, quantity, unit_rate, amount, total_item_amount)
+        VALUES (v_bill, 'Opening balance (dues as on ' || to_char(v_ob.live_on, 'DD-Mon-YYYY') || ')', 1,
+                v_line.amount, v_line.amount, v_line.amount);
+        v_dues := v_dues + v_line.amount;
+        v_tagged := v_tagged || jsonb_build_object('code', '1200', 'amount', v_line.amount, 'party', v_line.unit_id::text,
+            'narration', 'Opening dues — ' || party_name(p_society_id, 'flat', v_line.unit_id::text));
+    END LOOP;
+
+    -- 4. Flat-wise advances
+    FOR v_line IN
+        SELECT u.id AS unit_id, -(x ->> 'amount')::numeric AS amount
+        FROM jsonb_array_elements(v_ob.flat_lines) x
+        JOIN units u ON u.id::text = x ->> 'unit_id'
+        JOIN wings w ON w.id = u.wing_id
+        WHERE (x ->> 'amount')::numeric < 0
+        ORDER BY w.name, u.unit_number
+    LOOP
+        v_advance := v_advance + v_line.amount;
+        v_tagged := v_tagged || jsonb_build_object('code', '2300', 'amount', -v_line.amount, 'party', v_line.unit_id::text,
+            'narration', 'Opening advance — ' || party_name(p_society_id, 'flat', v_line.unit_id::text));
+    END LOOP;
+
+    -- 5. Vendor-wise payables
+    FOR v_line IN
+        SELECT v.id AS vendor_id, (x ->> 'amount')::numeric AS amount
+        FROM jsonb_array_elements(v_ob.vendor_lines) x
+        JOIN vendors v ON v.id::text = x ->> 'vendor_id'
+        ORDER BY v.name
+    LOOP
+        v_payable := v_payable + v_line.amount;
+        v_tagged := v_tagged || jsonb_build_object('code', '2000', 'amount', -v_line.amount, 'party', v_line.vendor_id::text,
+            'narration', 'Opening payable — ' || party_name(p_society_id, 'vendor', v_line.vendor_id::text));
+    END LOOP;
+
+    -- 6. Move those amounts from the control ledgers onto each flat and vendor
+    IF v_dues <> 0 THEN
+        v_lines := v_lines || jsonb_build_object('code', '1200', 'amount', -v_dues, 'narration', 'Members'' dues moved to flats');
+    END IF;
+    IF v_advance <> 0 THEN
+        v_lines := v_lines || jsonb_build_object('code', '2300', 'amount', v_advance, 'narration', 'Advances moved to flats');
+    END IF;
+    IF v_payable <> 0 THEN
+        v_lines := v_lines || jsonb_build_object('code', '2000', 'amount', v_payable, 'narration', 'Sundry Creditors moved to vendors');
+    END IF;
+    PERFORM post_journal(p_society_id, v_ob.live_on, 'opening.parties', p_society_id,
+        'Opening dues, advances and payables by flat and vendor as on ' || to_char(v_ob.live_on, 'DD-Mon-YYYY'),
+        v_lines || v_tagged);
+
+    UPDATE opening_balances
+    SET status = 'approved', decided_by = auth.uid(), decided_at = timezone('utc'::text, now()),
+        updated_at = timezone('utc'::text, now())
+    WHERE society_id = p_society_id;
+    INSERT INTO audit_logs (society_id, user_id, action, entity_type, entity_id, new_value)
+    VALUES (p_society_id, auth.uid(), 'opening_balance.approved', 'opening_balance', p_society_id::text,
+            jsonb_build_object('audited_as_of', v_ob.audited_as_of, 'live_on', v_ob.live_on, 'opening_bills', v_seq,
+                               'dues', v_dues, 'advances', v_advance, 'payables', v_payable));
+    RETURN jsonb_build_object('status', 'approved', 'opening_bills', v_seq);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- ============================================================================
 -- PRIVILEGES
 -- ============================================================================
+REVOKE ALL ON FUNCTION public.post_journal(UUID, DATE, TEXT, UUID, TEXT, JSONB) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.party_entries(UUID) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.trg_journal_respect_lock() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.decide_opening_balance(UUID, BOOLEAN, TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.decide_opening_balance(UUID, BOOLEAN, TEXT) TO authenticated;
 REVOKE ALL ON FUNCTION public.opening_balance_problem(UUID) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.submit_opening_balance(UUID) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.reopen_opening_balance(UUID) FROM PUBLIC, anon;

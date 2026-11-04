@@ -4,6 +4,7 @@
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { createDb, createUser, asUser } from './harness.mjs';
+import { approveOpening } from './opening-helpers.mjs';
 
 let db;
 let ids;
@@ -59,9 +60,9 @@ before(async () => {
   ids.ca = await inviteProfessional('ca@party.test', ['view_reports', 'manage_accounts']);
 
   // 1. Opening balances: a creditor nobody can name yet, and arrears on flat 102
-  await q(secretary, `SELECT public.post_opening_balances($1,'2026-09-30',$2,$3)`, [societyId,
-    JSON.stringify([{ code: '2000', amount: -4000 }, { code: '1000', amount: 4000 }]),
-    JSON.stringify([{ unit_number: '102', amount: 2500 }])]);
+  await approveOpening(db, { societyId, ca: ids.ca, approver: secretary, liveOn: '2026-09-30',
+    audited: [{ code: '2000', amount: -4000 }, { code: '1000', amount: 4000 }, { code: '1200', amount: 2500 }, { code: '3200', amount: -2500 }],
+    flats: [{ unit_id: await unitId('102'), amount: 2500 }] });
   // 2. October bills
   await q(secretary, `SELECT public.generate_bills($1,'2026-10-01','2026-10-31','2026-10-10')`, [societyId]);
   // 3. Flat 101 pays 1500 against 1180: 320 becomes an advance
@@ -134,18 +135,19 @@ test('a party statement runs from its opening balance to its closing balance', a
 });
 
 test("Tally gets a party for every Members' dues and Sundry Creditors line", async () => {
-  const rows = await val(ids.ca, `SELECT public.party_lines($1,'2026-04-01',current_date)`, [ids.societyId]);
+  const rows = await val(ids.ca, `SELECT public.party_lines($1,'2026-03-31',current_date)`, [ids.societyId]);
   const entries = (await db.query(
     `SELECT l.id, l.amount, a.code, j.reference_event_type FROM ledger_entries l JOIN accounts a ON a.id = l.account_id
      JOIN journal_entries j ON j.id = l.journal_entry_id
-     WHERE l.society_id = $1 AND a.code IN ('1200','2000') AND l.date BETWEEN '2026-04-01' AND current_date`, [ids.societyId])).rows;
+     WHERE l.society_id = $1 AND a.code IN ('1200','2000') AND l.date BETWEEN '2026-03-31' AND current_date`, [ids.societyId])).rows;
   assert.ok(entries.length > 0);
   for (const e of entries) {
     const mine = rows.filter((r) => r.ledger_entry_id === e.id);
     assert.ok(mine.length > 0, `entry on ${e.code} (${e.reference_event_type}) has a party`);
     assert.equal(mine.reduce((s, r) => s + Number(r.amount), 0), Number(e.amount));
   }
-  const opening = entries.find((e) => e.code === '1200' && e.reference_event_type === 'opening.balance');
+  // The go-live dues reach flat 102 through the opening party journal (026)
+  const opening = entries.find((e) => e.code === '1200' && e.reference_event_type === 'opening.parties' && Number(e.amount) > 0);
   assert.deepEqual(rows.filter((r) => r.ledger_entry_id === opening.id).map((r) => [r.name, Number(r.amount)]), [['Flat 102', 2500]]);
   const names = new Set(rows.map((r) => r.name));
   for (const n of ['Flat 101', 'Shiv Lifts', 'Other payees', 'Not linked to a vendor']) assert.ok(names.has(n), n);

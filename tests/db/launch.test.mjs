@@ -2,6 +2,7 @@
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { createDb, createUser, asUser } from './harness.mjs';
+import { inviteProfessional, approveOpening } from './opening-helpers.mjs';
 
 let db;
 let ids;
@@ -42,35 +43,30 @@ before(async () => {
   ids = { societyId, admin, r1, r2, owner, u101: await unit('101'), u102: await unit('102') };
 });
 
-const postOpening = (user, accounts, dues, asOf = '2026-03-31') =>
-  asUser(db, user, async (tx) =>
-    (await tx.query('SELECT public.post_opening_balances($1, $2, $3, $4) AS r', [ids.societyId, asOf, JSON.stringify(accounts), JSON.stringify(dues)])).rows[0].r
+test('opening balances: the committee can no longer post them directly', async () => {
+  await assert.rejects(
+    asUser(db, ids.admin, (tx) => tx.query(`SELECT public.post_opening_balances($1, '2026-03-31', '[]', '[]')`, [ids.societyId])),
+    /entered by the society's CA/
   );
-
-test('opening balances: validation', async () => {
-  await assert.rejects(postOpening(ids.r1, [{ code: '1000', amount: 1 }], []), /Only the society committee/);
-  await assert.rejects(postOpening(ids.admin, [{ code: '1200', amount: 5000 }], []), /flat-wise/);
-  await assert.rejects(postOpening(ids.admin, [{ code: '9999', amount: 5000 }], []), /Unknown account code 9999/);
-  await assert.rejects(postOpening(ids.admin, [], [{ unit_number: '103', amount: 100 }]), /Flat 103 has no owner linked/);
-  await assert.rejects(postOpening(ids.admin, [], [{ unit_number: '999', amount: 100 }]), /Flat 999 not found/);
-  await assert.rejects(postOpening(ids.admin, [], [], '2999-01-01'), /today or earlier/);
 });
 
-test('opening balances: TB + flat arrears post once, balancing to General Reserve', async () => {
-  const r = await postOpening(
-    ids.admin,
-    [{ code: '1000', amount: 150000 }, { code: '3000', amount: -100000 }],
-    [{ unit_number: '101', amount: 4500 }, { unit_number: '102', amount: 4000 }]
-  );
-  assert.equal(num(r.member_dues_total), 8500);
-  assert.equal(r.opening_bills, 2);
-  assert.equal(num(r.balancing_to_general_reserve), -58500);
+test('opening balances: the CA enters them, the committee approves, flat arrears become bills', async () => {
+  ids.ca = await inviteProfessional(db, { societyId: ids.societyId, inviter: ids.admin, email: 'ca@launch.test' });
+  const r = await approveOpening(db, {
+    societyId: ids.societyId, ca: ids.ca, approver: ids.admin, liveOn: '2026-03-31',
+    audited: [{ code: '1000', amount: 150000 }, { code: '3000', amount: -100000 }, { code: '1200', amount: 8500 }, { code: '3200', amount: -58500 }],
+    flats: [{ unit_id: ids.u101, amount: 4500 }, { unit_id: ids.u102, amount: 4000 }],
+  });
+  assert.equal(r.status, 'approved');
   assert.deepEqual(await balances(ids.societyId), { 1000: 150000, 1200: 8500, 3000: -100000, 3200: -58500 });
 
   const r1Bills = await asUser(db, ids.r1, async (tx) => (await tx.query('SELECT bill_number, balance_due, is_opening_balance FROM bills')).rows);
   assert.deepEqual(r1Bills.map((b) => [b.bill_number, num(b.balance_due), b.is_opening_balance]), [['OB-0001', 4500, true]]);
 
-  await assert.rejects(postOpening(ids.admin, [{ code: '1000', amount: 1 }], []), /already been posted/);
+  await assert.rejects(
+    asUser(db, ids.ca, (tx) => tx.query(`SELECT public.save_opening_balance($1,'2026-03-31','2026-03-31','[]','[]','[]','[]')`, [ids.societyId])),
+    /already approved/
+  );
 });
 
 test('overpayment is held as advance and auto-adjusted against the next bill', async () => {

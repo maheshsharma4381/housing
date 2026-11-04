@@ -122,3 +122,65 @@ test('a submitted opening balance is changed only after withdrawing it', async (
   await assert.rejects(reopen(A, A.ca), /Only a submitted opening balance can be withdrawn/);
   assert.equal((await submit(A, A.ca)).status, 'submitted');
 });
+
+const decide = (s, user, ok, note = null) => val(user, 'SELECT public.decide_opening_balance($1,$2,$3)', [s.societyId, ok, note]);
+async function codeBalances(s, asOf) {
+  const { rows } = await db.query(
+    `SELECT a.code, sum(l.amount) AS bal FROM ledger_entries l JOIN accounts a ON a.id = l.account_id
+     WHERE l.society_id = $1 AND l.date <= $2 GROUP BY a.code HAVING sum(l.amount) <> 0 ORDER BY a.code`, [s.societyId, asOf]);
+  return Object.fromEntries(rows.map((r) => [r.code, Number(r.bal)]));
+}
+const parties = (s, kind, asOf = null) => val(s.treasurer, 'SELECT public.party_balances($1,$2,$3)', [s.societyId, kind, asOf]);
+
+test('the committee decides; rejecting needs a reason and sends it back to the CA', async () => {
+  await assert.rejects(decide(A, A.ca, true), /Only the society committee can approve/);
+  await assert.rejects(decide(A, A.r101, true), /Only the society committee can approve/);
+  await assert.rejects(decide(A, A.secretary, false), /Give a reason/);
+  const back = await decide(A, A.secretary, false, 'Sinking fund is from the draft audit');
+  assert.equal(back.status, 'rejected');
+  const d = await show(A, A.ca);
+  assert.deepEqual([d.status, d.decision_note], ['draft', 'Sinking fund is from the draft audit']);
+  await submit(A, A.ca);
+});
+
+test('a locked audited year stops approval and nothing is half-posted', async () => {
+  const B = await makeSociety('b');
+  await save(B, B.ca, { audited: AUDITED, catchup: CATCHUP, flats: [{ unit_id: B.u101, amount: 5000 }, { unit_id: B.u102, amount: -1500 }] });
+  await submit(B, B.ca);
+  await q(B.secretary, `SELECT public.lock_financial_year($1,'2026-03-31')`, [B.societyId]);
+  await assert.rejects(decide(B, B.treasurer, true), /locked after audit/);
+  assert.equal((await show(B, B.ca)).status, 'submitted');
+  const n = await db.query(`SELECT (SELECT count(*) FROM journal_entries WHERE society_id=$1 AND reference_event_type LIKE 'opening.%')::int j,
+    (SELECT count(*) FROM bills WHERE society_id=$1)::int b`, [B.societyId]);
+  assert.deepEqual(n.rows[0], { j: 0, b: 0 });
+});
+
+test('approval posts the audited sheet on 31 March and the catch-up on the go-live date', async () => {
+  const r = await decide(A, A.treasurer, true);
+  assert.deepEqual([r.status, r.opening_bills], ['approved', 1]);
+  assert.deepEqual(await codeBalances(A, '2026-03-31'), { 1000: 80000, 1200: 9000, 2000: -8000, 2300: -1000, 3000: -60000, 3200: -20000 });
+  assert.deepEqual(await codeBalances(A, '2026-10-01'),
+    { 1000: 113500, 1200: 5000, 2000: -3000, 2300: -1500, 3000: -60000, 3200: -20000, 4000: -54000, 5100: 20000 });
+  const ob = (await db.query(`SELECT bill_number, bill_date::text d, total_amount, is_opening_balance FROM bills WHERE society_id=$1`, [A.societyId])).rows;
+  assert.deepEqual(ob.map((b) => [b.bill_number, b.d, Number(b.total_amount), b.is_opening_balance]), [['OB-0001', '2026-10-01', 5000, true]]);
+  await assert.rejects(save(A, A.ca, { audited: AUDITED }), /already approved — correct it with an adjustment/);
+});
+
+test('flat-wise and vendor-wise ledgers tie to the control ledgers before and after go-live', async () => {
+  for (const asOf of ['2026-09-30', '2026-10-01']) {
+    const f = await parties(A, 'flat', asOf);
+    assert.equal(f.parties.reduce((s, p) => s + Number(p.dues), 0), Number(f.control.dues), asOf);
+    assert.equal(f.parties.reduce((s, p) => s + Number(p.advance), 0), Number(f.control.advance), asOf);
+  }
+  const live = await parties(A, 'flat', '2026-10-01');
+  assert.deepEqual(live.parties.filter((p) => Number(p.balance) !== 0).map((p) => [p.name, Number(p.dues), Number(p.advance)]),
+    [['Flat 101', 5000, 0], ['Flat 102', 0, 1500]]);
+  const v = await parties(A, 'vendor', '2026-10-01');
+  assert.deepEqual(v.parties.filter((p) => Number(p.balance) !== 0).map((p) => [p.name, Number(p.balance)]), [['Shiv Lifts', 3000]]);
+  assert.equal(Number(v.control.payable), 3000);
+});
+
+test('the secretary can no longer post opening balances directly', async () => {
+  await assert.rejects(q(A.secretary, `SELECT public.post_opening_balances($1,'2026-03-31','[]','[]')`, [A.societyId]),
+    /entered by the society's CA/);
+});
