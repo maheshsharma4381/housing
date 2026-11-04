@@ -246,7 +246,7 @@ export const SocietyDashboardPage: React.FC = () => {
 
             <div className="pt-2 flex items-center gap-2">
               <div className="flex-1 min-w-0"><WorkspaceSelector /></div>
-              <NotificationBell onOpen={openFromNotification} />
+              <NotificationBell onOpen={openFromNotification} align="left" />
             </div>
           </div>
 

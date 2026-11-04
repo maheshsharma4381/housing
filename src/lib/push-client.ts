@@ -15,6 +15,18 @@ export function pushSupported(): boolean {
   return typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 }
 
+/** On logout: this browser stops getting the user's notifications (their own row only, by RLS). */
+export async function forgetPush(): Promise<void> {
+  if (!pushSupported() || !supabase) return;
+  try {
+    const registration = await navigator.serviceWorker.getRegistration('/sw.js');
+    const subscription = await registration?.pushManager.getSubscription();
+    if (subscription) await supabase.from('push_subscriptions').delete().eq('endpoint', subscription.endpoint);
+  } catch {
+    // logging out must never fail because of push
+  }
+}
+
 export async function enablePush(): Promise<PushResult> {
   if (!pushSupported()) return 'unsupported';
   const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;

@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase/client';
 import { enablePush, pushSupported } from '../lib/push-client';
+import { pushSyncAction, type PushSync } from '../lib/push-sync';
 import { Bell, BellRing, CheckCheck } from 'lucide-react';
 
 interface Item { id: string; title: string; body: string | null; link: string | null; created_at: string; read_at: string | null }
@@ -15,12 +16,20 @@ const ago = (iso: string) => {
 };
 
 /** The in-app inbox (Phase 3A): bell with an unread badge, latest 30 notifications, phone notifications switch. */
-export const NotificationBell: React.FC<{ onOpen?: (link: string) => void }> = ({ onOpen }) => {
+export const NotificationBell: React.FC<{ onOpen?: (link: string) => void; align?: 'left' | 'right' }> = ({ onOpen, align = 'right' }) => {
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<Item[]>([]);
   const [pushState, setPushState] = useState<string | null>(null);
+  const [sync, setSync] = useState<PushSync>('unsupported');
   const box = useRef<HTMLDivElement>(null);
+
+  // Allowed before on this phone: save the subscription again quietly (new login, lost or replaced subscription)
+  useEffect(() => {
+    const action = pushSyncAction(pushSupported(), typeof Notification === 'undefined' ? 'default' : Notification.permission);
+    setSync(action);
+    if (action === 'resubscribe') enablePush().catch(() => undefined);
+  }, []);
 
   const refreshCount = useCallback(async () => {
     if (!supabase) return;
@@ -70,7 +79,8 @@ export const NotificationBell: React.FC<{ onOpen?: (link: string) => void }> = (
       : 'Phone notifications are not set up yet.');
   };
 
-  const showPushButton = pushSupported() && typeof Notification !== 'undefined' && Notification.permission !== 'granted';
+  const showPushButton = sync === 'offer';
+  const iphoneHint = sync === 'unsupported' && typeof navigator !== 'undefined' && /iPhone|iPad/.test(navigator.userAgent);
 
   return (
     <div className="relative" ref={box}>
@@ -83,7 +93,7 @@ export const NotificationBell: React.FC<{ onOpen?: (link: string) => void }> = (
         )}
       </button>
       {open && (
-        <div className="absolute right-0 mt-2 w-80 max-h-[70vh] overflow-y-auto rounded-2xl bg-slate-900 border border-slate-800 shadow-xl z-40 text-xs">
+        <div className={`fixed inset-x-2 top-14 sm:absolute sm:inset-x-auto sm:top-auto sm:mt-2 sm:w-80 ${align === 'left' ? 'sm:left-0' : 'sm:right-0'} max-h-[70vh] overflow-y-auto rounded-2xl bg-slate-900 border border-slate-800 shadow-xl z-40 text-xs`}>
           <div className="flex items-center justify-between p-3 border-b border-slate-800">
             <span className="font-semibold text-white">Notifications</span>
             {unread > 0 && (
@@ -106,6 +116,9 @@ export const NotificationBell: React.FC<{ onOpen?: (link: string) => void }> = (
                 </li>
               ))}
             </ul>
+          )}
+          {iphoneHint && !pushState && (
+            <p className="p-3 border-t border-slate-800 text-slate-400">To get notifications on iPhone, add Sahvaas to the Home Screen (Share → Add to Home Screen), then open it from there.</p>
           )}
           {(showPushButton || pushState) && (
             <div className="p-3 border-t border-slate-800 space-y-1">

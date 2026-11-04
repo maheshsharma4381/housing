@@ -134,3 +134,37 @@ test('a browser push subscription belongs to the user logged in on it', async ()
   assert.equal((await q(ids.r1, 'SELECT endpoint FROM push_subscriptions')).length, 0);
   assert.equal((await q(ids.t1, 'SELECT endpoint FROM push_subscriptions')).length, 1);
 });
+
+test('the push sender claims each notification once, with its subscriptions', async () => {
+  await db.query(`UPDATE notifications SET pushed_at = now()`); // start clean
+  await q(ids.secretary, `INSERT INTO notices (society_id, title, content, published_by, target_audience) VALUES ($1,'Gate closed','Tonight',$2,'all')`,
+    [ids.societyId, ids.secretary]);
+  const first = (await db.query('SELECT * FROM public.claim_push_batch(500)')).rows;
+  assert.ok(first.some((r) => r.user_id === ids.t1 && r.endpoint.endsWith('/r1-phone')), 't1 now holds that phone');
+  assert.equal((await db.query('SELECT * FROM public.claim_push_batch(500)')).rows.length, 0, 'claimed once');
+  await assert.rejects(q(ids.r1, 'SELECT * FROM public.claim_push_batch(500)'), /permission denied/);
+});
+
+test('only real push services can be saved as endpoints', async () => {
+  await assert.rejects(q(ids.r1, `SELECT public.save_push_subscription('https://slow.example.com/hang','pk','au')`), /Not a push endpoint/);
+  await q(ids.r1, `SELECT public.save_push_subscription('https://web.push.apple.com/QWERTY','pk','au')`);
+  await q(ids.r1, `SELECT public.save_push_subscription('https://updates.push.services.mozilla.com/wpush/v2/abc','pk','au')`);
+});
+
+test('no reminder while a payment for the flat waits to be verified, or to someone who no longer owns the flat', async () => {
+  // r1's December bill (due 10 Oct in this test) is unpaid; day 12 is a reminder day for 2 / 5
+  const pend = await val(ids.r1, `INSERT INTO payments (society_id, unit_id, user_id, payment_number, amount, transaction_reference_utr, status)
+    VALUES ($1,$2,$3,'P-N2',1000,'412345678902','pending_verification') RETURNING id`, [ids.societyId, ids.u101, ids.r1]);
+  assert.equal(await remind('2026-10-22'), 0, 'paid, waiting for the committee');
+  await db.query(`UPDATE payments SET status = 'rejected' WHERE id = $1`, [pend]);
+  // a bill still held by someone who is not the flat's owner (a seller who stays on the committee)
+  await db.query(`UPDATE bills SET user_id = $1 WHERE unit_id = $2 AND balance_due > 0`, [ids.treasurer, ids.u101]);
+  assert.equal(await remind('2026-10-22'), 0, 'the treasurer does not own flat 101');
+  await db.query(`UPDATE bills SET user_id = $1 WHERE unit_id = $2 AND balance_due > 0`, [ids.r1, ids.u101]);
+  assert.equal(await remind('2026-10-22'), 1);
+});
+
+test('one dues reminder per bill per day is enforced by the database', async () => {
+  const idx = (await db.query(`SELECT indexdef FROM pg_indexes WHERE tablename = 'notifications' AND indexname = 'uq_notifications_dues_reminder'`)).rows;
+  assert.equal(idx.length, 1);
+});

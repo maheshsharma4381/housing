@@ -12,6 +12,7 @@ import {
   ProfessionalRole 
 } from '../types/database';
 import { toMembership, type MembershipRow } from '../lib/memberships';
+import { forgetPush } from '../lib/push-client';
 
 export interface SocietyMembershipWithDetails extends SocietyMembership {
   society: Society;
@@ -516,6 +517,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(true);
     if (isSupabaseConfigured && supabase) {
       try {
+        await forgetPush();
         await supabase.auth.signOut();
       } catch (err) {
         console.warn('Supabase sign out error:', err);

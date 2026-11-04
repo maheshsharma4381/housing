@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS notifications (
 );
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications (user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notifications_unpushed ON notifications (created_at) WHERE pushed_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_notifications_dues_reminder ON notifications (ref_id, ref_date) WHERE kind = 'dues_reminder';
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS notifications_select_own ON notifications;
 CREATE POLICY notifications_select_own ON notifications FOR SELECT USING (user_id = auth.uid());
@@ -42,7 +43,8 @@ BEGIN
     FROM unnest(coalesce(p_user_ids, '{}'::uuid[])) AS u
     WHERE u IS NOT NULL
       AND (p_society_id IS NULL OR EXISTS (
-          SELECT 1 FROM society_memberships m WHERE m.society_id = p_society_id AND m.user_id = u AND m.is_active));
+          SELECT 1 FROM society_memberships m WHERE m.society_id = p_society_id AND m.user_id = u AND m.is_active))
+    ON CONFLICT DO NOTHING;
     GET DIAGNOSTICS v_count = ROW_COUNT;
     RETURN v_count;
 END;
@@ -78,7 +80,10 @@ $$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
 CREATE OR REPLACE FUNCTION public.trg_notify_bill()
 RETURNS TRIGGER AS $$
 BEGIN
-    IF NEW.status IN ('issued', 'partially_paid', 'overdue') THEN
+    IF NEW.status IN ('issued', 'partially_paid', 'overdue') AND EXISTS (
+        SELECT 1 FROM society_memberships m
+        WHERE m.society_id = NEW.society_id AND m.unit_id = NEW.unit_id AND m.user_id = NEW.user_id
+          AND m.role = 'resident_owner' AND m.is_active) THEN
         PERFORM notify_users(NEW.society_id, ARRAY[NEW.user_id], 'bill', 'New bill ' || NEW.bill_number,
             'Flat ' || coalesce((SELECT unit_number FROM units WHERE id = NEW.unit_id), '') || ' · ' || money_text(NEW.total_amount)
                 || ' due ' || to_char(NEW.due_date, 'DD Mon'),
@@ -235,6 +240,12 @@ BEGIN
         JOIN units u ON u.id = b.unit_id
         JOIN society_settings s ON s.society_id = b.society_id
         WHERE b.balance_due > 0 AND b.status IN ('issued', 'partially_paid', 'overdue') AND b.due_date < p_as_of
+          -- the holder still owns the flat (not a seller who stays in the society)
+          AND EXISTS (SELECT 1 FROM society_memberships m
+                      WHERE m.society_id = b.society_id AND m.unit_id = b.unit_id AND m.user_id = b.user_id
+                        AND m.role = 'resident_owner' AND m.is_active)
+          -- someone paid and the committee has not verified it yet
+          AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.unit_id = b.unit_id AND p.status = 'pending_verification')
     LOOP
         CONTINUE WHEN NOT (r.d = r.first_days OR (r.d > r.first_days AND (r.d - r.first_days) % r.every_days = 0));
         CONTINUE WHEN EXISTS (SELECT 1 FROM notifications n
@@ -247,13 +258,13 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
--- Nightly at 01:00 IST (19:30 UTC), after the late-fee job, when pg_cron is available
+-- Every morning at 09:00 IST (03:30 UTC), so phones do not buzz at night, when pg_cron is available
 DO $outer$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'pg_cron') THEN
         CREATE EXTENSION IF NOT EXISTS pg_cron;
         PERFORM cron.unschedule(jobid) FROM cron.job WHERE jobname = 'sahvaas-dues-reminders';
-        PERFORM cron.schedule('sahvaas-dues-reminders', '30 19 * * *', $cron$SELECT public.send_dues_reminders()$cron$);
+        PERFORM cron.schedule('sahvaas-dues-reminders', '30 3 * * *', $cron$SELECT public.send_dues_reminders()$cron$);
     END IF;
 END
 $outer$;
@@ -282,7 +293,7 @@ BEGIN
     IF auth.uid() IS NULL THEN
         RAISE EXCEPTION 'Log in first';
     END IF;
-    IF coalesce(p_endpoint, '') NOT LIKE 'https://%' THEN
+    IF coalesce(p_endpoint, '') !~ '^https://(fcm\.googleapis\.com|([a-z0-9-]+\.)*push\.services\.mozilla\.com|web\.push\.apple\.com|([a-z0-9-]+\.)*notify\.windows\.com)/' THEN
         RAISE EXCEPTION 'Not a push endpoint';
     END IF;
     INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
@@ -290,6 +301,17 @@ BEGIN
     ON CONFLICT (endpoint) DO UPDATE SET user_id = EXCLUDED.user_id, p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- The push sender claims a batch first, so each notification is pushed at most once and runs never overlap
+CREATE OR REPLACE FUNCTION public.claim_push_batch(p_limit INT DEFAULT 500)
+RETURNS TABLE (sub_id UUID, user_id UUID, endpoint TEXT) AS $$
+    WITH picked AS (
+        SELECT n.id FROM notifications n WHERE n.pushed_at IS NULL ORDER BY n.created_at LIMIT p_limit FOR UPDATE SKIP LOCKED
+    ), claimed AS (
+        UPDATE notifications n SET pushed_at = timezone('utc'::text, now()) FROM picked WHERE n.id = picked.id RETURNING n.user_id
+    )
+    SELECT DISTINCT s.id, s.user_id, s.endpoint FROM push_subscriptions s WHERE s.user_id IN (SELECT c.user_id FROM claimed c)
+$$ LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path = public;
 
 -- When pg_net and the app's URL are set (Supabase: ALTER DATABASE postgres SET app.push_url = 'https://…/api/push/send-pending';
 -- ALTER DATABASE postgres SET app.cron_secret = '…'), the push sender runs every 5 minutes.
@@ -313,6 +335,14 @@ $outer$;
 -- ============================================================================
 -- PRIVILEGES
 -- ============================================================================
+REVOKE ALL ON FUNCTION public.claim_push_batch(INT) FROM PUBLIC, anon, authenticated;
+DO $grant$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+        EXECUTE 'GRANT EXECUTE ON FUNCTION public.claim_push_batch(INT) TO service_role';
+    END IF;
+END
+$grant$;
 REVOKE ALL ON FUNCTION public.save_push_subscription(TEXT, TEXT, TEXT) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.save_push_subscription(TEXT, TEXT, TEXT) TO authenticated;
 REVOKE ALL ON FUNCTION public.send_dues_reminders(DATE) FROM PUBLIC, anon, authenticated;
