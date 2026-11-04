@@ -328,8 +328,88 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- ============================================================================
+-- 2. ASSET SALE MONEY GOES TO THE CHOSEN BANK
+-- ============================================================================
+DROP FUNCTION IF EXISTS public.dispose_asset(UUID, DATE, NUMERIC, TEXT, TEXT);
+
+-- from 027_ca_workspace.sql; + p_bank_ledger_id: the bank that received the money
+CREATE OR REPLACE FUNCTION public.dispose_asset(
+    p_asset_id UUID, p_disposed_on DATE, p_sale_amount NUMERIC DEFAULT 0, p_mode TEXT DEFAULT 'bank', p_reason TEXT DEFAULT NULL,
+    p_bank_ledger_id UUID DEFAULT NULL
+)
+RETURNS JSONB AS $$
+DECLARE
+    v_asset fixed_assets%ROWTYPE;
+    v_sale NUMERIC := round(coalesce(p_sale_amount, 0), 2);
+    v_carrying NUMERIC;
+    v_acc NUMERIC;
+    v_gain NUMERIC;
+    v_money_code TEXT;
+BEGIN
+    SELECT * INTO v_asset FROM fixed_assets WHERE id = p_asset_id FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Asset not found';
+    END IF;
+    IF NOT can_keep_books(v_asset.society_id) THEN
+        RAISE EXCEPTION 'Only the society committee can dispose of assets';
+    END IF;
+    IF v_asset.status <> 'active' THEN
+        RAISE EXCEPTION 'Asset % is %', v_asset.asset_number, v_asset.status;
+    END IF;
+    IF p_disposed_on IS NULL OR p_disposed_on > current_date OR p_disposed_on < v_asset.put_to_use_date THEN
+        RAISE EXCEPTION 'Disposal date must be between the purchase date and today';
+    END IF;
+    IF v_sale < 0 THEN
+        RAISE EXCEPTION 'Sale amount cannot be negative';
+    END IF;
+    IF coalesce(p_mode, '') NOT IN ('bank', 'cash') THEN
+        RAISE EXCEPTION 'Money received must be bank or cash';
+    END IF;
+    IF length(trim(coalesce(p_reason, ''))) = 0 THEN
+        RAISE EXCEPTION 'Give a reason (e.g. sold as scrap)';
+    END IF;
+
+    -- Sale money: cash to Cash-in-Hand; bank to the chosen bank ledger, else the default receiving bank
+    IF p_mode = 'cash' THEN
+        v_money_code := '1100';
+    ELSE
+        IF p_bank_ledger_id IS NOT NULL AND NOT is_bank_ledger(v_asset.society_id, p_bank_ledger_id) THEN
+            RAISE EXCEPTION 'Choose a bank ledger of this society';
+        END IF;
+        SELECT code INTO v_money_code FROM accounts
+        WHERE id = coalesce(p_bank_ledger_id, default_bank_ledger(v_asset.society_id, 'receipt'));
+    END IF;
+
+    -- The asset account holds the cost (bought here) or the opening WDV (brought in)
+    v_carrying := coalesce(v_asset.opening_wdv, v_asset.cost);
+    SELECT coalesce(sum(amount), 0) INTO v_acc FROM depreciation_lines WHERE asset_id = p_asset_id;
+    v_gain := v_sale - (v_carrying - v_acc);
+
+    PERFORM post_journal(v_asset.society_id, p_disposed_on, 'asset.disposed', v_asset.id,
+                         'Asset ' || v_asset.asset_number || ' ' || v_asset.name || ' disposed: ' || trim(p_reason),
+                         jsonb_build_array(
+                             jsonb_build_object('code', v_money_code, 'amount', v_sale),
+                             jsonb_build_object('code', '1590', 'amount', v_acc),
+                             jsonb_build_object('code', v_asset.account_code, 'amount', -v_carrying),
+                             jsonb_build_object('code', '4300', 'amount', -v_gain)
+                         ));
+
+    UPDATE fixed_assets
+    SET status = 'disposed', disposed_on = p_disposed_on, disposal_amount = v_sale, updated_at = timezone('utc'::text, now())
+    WHERE id = p_asset_id;
+
+    INSERT INTO audit_logs (society_id, user_id, action, entity_type, entity_id, new_value, reason)
+    VALUES (v_asset.society_id, auth.uid(), 'asset.disposed', 'fixed_asset', p_asset_id::text,
+            jsonb_build_object('sale', v_sale, 'book_value', v_carrying - v_acc, 'gain', v_gain), trim(p_reason));
+    RETURN jsonb_build_object('book_value', v_carrying - v_acc, 'gain', v_gain);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- ============================================================================
 -- PRIVILEGES
 -- ============================================================================
+REVOKE ALL ON FUNCTION public.dispose_asset(UUID, DATE, NUMERIC, TEXT, TEXT, UUID) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.dispose_asset(UUID, DATE, NUMERIC, TEXT, TEXT, UUID) TO authenticated;
 REVOKE ALL ON FUNCTION public.is_asset_ledger(UUID, TEXT) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.asset_dep_rate(UUID, TEXT) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.asset_ledgers(UUID) FROM PUBLIC, anon;

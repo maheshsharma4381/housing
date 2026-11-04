@@ -77,3 +77,23 @@ test('accumulated depreciation and inactive ledgers are not asset types', async 
   await assert.rejects(approveBill({ category: 'other', title: 'Treadmill', subtotal: 50000, expense_type: 'capital', asset_account_code: gym }),
     /Pick an asset type for a purchase booked as an asset/);
 });
+
+test('sale money from an asset lands in the bank the CA chooses', async () => {
+  const hdfc = await val(ids.ca, `SELECT public.create_ledger($1,$2,'HDFC Savings')`, [ids.societyId, await groupId('bank_accounts')]);
+  const add = (name) => val(ids.ca, `SELECT public.add_existing_asset($1,$2,'1520','2020-01-01',10000,4000,'2025-04-01')`, [ids.societyId, name]);
+  const money = async (assetId) => (await db.query(`SELECT a.code, l.amount FROM journal_entries j JOIN ledger_entries l ON l.journal_entry_id=j.id
+    JOIN accounts a ON a.id=l.account_id WHERE j.reference_event_type='asset.disposed' AND j.reference_event_id=$1 AND a.code IN ($2,'1000','1100')`,
+    [assetId, hdfc])).rows.map((r) => [r.code, Number(r.amount)]);
+  const a1 = await add('Old sofa');
+  await q(ids.ca, `SELECT public.dispose_asset($1,current_date,3000,'bank','Sold to staff',$2)`, [a1, await ledgerId(hdfc)]);
+  assert.deepEqual(await money(a1), [[hdfc, 3000]]);
+  const a2 = await add('Old chairs');
+  await q(ids.ca, `SELECT public.dispose_asset($1,current_date,500,'cash','Sold as scrap')`, [a2]);
+  assert.deepEqual(await money(a2), [['1100', 500]]);
+  const a3 = await add('Old desk');
+  await q(ids.ca, `SELECT public.dispose_asset($1,current_date,800,'bank','Sold to a member')`, [a3]);
+  assert.deepEqual(await money(a3), [['1000', 800]]);
+  const a4 = await add('Old shelf');
+  await assert.rejects(q(ids.ca, `SELECT public.dispose_asset($1,current_date,100,'bank','Sold',$2)`, [a4, await ledgerId('5000')]),
+    /Choose a bank ledger of this society/);
+});
