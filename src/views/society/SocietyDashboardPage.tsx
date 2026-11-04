@@ -20,6 +20,11 @@ import { AssetRegister } from '../../components/AssetRegister';
 import { BankReconciliation } from '../../components/BankReconciliation';
 import { AdjustmentsPanel } from '../../components/AdjustmentsPanel';
 import { OpeningBalanceReview } from '../../components/OpeningBalanceReview';
+import { OpeningBalanceEditor } from '../../components/OpeningBalanceEditor';
+import { ChartOfAccounts } from '../../components/ChartOfAccounts';
+import { PartyLedgers } from '../../components/PartyLedgers';
+import { BillTypes } from '../../components/BillTypes';
+import { societyNav, type SocietyTab } from '../../lib/society-nav';
 import { PriorYearEditor } from '../../components/PriorYearEditor';
 import { YearLockPanel } from '../../components/YearLockPanel';
 import { FeatureGate, PlanBilling } from '../../components/PlanBilling';
@@ -55,29 +60,19 @@ import {
   Scale,
   Gem,
   ListChecks,
+  ListTree,
+  Tags,
+  BookOpen,
 } from 'lucide-react';
 
-type Tab = 'home' | 'approvals' | 'members' | 'flats' | 'billing' | 'payments' | 'expenses' | 'assets' | 'bank' | 'documents' | 'notices' | 'complaints' | 'professionals' | 'reports' | 'audit' | 'settings' | 'plan';
+type Tab = SocietyTab;
 
-const NAV_ITEMS: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-  { id: 'home', label: 'Operations Feed', icon: Home },
-  { id: 'approvals', label: 'Approvals', icon: ListChecks },
-  { id: 'flats', label: 'Flats & Units', icon: Building2 },
-  { id: 'members', label: 'Members & Residents', icon: Users },
-  { id: 'billing', label: 'Maintenance Billing', icon: CreditCard },
-  { id: 'payments', label: 'Payment Verifications', icon: QrCode },
-  { id: 'expenses', label: 'Expenses & Payables', icon: Receipt },
-  { id: 'assets', label: 'Fixed Assets', icon: Boxes },
-  { id: 'bank', label: 'Bank Reconciliation', icon: Landmark },
-  { id: 'documents', label: 'Documents Vault', icon: FolderLock },
-  { id: 'notices', label: 'Notice Board', icon: FileText },
-  { id: 'complaints', label: 'Helpdesk Complaints', icon: MessageSquare },
-  { id: 'professionals', label: 'CA & Auditor Access', icon: Briefcase },
-  { id: 'reports', label: 'Financial Reports', icon: BarChart3 },
-  { id: 'audit', label: 'Audit & Year Close', icon: Scale },
-  { id: 'settings', label: 'Society Rules', icon: Settings },
-  { id: 'plan', label: 'Sahvaas Plan & Billing', icon: Gem },
-];
+const ICONS: Record<SocietyTab, React.ComponentType<{ className?: string }>> = {
+  home: Home, approvals: ListChecks, flats: Building2, members: Users, billing: CreditCard, payments: QrCode,
+  expenses: Receipt, documents: FolderLock, notices: FileText, complaints: MessageSquare, professionals: Briefcase,
+  reports: BarChart3, settings: Settings, plan: Gem,
+  ledgers: ListTree, billtypes: Tags, opening: BookOpen, assets: Boxes, bank: Landmark, audit: Scale,
+};
 
 // List screens fetch the latest N rows; totals come from society_summary() (no API row cap)
 const LIST_LIMIT = 500;
@@ -93,13 +88,17 @@ export const SocietyDashboardPage: React.FC = () => {
     profile,
     activeSociety,
     societyMemberships,
-    logout
+    logout,
+    refreshUserData,
   } = useAuth();
 
   // A secretary who also owns a flat has two memberships: show the committee one here
   const committeeMembership = societyMemberships.find(m => activeSociety && m.society_id === activeSociety.id && COMMITTEE_ROLES.includes(m.role));
   const roleName = committeeMembership?.role?.replace('_', ' ') || 'Member';
   const readOnly = committeeMembership?.role === 'committee_member';
+  // Phase 2D: the Accountant keeps the books, so the accounting screens appear only for them
+  const isAccountant = Boolean(committeeMembership?.is_accountant);
+  const NAV_ITEMS = societyNav({ isAccountant }).map(item => ({ ...item, icon: ICONS[item.id] }));
 
   const [activeTab, setActiveTab] = useState<Tab>('home');
   const [showMore, setShowMore] = useState(false);
@@ -175,6 +174,12 @@ export const SocietyDashboardPage: React.FC = () => {
     setShowMore(false);
   };
 
+  // An old link to an accounting screen goes home for anyone who is not the Accountant
+  useEffect(() => {
+    if (!NAV_ITEMS.some(item => item.id === activeTab)) setActiveTab('home');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAccountant, activeTab]);
+
   // Onboarding checklist shown until the society is set up
   const setupSteps = [
     { done: true, label: 'Register society', tab: 'home' as const },
@@ -237,12 +242,14 @@ export const SocietyDashboardPage: React.FC = () => {
           </div>
 
           <nav className="space-y-1">
-            {NAV_ITEMS.map(tab => {
+            {NAV_ITEMS.map((tab, index) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
+              const firstAccounts = tab.group === 'accounts' && NAV_ITEMS[index - 1]?.group !== 'accounts';
               return (
+                <React.Fragment key={tab.id}>
+                {firstAccounts && <div className="px-3 pt-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Accounts</div>}
                 <button
-                  key={tab.id}
                   onClick={() => goTo(tab.id)}
                   className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition cursor-pointer ${
                     isActive 
@@ -270,6 +277,7 @@ export const SocietyDashboardPage: React.FC = () => {
                     </span>
                   )}
                 </button>
+                </React.Fragment>
               );
             })}
           </nav>
@@ -437,7 +445,8 @@ export const SocietyDashboardPage: React.FC = () => {
 
         {/* MEMBERS */}
         {activeTab === 'members' && activeSociety && (
-          <MembersTab societyId={activeSociety.id} societyName={activeSociety.name} currentUserId={user?.id} units={units} />
+          <MembersTab societyId={activeSociety.id} societyName={activeSociety.name} currentUserId={user?.id} units={units}
+            canChooseAccountant={!readOnly} onAccountantChanged={(id) => { if (id === user?.id) refreshUserData(activeSociety.id); }} />
         )}
 
         {/* SETTINGS */}
@@ -469,7 +478,7 @@ export const SocietyDashboardPage: React.FC = () => {
 
         {activeTab === 'assets' && activeSociety && (
           <FeatureGate plan={plan} feature="asset_register" label="The asset register" planName={featurePlan('asset_register')} onUpgrade={() => goTo('plan')}>
-            <AssetRegister societyId={activeSociety.id} canManage={!readOnly} />
+            <AssetRegister societyId={activeSociety.id} canManage={isAccountant || !readOnly} />
           </FeatureGate>
         )}
 
@@ -506,9 +515,9 @@ export const SocietyDashboardPage: React.FC = () => {
 
         {activeTab === 'audit' && activeSociety && (
           <div className="space-y-8">
-            <AdjustmentsPanel societyId={activeSociety.id} currentUserId={user?.id} canDecide={!readOnly} canPropose={!readOnly} />
-            <YearLockPanel societyId={activeSociety.id} canLock={!readOnly} />
-            <PriorYearEditor societyId={activeSociety.id} canEdit={!readOnly} />
+            <AdjustmentsPanel societyId={activeSociety.id} currentUserId={user?.id} canDecide={!readOnly} canPropose={isAccountant || !readOnly} />
+            <YearLockPanel societyId={activeSociety.id} canLock={isAccountant || !readOnly} />
+            <PriorYearEditor societyId={activeSociety.id} canEdit={isAccountant || !readOnly} />
           </div>
         )}
 
@@ -521,9 +530,19 @@ export const SocietyDashboardPage: React.FC = () => {
 
         {activeTab === 'bank' && activeSociety && (
           <FeatureGate plan={plan} feature="bank_match" label="Bank statement match" planName={featurePlan('bank_match')} onUpgrade={() => goTo('plan')}>
-            <BankReconciliation societyId={activeSociety.id} canManage={!readOnly} />
+            <BankReconciliation societyId={activeSociety.id} canManage={isAccountant || !readOnly} canVerify={!readOnly} />
           </FeatureGate>
         )}
+
+        {/* ACCOUNTS (the Accountant only) */}
+        {activeTab === 'ledgers' && activeSociety && isAccountant && (
+          <div className="space-y-6">
+            <ChartOfAccounts societyId={activeSociety.id} canManage />
+            <PartyLedgers societyId={activeSociety.id} />
+          </div>
+        )}
+        {activeTab === 'billtypes' && activeSociety && isAccountant && <BillTypes societyId={activeSociety.id} canManage />}
+        {activeTab === 'opening' && activeSociety && isAccountant && <OpeningBalanceEditor societyId={activeSociety.id} canManage />}
       </main>
 
       {/* Mobile Bottom Navigation Bar */}

@@ -196,7 +196,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { data: membershipsData } = await supabase
         .from('society_memberships')
         .select(`
-          id, society_id, user_id, role, unit_id, is_primary_contact, is_active, joined_date, created_at, updated_at,
+          id, society_id, user_id, role, unit_id, is_primary_contact, is_accountant, is_active, joined_date, created_at, updated_at,
           societies:society_id (*)
         `)
         .eq('user_id', sbUser.id)

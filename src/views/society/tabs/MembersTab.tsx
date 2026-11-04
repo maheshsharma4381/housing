@@ -26,6 +26,7 @@ interface MemberRow {
   unit_id: string | null;
   user_id: string;
   is_active: boolean;
+  is_accountant: boolean;
   profiles: { full_name: string; email: string; phone?: string | null } | null;
 }
 
@@ -34,9 +35,15 @@ interface MembersTabProps {
   societyName?: string;
   currentUserId?: string;
   units: Unit[];
+  /** secretary / chairman / treasurer / society admin may switch a committee member's Accountant role */
+  canChooseAccountant?: boolean;
+  /** called after the Accountant switch changes, so the menu can refresh */
+  onAccountantChanged?: (userId: string) => void;
 }
 
-export const MembersTab: React.FC<MembersTabProps> = ({ societyId, societyName, currentUserId, units }) => {
+const COMMITTEE_ROLES: SocietyRole[] = ['society_admin', 'secretary', 'chairman', 'treasurer', 'committee_member'];
+
+export const MembersTab: React.FC<MembersTabProps> = ({ societyId, societyName, currentUserId, units, canChooseAccountant = false, onAccountantChanged }) => {
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [invites, setInvites] = useState<MemberInvite[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,7 +65,7 @@ export const MembersTab: React.FC<MembersTabProps> = ({ societyId, societyName, 
     const [mRes, iRes] = await Promise.all([
       supabase
         .from('society_memberships')
-        .select('id, role, unit_id, user_id, is_active, profiles:user_id (full_name, email, phone)')
+        .select('id, role, unit_id, user_id, is_active, is_accountant, profiles:user_id (full_name, email, phone)')
         .eq('society_id', societyId)
         .eq('is_active', true),
       supabase
@@ -126,6 +133,16 @@ export const MembersTab: React.FC<MembersTabProps> = ({ societyId, societyName, 
     const { error: updErr } = await supabase.from('member_invites').update({ status: 'revoked' }).eq('id', id);
     if (updErr) setError(updErr.message);
     load();
+  };
+
+  const setAccountant = async (m: MemberRow, on: boolean) => {
+    if (!supabase) return;
+    const { error: rpcErr } = await supabase.rpc('set_accountant', { p_society_id: societyId, p_user_id: m.user_id, p_on: on });
+    if (rpcErr) return setError(rpcErr.message);
+    setError(null);
+    setNotice(on ? `${m.profiles?.full_name ?? 'The member'} is now the society's Accountant.` : `${m.profiles?.full_name ?? 'The member'} is no longer the Accountant.`);
+    await load();
+    onAccountantChanged?.(m.user_id);
   };
 
   const deactivateMember = async (m: MemberRow) => {
@@ -239,6 +256,11 @@ export const MembersTab: React.FC<MembersTabProps> = ({ societyId, societyName, 
       {/* Members */}
       <div className="space-y-2">
         <h3 className="font-semibold text-slate-400 uppercase tracking-wider text-[11px]">Active Members</h3>
+        {canChooseAccountant && (
+          <p className="text-slate-500">
+            No CA on Sahvaas? Make a committee member the Accountant. The Accountant gets the CA&apos;s screens: ledgers, bill types, opening balance, assets, bank match and year close. Another committee member approves what they submit.
+          </p>
+        )}
         {members.length === 0 && !loading ? (
           <EmptyState icon={Users} title="No Members Yet" description="Invite residents and committee members using the form above." />
         ) : (
@@ -251,6 +273,13 @@ export const MembersTab: React.FC<MembersTabProps> = ({ societyId, societyName, 
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-sky-500/10 text-sky-300">{roleLabel(m.role)}</span>
+                  {COMMITTEE_ROLES.includes(m.role) && (canChooseAccountant ? (
+                    <label className="flex items-center gap-1 text-slate-300 cursor-pointer" title="Accountant (keeps the books in Sahvaas)">
+                      <input type="checkbox" checked={m.is_accountant} onChange={e => setAccountant(m, e.target.checked)} /> Accountant
+                    </label>
+                  ) : m.is_accountant && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/10 text-amber-300">Accountant</span>
+                  ))}
                   <span className="text-slate-400 w-14 text-right">{m.unit_id ? unitLabel(m.unit_id) : '—'}</span>
                   {m.user_id !== currentUserId && (
                     <button onClick={() => deactivateMember(m)} className="text-slate-500 hover:text-rose-400 cursor-pointer" title="Remove member">

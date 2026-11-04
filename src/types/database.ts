@@ -186,6 +186,8 @@ export interface SocietyMembership {
   role: SocietyRole;
   unit_id?: string;
   is_primary_contact: boolean;
+  /** Phase 2D: a committee member who keeps the books (the CA's powers) */
+  is_accountant?: boolean;
   is_active: boolean;
   joined_date: string;
   created_at: string;
