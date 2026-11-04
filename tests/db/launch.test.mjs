@@ -91,11 +91,11 @@ test('overpayment is held as advance and auto-adjusted against the next bill', a
      WHERE b.society_id = $1 AND NOT b.is_opening_balance ORDER BY u.unit_number`,
     [ids.societyId]
   )).rows;
-  assert.deepEqual(bills.map((b) => [b.unit_number, num(b.balance_due), b.status]), [['101', 0, 'paid'], ['102', 1000, 'issued']]);
+  assert.deepEqual(bills.map((b) => [b.unit_number, num(b.balance_due), b.status]), [['101', 0, 'paid'], ['102', 1000, 'issued'], ['103', 1000, 'issued']]); // 033: every flat is billed
 
   const b = await balances(ids.societyId);
   assert.equal(b['2300'], -500, '1500 advance - 1000 adjusted');
-  assert.equal(b['1200'], 8500 - 4500 + 2000 - 1000, 'opening 8500 - paid 4500 + billed 2000 - advance 1000');
+  assert.equal(b['1200'], 8500 - 4500 + 3000 - 1000, 'opening 8500 - paid 4500 + billed 3000 (three flats, 033) - advance 1000');
   const allocated = (await db.query('SELECT sum(amount) AS s FROM payment_allocations WHERE payment_id = $1', [payId])).rows[0].s;
   assert.equal(num(allocated), 5500);
 });

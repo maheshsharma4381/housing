@@ -70,12 +70,13 @@ test('H1: billing cycles, bills and flats with history cannot be deleted', async
   const delBills = await asUser(db, A.admin, async (tx) => (await tx.query('DELETE FROM bills WHERE society_id=$1', [A.id])).affectedRows);
   const delFlat = await asUser(db, A.admin, async (tx) => (await tx.query('DELETE FROM units WHERE id=$1', [r1.unit])).affectedRows);
   assert.deepEqual([delCycle, delBills, delFlat], [0, 0, 0]);
-  assert.equal((await db.query('SELECT count(*)::int n FROM bills WHERE society_id=$1', [A.id])).rows[0].n, 1);
+  assert.equal((await db.query('SELECT count(*)::int n FROM bills WHERE society_id=$1', [A.id])).rows[0].n, 3, 'every flat is billed (033)');
   assert.deepEqual(await tb(A.id), before);
 
   // A flat without history can still be removed (e.g. a typo in the import)
-  const del103 = await asUser(db, A.admin, async (tx) => (await tx.query(`DELETE FROM units WHERE society_id=$1 AND unit_number='103'`, [A.id])).affectedRows);
-  assert.equal(del103, 1);
+  await asUser(db, A.admin, (tx) => tx.query('SELECT public.bulk_upsert_units($1,$2)', [A.id, JSON.stringify([{ unit_number: '199' }])]));
+  const del199 = await asUser(db, A.admin, async (tx) => (await tx.query(`DELETE FROM units WHERE society_id=$1 AND unit_number='199'`, [A.id])).affectedRows);
+  assert.equal(del199, 1);
 
   // Even the platform owner / superuser cannot delete a flat that has bills (FK no longer cascades)
   await assert.rejects(db.query('DELETE FROM units WHERE id=$1', [r1.unit]), /violates foreign key constraint/);
@@ -129,20 +130,25 @@ test('cancel_bill: unpaid bills cancel with a reversal; paid bills cannot be can
   const rb = await createUser(db, 'rb@int.test');
   await asUser(db, rb, (tx) => tx.query('SELECT public.claim_my_invites()'));
   await asUser(db, B.admin, (tx) => tx.query(`SELECT public.generate_bills($1,'2026-10-01','2026-10-31','2026-10-10')`, [B.id]));
-  const bill = (await db.query(`SELECT id, bill_number FROM bills WHERE society_id=$1`, [B.id])).rows[0];
+  const bill = (await db.query(`SELECT id, bill_number FROM bills WHERE society_id=$1 ORDER BY bill_number`, [B.id])).rows[0];
   const before1200 = (await tb(B.id))['1200'];
-  assert.equal(before1200, 1000);
+  assert.equal(before1200, 3000, 'three flats billed (033)');
 
   await assert.rejects(asUser(db, r1.user, (tx) => tx.query(`SELECT public.cancel_bill($1,'x')`, [bill.id])), /Only the society committee/);
   const c = await asUser(db, B.admin, async (tx) => (await tx.query(`SELECT public.cancel_bill($1,'Wrong rate') AS r`, [bill.id])).rows[0].r);
   assert.equal(c.status, 'cancelled');
-  assert.equal((await tb(B.id))['1200'], undefined, 'receivable reversed');
+  assert.equal((await tb(B.id))['1200'], 2000, 'receivable reversed');
   await assert.rejects(asUser(db, B.admin, (tx) => tx.query(`SELECT public.cancel_bill($1,'again')`, [bill.id])), /already cancelled/);
 
-  // M2: the period can be billed again after cancellation, numbering continues
+  // M2: once every bill of the period is cancelled it can be billed again, numbering continues
+  for (const o of (await db.query(`SELECT id FROM bills WHERE society_id=$1 AND status <> 'cancelled'`, [B.id])).rows) {
+    await asUser(db, B.admin, (tx) => tx.query(`SELECT public.cancel_bill($1,'Wrong rate')`, [o.id]));
+  }
+  assert.equal((await tb(B.id))['1200'], undefined, 'all receivables reversed');
   await asUser(db, B.admin, (tx) => tx.query(`SELECT public.generate_bills($1,'2026-10-01','2026-10-31','2026-10-10')`, [B.id]));
   const numbers = (await db.query(`SELECT bill_number, status FROM bills WHERE society_id=$1 ORDER BY bill_number`, [B.id])).rows;
-  assert.deepEqual(numbers, [{ bill_number: 'B2610-0001', status: 'cancelled' }, { bill_number: 'B2610-0002', status: 'issued' }]);
+  assert.deepEqual(numbers.map((n) => n.status), ['cancelled', 'cancelled', 'cancelled', 'issued', 'issued', 'issued']);
+  assert.equal(numbers[3].bill_number, 'B2610-0004');
 
   const paidBill = (await db.query(`SELECT id FROM bills WHERE society_id=$1 AND unit_id=$2`, [A.id, r1.unit])).rows[0].id;
   await assert.rejects(asUser(db, A.admin, (tx) => tx.query(`SELECT public.cancel_bill($1,'oops')`, [paidBill])), /already has payments/);
@@ -152,7 +158,7 @@ test('M2: two billing cycles in the same month get distinct bill numbers', async
   await asUser(db, A.admin, (tx) => tx.query(`SELECT public.generate_bills($1,'2026-11-01','2026-11-15','2026-11-10')`, [A.id]));
   await asUser(db, A.admin, (tx) => tx.query(`SELECT public.generate_bills($1,'2026-11-16','2026-11-30','2026-11-25')`, [A.id]));
   const nov = (await db.query(`SELECT bill_number FROM bills WHERE society_id=$1 AND bill_number LIKE 'B2611-%' ORDER BY 1`, [A.id])).rows.map((r) => r.bill_number);
-  assert.deepEqual(nov, ['B2611-0001', 'B2611-0002']);
+  assert.deepEqual(nov, ['B2611-0001', 'B2611-0002', 'B2611-0003', 'B2611-0004', 'B2611-0005', 'B2611-0006']);
 });
 
 test('M1: committee cannot change subscription fields; platform RPCs and imports still can', async () => {

@@ -68,14 +68,15 @@ const verify = (user, paymentId, approve, notes = null) =>
     (await tx.query('SELECT public.verify_payment($1, $2, $3) AS r', [paymentId, approve, notes])).rows[0].r
   );
 
-test('dry run previews bills without writing, and skips flats without an owner', async () => {
+test('dry run previews bills for every flat without writing, owner or not (033: bills belong to flats)', async () => {
   const r = await generate(admin, true);
-  assert.equal(r.bills, 2);
-  assert.equal(num(r.total_amount), 2685 + 3110);
-  assert.deepEqual(r.skipped_units, [{ unit_number: 'A-103', reason: 'No owner linked' }]);
+  assert.equal(r.bills, 3);
+  assert.equal(num(r.total_amount), 2685 + 3110 + 2685);
+  assert.deepEqual(r.skipped_units, []);
   assert.deepEqual(r.preview.map((p) => [p.unit_number, num(p.subtotal), num(p.tax), num(p.total)]), [
     ['A-101', 2325, 360, 2685],
     ['A-102', 2750, 360, 3110],
+    ['A-103', 2325, 360, 2685],
   ]);
   const { rows } = await db.query('SELECT count(*)::int AS n FROM bills');
   assert.equal(rows[0].n, 0);
@@ -87,7 +88,7 @@ test('residents cannot generate bills', async () => {
 
 test('generate creates one cycle, bills with line items, and blocks duplicates', async () => {
   const r = await generate(admin, false);
-  assert.equal(r.bills, 2);
+  assert.equal(r.bills, 3);
   assert.ok(r.cycle_id);
   assert.equal(r.cycle_name, 'October 2026 Maintenance');
 
@@ -95,9 +96,11 @@ test('generate creates one cycle, bills with line items, and blocks duplicates',
   assert.deepEqual(bills.map((b) => [b.bill_number, num(b.total_amount), num(b.balance_due), b.status]), [
     ['B2610-0001', 2685, 2685, 'issued'],
     ['B2610-0002', 3110, 3110, 'issued'],
+    ['B2610-0003', 2685, 2685, 'issued'],
   ]);
+  assert.equal((await db.query(`SELECT user_id FROM bills WHERE bill_number = 'B2610-0003'`)).rows[0].user_id, null, 'nobody has joined A-103 yet');
   const items = (await db.query(`SELECT b.bill_number, count(*)::int AS n FROM bill_items i JOIN bills b ON b.id = i.bill_id GROUP BY 1 ORDER BY 1`)).rows;
-  assert.deepEqual(items, [{ bill_number: 'B2610-0001', n: 2 }, { bill_number: 'B2610-0002', n: 3 }]);
+  assert.deepEqual(items, [{ bill_number: 'B2610-0001', n: 2 }, { bill_number: 'B2610-0002', n: 3 }, { bill_number: 'B2610-0003', n: 2 }]);
 
   await assert.rejects(generate(admin, false), /already been generated/);
 });
@@ -162,9 +165,9 @@ test('late fees: overdue bills get the percentage fee exactly once', async () =>
     asUser(db, admin, async (tx) => (await tx.query(`SELECT public.apply_late_fees($1, '2026-10-11') AS r`, [societyId])).rows[0].r);
 
   const first = await run();
-  assert.equal(first.marked_overdue, 1);
-  assert.equal(first.late_fees_applied, 1);
-  assert.equal(num(first.late_fee_total), 62.2); // default 2% of 3110
+  assert.equal(first.marked_overdue, 2, 'A-102 and the unclaimed A-103 bill');
+  assert.equal(first.late_fees_applied, 2);
+  assert.equal(num(first.late_fee_total), 115.9); // default 2% of 3110 + 2% of 2685
 
   const b = (await db.query(`SELECT total_amount, balance_due, interest_or_late_fee, status FROM bills WHERE bill_number = 'B2610-0002'`)).rows[0];
   assert.deepEqual([num(b.total_amount), num(b.balance_due), num(b.interest_or_late_fee), b.status], [3172.2, 3172.2, 62.2, 'overdue']);

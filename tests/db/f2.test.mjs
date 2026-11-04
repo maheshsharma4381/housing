@@ -88,8 +88,8 @@ test('M6: committee_member reads committee data but cannot act', async () => {
 
   await asUser(db, ids.admin, (tx) => tx.query(`SELECT public.generate_bills($1,'2026-10-01','2026-10-31','2026-10-10')`, [ids.societyId]));
   await asUser(db, cm, async (tx) => {
-    assert.equal((await tx.query('SELECT count(*)::int n FROM bills')).rows[0].n, 1);
-    assert.equal((await tx.query('SELECT count(*)::int n FROM bill_items')).rows[0].n, 1);
+    assert.equal((await tx.query('SELECT count(*)::int n FROM bills')).rows[0].n, 2, 'both flats are billed (033)');
+    assert.equal((await tx.query('SELECT count(*)::int n FROM bill_items')).rows[0].n, 2);
     const tb = (await tx.query('SELECT * FROM public.trial_balance($1)', [ids.societyId])).rows;
     assert.ok(tb.length > 0, 'financial reports visible');
     const names = (await tx.query('SELECT full_name FROM profiles ORDER BY full_name')).rows.length;
@@ -109,9 +109,9 @@ test('M6: committee_member reads committee data but cannot act', async () => {
 test('M3: society_summary aggregates in the database; residents are refused', async () => {
   const s = await asUser(db, ids.cm, async (tx) => (await tx.query('SELECT public.society_summary($1) AS s', [ids.societyId])).rows[0].s);
   assert.equal(s.units, 2);
-  assert.equal(Number(s.billed), 1500);
-  assert.equal(Number(s.outstanding), 1500);
-  assert.equal(s.bills, 1);
+  assert.equal(Number(s.billed), 3000, 'both flats are billed (033)');
+  assert.equal(Number(s.outstanding), 3000);
+  assert.equal(s.bills, 2);
   assert.equal(s.upi_configured, false);
   await assert.rejects(asUser(db, ids.owner, (tx) => tx.query('SELECT public.society_summary($1)', [ids.societyId])), /Only the society committee/);
 });
