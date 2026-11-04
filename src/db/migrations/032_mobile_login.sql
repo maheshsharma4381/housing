@@ -192,7 +192,7 @@ BEGIN
 
     v_balance := flat_balance(p_unit_id);
     -- The joining link now matches the new owner's mobile, not the seller's (031)
-    UPDATE units SET owner_name = v_name, owner_mobile = normalize_mobile(p_new_owner_mobile) WHERE id = p_unit_id;
+    PERFORM put_owner_contact(v_unit.society_id, p_unit_id, true, v_name, true, normalize_mobile(p_new_owner_mobile));
 
     IF v_waiting THEN
         IF v_has_prev THEN
@@ -326,8 +326,8 @@ BEGIN
     v_foreign := NOT (length(v_m) = 12 AND left(v_m, 2) = '91');
 
     -- A known number: registered against a flat, invited, or already a member, a professional or the platform owner
-    SELECT u.society_id INTO v_soc FROM units u JOIN societies s ON s.id = u.society_id AND s.is_active
-    WHERE u.owner_mobile = v_m LIMIT 1;
+    SELECT c.society_id INTO v_soc FROM unit_owner_contacts c JOIN societies s ON s.id = c.society_id AND s.is_active
+    WHERE c.owner_mobile = v_m LIMIT 1;
     IF v_soc IS NULL THEN
         SELECT o.society_id INTO v_soc FROM unit_ownerships o
         WHERE o.to_date IS NULL AND o.owner_user_id IS NULL AND normalize_mobile(o.owner_mobile) = v_m LIMIT 1;
