@@ -9,8 +9,9 @@ import { EmptyState } from '../../components/EmptyState';
 import { TaxRulesPanel } from '../../components/TaxRulesPanel';
 import { BillingConsole } from '../../components/BillingConsole';
 import { AdsConsole } from '../../components/AdsConsole';
+import { OtpCosts } from '../../components/platform/OtpCosts';
 import { AuditLog, Profile } from '../../types/database';
-import { Building2, Users, FileText, Cpu, LogOut, RefreshCw, Loader2, Search, Inbox, Percent, CreditCard, Megaphone } from 'lucide-react';
+import { Building2, Users, FileText, Cpu, LogOut, RefreshCw, Loader2, Search, Inbox, Percent, CreditCard, Megaphone, MessageCircle } from 'lucide-react';
 import { LogoutEverywhereButton } from '../../components/SignOutMenu';
 
 interface SocietyOverview {
@@ -20,7 +21,7 @@ interface SocietyOverview {
   plan_tier: string | null; plan_period_end: string | null;
 }
 
-type Tab = 'overview' | 'societies' | 'billing' | 'sponsors' | 'leads' | 'tax_rules' | 'users' | 'audit_logs';
+type Tab = 'otp' | 'overview' | 'societies' | 'billing' | 'sponsors' | 'leads' | 'tax_rules' | 'users' | 'audit_logs';
 
 interface Lead {
   id: string; name: string; email: string; phone: string; society_name: string; city: string | null;
@@ -108,6 +109,7 @@ export const PlatformDashboardPage: React.FC = () => {
     { id: 'societies', label: 'Societies', icon: Building2 },
     { id: 'billing', label: 'Billing & Plans', icon: CreditCard },
     { id: 'sponsors', label: 'Sponsors', icon: Megaphone },
+    { id: 'otp', label: 'OTP & cost', icon: MessageCircle },
     { id: 'leads', label: 'Demo Requests', icon: Inbox },
     { id: 'tax_rules', label: 'Tax Rules', icon: Percent },
     { id: 'users', label: 'Users', icon: Users },
@@ -259,6 +261,7 @@ export const PlatformDashboardPage: React.FC = () => {
         {activeTab === 'tax_rules' && <TaxRulesPanel currentUserId={user?.id} />}
         {activeTab === 'billing' && <BillingConsole />}
         {activeTab === 'sponsors' && <AdsConsole />}
+        {activeTab === 'otp' && <OtpCosts />}
 
         {activeTab === 'users' && (
           <div className="bg-slate-950 border border-slate-800 rounded-2xl overflow-x-auto">
