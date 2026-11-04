@@ -17,10 +17,11 @@ import { PriorYearEditor } from '../../components/PriorYearEditor';
 import { ChartOfAccounts } from '../../components/ChartOfAccounts';
 import { BillTypes } from '../../components/BillTypes';
 import { PartyLedgers } from '../../components/PartyLedgers';
+import { OpeningBalanceEditor } from '../../components/OpeningBalanceEditor';
 import { Expense } from '../../types/database';
-import { Briefcase, FileSpreadsheet, Landmark, Receipt, FolderLock, LogOut, ShieldCheck, Lock, Boxes, Scale, ListTree, Tags } from 'lucide-react';
+import { Briefcase, FileSpreadsheet, Landmark, Receipt, FolderLock, LogOut, ShieldCheck, Lock, Boxes, Scale, ListTree, Tags, BookOpen } from 'lucide-react';
 
-type Tab = 'gst' | 'financials' | 'ledgers' | 'billtypes' | 'expenses' | 'assets' | 'adjustments' | 'documents' | 'remarks' | 'my_societies';
+type Tab = 'gst' | 'financials' | 'ledgers' | 'billtypes' | 'opening' | 'expenses' | 'assets' | 'adjustments' | 'documents' | 'remarks' | 'my_societies';
 
 export const ProfessionalDashboardPage: React.FC = () => {
   const { user, profile, professionalGrants, activeSociety, logout } = useAuth();
@@ -32,6 +33,7 @@ export const ProfessionalDashboardPage: React.FC = () => {
     financials: permissions.includes('view_reports') || permissions.includes('view_ledger'),
     ledgers: permissions.includes('manage_accounts') || permissions.includes('view_reports') || permissions.includes('view_ledger'),
     billtypes: permissions.includes('manage_accounts') || permissions.includes('view_expenses'),
+    opening: permissions.includes('manage_accounts') || permissions.includes('view_reports') || permissions.includes('view_ledger'),
     expenses: permissions.includes('view_expenses'),
     assets: permissions.includes('view_expenses') || permissions.includes('view_reports') || permissions.includes('view_ledger'),
     adjustments: permissions.includes('view_reports') || permissions.includes('view_ledger'),
@@ -44,7 +46,7 @@ export const ProfessionalDashboardPage: React.FC = () => {
 
   // Land on the first module this grant allows when switching society
   useEffect(() => {
-    const first = (['financials', 'ledgers', 'billtypes', 'gst', 'expenses', 'assets', 'adjustments', 'documents', 'remarks'] as Tab[]).find(t => allowed[t]);
+    const first = (['financials', 'ledgers', 'billtypes', 'opening', 'gst', 'expenses', 'assets', 'adjustments', 'documents', 'remarks'] as Tab[]).find(t => allowed[t]);
     setActiveTab(first ?? 'my_societies');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSociety?.id]);
@@ -66,6 +68,7 @@ export const ProfessionalDashboardPage: React.FC = () => {
     { id: 'financials', label: 'Financial Reports', icon: Landmark },
     { id: 'ledgers', label: 'Groups & Ledgers', icon: ListTree },
     { id: 'billtypes', label: 'Bill Types', icon: Tags },
+    { id: 'opening', label: 'Opening Balance', icon: BookOpen },
     { id: 'gst', label: 'GST (GSTR-2B)', icon: FileSpreadsheet },
     { id: 'expenses', label: 'Expenses & TDS', icon: Receipt },
     { id: 'assets', label: 'Fixed Assets', icon: Boxes },
@@ -146,6 +149,9 @@ export const ProfessionalDashboardPage: React.FC = () => {
         )}
         {activeTab === 'billtypes' && activeSociety && allowed.billtypes && (
           <BillTypes societyId={activeSociety.id} canManage={permissions.includes('manage_accounts')} />
+        )}
+        {activeTab === 'opening' && activeSociety && allowed.opening && (
+          <OpeningBalanceEditor societyId={activeSociety.id} canManage={permissions.includes('manage_accounts')} />
         )}
         {activeTab === 'gst' && activeSociety && allowed.gst && (
           <Gstr2bPanel societyId={activeSociety.id} societyName={activeSociety.name} />
