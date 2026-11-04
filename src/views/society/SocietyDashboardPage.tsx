@@ -19,6 +19,7 @@ import { ProfessionalsTab } from './tabs/ProfessionalsTab';
 import { AssetRegister } from '../../components/AssetRegister';
 import { BankReconciliation } from '../../components/BankReconciliation';
 import { AdjustmentsPanel } from '../../components/AdjustmentsPanel';
+import { OpeningBalanceReview } from '../../components/OpeningBalanceReview';
 import { PriorYearEditor } from '../../components/PriorYearEditor';
 import { YearLockPanel } from '../../components/YearLockPanel';
 import { FeatureGate, PlanBilling } from '../../components/PlanBilling';
@@ -53,12 +54,14 @@ import {
   Boxes,
   Scale,
   Gem,
+  ListChecks,
 } from 'lucide-react';
 
-type Tab = 'home' | 'members' | 'flats' | 'billing' | 'payments' | 'expenses' | 'assets' | 'bank' | 'documents' | 'notices' | 'complaints' | 'professionals' | 'reports' | 'audit' | 'settings' | 'plan';
+type Tab = 'home' | 'approvals' | 'members' | 'flats' | 'billing' | 'payments' | 'expenses' | 'assets' | 'bank' | 'documents' | 'notices' | 'complaints' | 'professionals' | 'reports' | 'audit' | 'settings' | 'plan';
 
 const NAV_ITEMS: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'home', label: 'Operations Feed', icon: Home },
+  { id: 'approvals', label: 'Approvals', icon: ListChecks },
   { id: 'flats', label: 'Flats & Units', icon: Building2 },
   { id: 'members', label: 'Members & Residents', icon: Users },
   { id: 'billing', label: 'Maintenance Billing', icon: CreditCard },
@@ -108,6 +111,7 @@ export const SocietyDashboardPage: React.FC = () => {
   const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [summary, setSummary] = useState<SocietySummary | null>(null);
   const [plan, setPlan] = useState<SocietyPlan | null>(null);
+  const [approvalsCount, setApprovalsCount] = useState(0);
   const [loading, setLoading] = useState<boolean>(true);
 
   // Fetch real records for the active society
@@ -119,13 +123,16 @@ export const SocietyDashboardPage: React.FC = () => {
 
     setLoading(true);
     try {
-      const [uRes, bRes, eRes, nRes, cRes, sRes] = await Promise.all([
+      const [uRes, bRes, eRes, nRes, cRes, sRes, aRes, oRes] = await Promise.all([
         supabase.from('units').select('*').eq('society_id', activeSociety.id).order('unit_number').limit(1000),
         supabase.from('bills').select('*').eq('society_id', activeSociety.id).order('bill_date', { ascending: false }).limit(LIST_LIMIT),
         supabase.from('expenses').select('*').eq('society_id', activeSociety.id).order('created_at', { ascending: false }).limit(LIST_LIMIT),
         supabase.from('notices').select('*').eq('society_id', activeSociety.id).order('published_at', { ascending: false }).limit(200),
         supabase.from('complaints').select('*').eq('society_id', activeSociety.id).order('created_at', { ascending: false }).limit(LIST_LIMIT),
         supabase.rpc('society_summary', { p_society_id: activeSociety.id }),
+        // Approvals: CA adjustments waiting, and the opening balance once the CA submits it
+        supabase.from('adjustment_proposals').select('id', { count: 'exact', head: true }).eq('society_id', activeSociety.id).eq('status', 'pending'),
+        supabase.from('opening_balances').select('status').eq('society_id', activeSociety.id).maybeSingle(),
       ]);
 
       if (uRes.data) setUnits(uRes.data);
@@ -134,6 +141,7 @@ export const SocietyDashboardPage: React.FC = () => {
       if (nRes.data) setNotices(nRes.data);
       if (cRes.data) setComplaints(cRes.data);
       setSummary((sRes.data as SocietySummary) ?? null);
+      setApprovalsCount((aRes.count ?? 0) + (oRes.data?.status === 'submitted' ? 1 : 0));
     } catch (err) {
       console.warn('Error querying society records:', err);
     } finally {
@@ -246,6 +254,11 @@ export const SocietyDashboardPage: React.FC = () => {
                     <Icon className="w-4 h-4" />
                     <span>{tab.label}</span>
                   </div>
+                  {tab.id === 'approvals' && approvalsCount > 0 && (
+                    <span className="w-5 h-5 rounded-full bg-amber-500 text-slate-950 font-bold text-[10px] flex items-center justify-center">
+                      {approvalsCount}
+                    </span>
+                  )}
                   {tab.id === 'expenses' && pendingApprovalCount > 0 && (
                     <span className="w-5 h-5 rounded-full bg-amber-500 text-slate-950 font-bold text-[10px] flex items-center justify-center">
                       {pendingApprovalCount}
@@ -484,6 +497,13 @@ export const SocietyDashboardPage: React.FC = () => {
           <FinancialReports societyId={activeSociety.id} societyName={activeSociety.name} features={plan?.features} />
         )}
 
+        {activeTab === 'approvals' && activeSociety && (
+          <div className="space-y-8">
+            <OpeningBalanceReview societyId={activeSociety.id} canDecide={!readOnly} onDecided={loadSocietyData} />
+            <AdjustmentsPanel societyId={activeSociety.id} currentUserId={user?.id} canDecide={!readOnly} canPropose={false} />
+          </div>
+        )}
+
         {activeTab === 'audit' && activeSociety && (
           <div className="space-y-8">
             <AdjustmentsPanel societyId={activeSociety.id} currentUserId={user?.id} canDecide={!readOnly} canPropose={!readOnly} />
@@ -548,7 +568,7 @@ export const SocietyDashboardPage: React.FC = () => {
           >
             {NAV_ITEMS.map(item => {
               const Icon = item.icon;
-              const badge = item.id === 'payments' ? pendingPayments : item.id === 'expenses' ? pendingApprovalCount : 0;
+              const badge = item.id === 'payments' ? pendingPayments : item.id === 'expenses' ? pendingApprovalCount : item.id === 'approvals' ? approvalsCount : 0;
               return (
                 <button
                   key={item.id}

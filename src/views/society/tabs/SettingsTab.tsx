@@ -3,7 +3,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../../lib/supabase/client';
 import { SocietySetting } from '../../../types/database';
-import { OpeningBalances } from './OpeningBalances';
 import { Settings, QrCode, AlertCircle, CheckCircle2, Loader2, Save } from 'lucide-react';
 
 // UPI VPA format: handle@psp (e.g. palmheights@icici)
@@ -174,7 +173,6 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ societyId }) => {
         <span>{saving ? 'Saving…' : 'Save Settings'}</span>
       </button>
     </form>
-    <OpeningBalances societyId={societyId} />
     </div>
   );
 };
