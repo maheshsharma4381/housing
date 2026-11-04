@@ -401,7 +401,7 @@ export const ResidentDashboardPage: React.FC = () => {
               myBills.map(b => (
                 <div key={b.id} className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="font-mono text-slate-400">{b.bill_number}</span>
+                    <Link href={`/bill/${b.id}`} className="font-mono text-sky-400 hover:underline">{b.bill_number}</Link>
                     <span className="px-2 py-0.5 rounded-full text-[10px] uppercase font-semibold bg-slate-800 text-slate-300">
                       {b.status}
                     </span>

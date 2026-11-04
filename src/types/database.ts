@@ -327,6 +327,8 @@ export interface BillingRule {
   hsn_sac_code?: string;
   /** Ledger credited when billed: any active income or fund (equity) ledger (trg_billing_rule_account in 021) */
   account_code: string;
+  /** 033: only the flats listed in billing_rule_units are charged */
+  applies_to_selected?: boolean;
   is_active: boolean;
   created_at: string;
 }
@@ -347,7 +349,8 @@ export interface Bill {
   society_id: string;
   cycle_id: string;
   unit_id: string;
-  user_id: string;
+  /** 033: bills belong to the flat; NULL until an owner joins */
+  user_id: string | null;
   bill_number: string;
   bill_date: string;
   due_date: string;

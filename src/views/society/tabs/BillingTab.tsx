@@ -5,6 +5,7 @@ import { supabase } from '../../../lib/supabase/client';
 import { formatINR } from '../../../lib/inr';
 import { describeNotify, notify } from '../../../lib/notify';
 import { EmptyState } from '../../../components/EmptyState';
+import { RuleFlats } from '../../../components/RuleFlats';
 import { Bill, BillingRule, BillStatus, GenerateBillsResult, Unit } from '../../../types/database';
 import {
   CreditCard, Plus, Trash2, AlertCircle, CheckCircle2, Loader2, Eye, Send, Clock, Power,
@@ -259,6 +260,7 @@ export const BillingTab: React.FC<BillingTabProps> = ({ societyId, bills, totals
                     {r.applies_to_unit_type && ` • only ${r.applies_to_unit_type}`}
                     {` • → ${creditLabel(r.account_code)}`}
                   </div>
+                  <RuleFlats ruleId={r.id} selected={!!r.applies_to_selected} units={units} canManage onChanged={loadRules} />
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
                   <button onClick={() => toggleRule(r)} title={r.is_active ? 'Pause rule' : 'Activate rule'} className="text-slate-400 hover:text-sky-300 cursor-pointer">
@@ -413,7 +415,7 @@ export const BillingTab: React.FC<BillingTabProps> = ({ societyId, bills, totals
             {filteredBills.map(b => (
               <div key={b.id} className="p-3 flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="font-semibold text-white">Flat {unitNumber(b.unit_id)} <span className="font-mono text-slate-500">• {b.bill_number}</span></div>
+                  <div className="font-semibold text-white">Flat {unitNumber(b.unit_id)} <a href={`/bill/${b.id}`} className="font-mono text-sky-400 hover:underline">• {b.bill_number}</a></div>
                   <div className="text-slate-400">Due {b.due_date} • Billed {formatINR(b.total_amount)}{Number(b.interest_or_late_fee) > 0 && ` (incl. late fee ${formatINR(b.interest_or_late_fee)})`}</div>
                 </div>
                 <div className="text-right shrink-0 space-y-1">

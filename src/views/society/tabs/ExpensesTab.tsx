@@ -62,6 +62,13 @@ export const ExpensesTab: React.FC<ExpensesTabProps> = ({ societyId, currentUser
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
+  // A society with one committee member approves its own vendor bills (033, spec 9.3)
+  const [soleAdmin, setSoleAdmin] = useState(false);
+  useEffect(() => {
+    if (!supabase) return;
+    supabase.rpc('sole_committee_admin', { p_society_id: societyId }).then(({ data }) => setSoleAdmin(data === true));
+  }, [societyId]);
+
   const load = useCallback(async () => {
     if (!supabase) return;
     const [vRes, cRes, aRes, pRes, tRes, sRes] = await Promise.all([
@@ -220,7 +227,10 @@ export const ExpensesTab: React.FC<ExpensesTabProps> = ({ societyId, currentUser
       <div>
         <h2 className="text-lg font-bold text-white">Expenses & Payables</h2>
         <p className="text-slate-400">
-          Upload the vendor&apos;s invoice and we fill the bill. Whoever records a bill cannot approve it ({requiredApprovals === 2 ? 'two approvals' : 'one approval'} needed).
+          Upload the vendor&apos;s invoice and we fill the bill.{' '}
+          {soleAdmin
+            ? 'You are the only committee member, so you approve your own bills (marked self-approved). Once a second member joins, another member approves.'
+            : `Whoever records a bill cannot approve it (${requiredApprovals === 2 ? 'two approvals' : 'one approval'} needed).`}
           Approval books it as payable (or as an asset); payments are recorded as you pay from the society&apos;s bank.
         </p>
       </div>
@@ -294,7 +304,7 @@ export const ExpensesTab: React.FC<ExpensesTabProps> = ({ societyId, currentUser
             const approvedCount = list.filter(a => a.decision === 'approved').length;
             const iDecided = list.some(a => a.approver_id === currentUserId);
             const iCreated = exp.created_by === currentUserId;
-            const canDecide = exp.status === 'pending_approval' && !iCreated && !iDecided;
+            const canDecide = exp.status === 'pending_approval' && (!iCreated || soleAdmin) && !iDecided;
             const due = outstanding(exp);
             const vps = paymentsFor(exp.id);
             const settledPct = gross(exp) > 0 ? Math.min(100, (Number(exp.amount_settled) / gross(exp)) * 100) : 0;
@@ -353,7 +363,7 @@ export const ExpensesTab: React.FC<ExpensesTabProps> = ({ societyId, currentUser
                       <Paperclip className="w-3.5 h-3.5" /> {exp.invoice_status === 'none' ? 'Proof' : 'Invoice'}
                     </button>
                   )}
-                  {exp.status === 'pending_approval' && iCreated && <span className="text-slate-500">Waiting for another committee member</span>}
+                  {exp.status === 'pending_approval' && iCreated && !soleAdmin && <span className="text-slate-500">Waiting for another committee member</span>}
                   {canDecide && (
                     <>
                       <button onClick={() => decide(exp, true)} disabled={busy !== null} className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold cursor-pointer disabled:opacity-50">
