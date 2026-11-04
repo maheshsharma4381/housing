@@ -6,8 +6,10 @@ import { parseUnitCsv, UNIT_CSV_TEMPLATE } from '../../../lib/unit-csv';
 import { EmptyState } from '../../../components/EmptyState';
 import { OwnerChange } from '../../../components/OwnerChange';
 import { OwnerHistory } from '../../../components/OwnerHistory';
+import { OwnerContactEdit, OwnerPaste } from '../../../components/OwnerContacts';
+import { formatMobile } from '../../../lib/mobile';
 import { Unit } from '../../../types/database';
-import { Building2, Upload, FileDown, AlertCircle, CheckCircle2, Loader2, X } from 'lucide-react';
+import { Building2, Upload, FileDown, AlertCircle, CheckCircle2, Loader2, X, ClipboardPaste } from 'lucide-react';
 
 interface UnitsTabProps {
   societyId: string;
@@ -20,10 +22,11 @@ interface UnitsTabProps {
 }
 
 export const UnitsTab: React.FC<UnitsTabProps> = ({ societyId, societyName, units, loading, onChanged, canManage = false }) => {
-  const [panel, setPanel] = useState<{ unitId: string; kind: 'owners' | 'change' } | null>(null);
-  const toggle = (unitId: string, kind: 'owners' | 'change') =>
+  const [panel, setPanel] = useState<{ unitId: string; kind: 'owners' | 'change' | 'contact' } | null>(null);
+  const toggle = (unitId: string, kind: 'owners' | 'change' | 'contact') =>
     setPanel(p => (p && p.unitId === unitId && p.kind === kind ? null : { unitId, kind }));
   const [showImport, setShowImport] = useState(false);
+  const [showPaste, setShowPaste] = useState(false);
   const [csvText, setCsvText] = useState('');
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<string | null>(null);
@@ -67,6 +70,16 @@ export const UnitsTab: React.FC<UnitsTabProps> = ({ societyId, societyName, unit
           <h2 className="text-lg font-bold text-white">Flats & Occupancy Roster</h2>
           <p className="text-xs text-slate-400">{units.length} flats mapped for {societyName}</p>
         </div>
+        <div className="flex flex-wrap justify-end gap-2">
+        {canManage && units.length > 0 && (
+          <button
+            onClick={() => setShowPaste(v => !v)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold cursor-pointer"
+          >
+            {showPaste ? <X className="w-3.5 h-3.5" /> : <ClipboardPaste className="w-3.5 h-3.5" />}
+            <span>{showPaste ? 'Close' : 'Paste owners from Excel'}</span>
+          </button>
+        )}
         <button
           onClick={() => setShowImport(v => !v)}
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold cursor-pointer"
@@ -74,7 +87,10 @@ export const UnitsTab: React.FC<UnitsTabProps> = ({ societyId, societyName, unit
           {showImport ? <X className="w-3.5 h-3.5" /> : <Upload className="w-3.5 h-3.5" />}
           <span>{showImport ? 'Close' : 'Import Flats (CSV)'}</span>
         </button>
+        </div>
       </div>
+
+      {showPaste && canManage && <OwnerPaste societyId={societyId} units={units} onDone={onChanged} />}
 
       {result && (
         <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-300 flex items-start gap-2">
@@ -165,11 +181,23 @@ export const UnitsTab: React.FC<UnitsTabProps> = ({ societyId, societyName, unit
                 <div className="text-slate-400">
                   Type: <strong className="text-white">{u.unit_type}</strong> • Area: {u.carpet_area_sqft} sqft
                 </div>
-                <div className="flex gap-3">
+                {(u.owner_name || u.owner_mobile) && (
+                  <div className="text-slate-400">
+                    Owner: <strong className="text-white">{[u.owner_name, formatMobile(u.owner_mobile)].filter(Boolean).join(' · ')}</strong>
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-3">
                   <button onClick={() => toggle(u.id, 'owners')} className="text-sky-400 hover:underline cursor-pointer">Owners</button>
+                  {canManage && <button onClick={() => toggle(u.id, 'contact')} className="text-sky-400 hover:underline cursor-pointer">Owner mobile</button>}
                   {canManage && <button onClick={() => toggle(u.id, 'change')} className="text-sky-400 hover:underline cursor-pointer">Owner change</button>}
                 </div>
                 {panel?.unitId === u.id && panel.kind === 'owners' && <OwnerHistory societyId={societyId} unitId={u.id} />}
+                {panel?.unitId === u.id && panel.kind === 'contact' && (
+                  <OwnerContactEdit
+                    societyId={societyId} unitId={u.id} name={u.owner_name} mobile={u.owner_mobile}
+                    onDone={() => { setPanel(null); onChanged(); }}
+                  />
+                )}
                 {panel?.unitId === u.id && panel.kind === 'change' && (
                   <OwnerChange societyId={societyId} unitId={u.id} unitLabel={`Flat ${u.unit_number}`} onDone={onChanged} />
                 )}

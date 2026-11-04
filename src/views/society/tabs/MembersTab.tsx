@@ -6,6 +6,7 @@ import { EmptyState } from '../../../components/EmptyState';
 import { MemberInvite, SocietyRole, Unit } from '../../../types/database';
 import { inviteText, whatsappLink } from '../../../lib/messages';
 import { describeNotify, notify } from '../../../lib/notify';
+import { JoinLinkCard } from '../../../components/JoinLinkCard';
 import { Users, UserPlus, Mail, AlertCircle, CheckCircle2, Loader2, XCircle, MessageCircle } from 'lucide-react';
 
 const ROLE_OPTIONS: { value: SocietyRole; label: string }[] = [
@@ -37,13 +38,15 @@ interface MembersTabProps {
   units: Unit[];
   /** secretary / chairman / treasurer / society admin may switch a committee member's Accountant role */
   canChooseAccountant?: boolean;
+  /** the committee's admins (not a read-only committee member) may make a new joining link */
+  canManage?: boolean;
   /** called after the Accountant switch changes, so the menu can refresh */
   onAccountantChanged?: (userId: string) => void;
 }
 
 const COMMITTEE_ROLES: SocietyRole[] = ['society_admin', 'secretary', 'chairman', 'treasurer', 'committee_member'];
 
-export const MembersTab: React.FC<MembersTabProps> = ({ societyId, societyName, currentUserId, units, canChooseAccountant = false, onAccountantChanged }) => {
+export const MembersTab: React.FC<MembersTabProps> = ({ societyId, societyName, currentUserId, units, canChooseAccountant = false, canManage = false, onAccountantChanged }) => {
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [invites, setInvites] = useState<MemberInvite[]>([]);
   const [loading, setLoading] = useState(true);
@@ -161,6 +164,8 @@ export const MembersTab: React.FC<MembersTabProps> = ({ societyId, societyName, 
         <h2 className="text-lg font-bold text-white">Members & Residents</h2>
         <p className="text-slate-400">{members.length} active members • {invites.length} pending invites</p>
       </div>
+
+      <JoinLinkCard societyId={societyId} societyName={societyName} canChange={canManage} />
 
       {/* Invite form */}
       <form onSubmit={handleInvite} className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">

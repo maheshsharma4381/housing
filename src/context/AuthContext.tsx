@@ -57,7 +57,8 @@ export interface AuthContextType {
 
   // Actions
   login: (email: string, password: string) => Promise<{ error: Error | null; redirectPath?: string }>;
-  signUp: (email: string, password: string, fullName: string) => Promise<{ error: Error | null; message?: string }>;
+  /** returnUrl: an internal path the email-verification link brings the new user back to (e.g. a joining link) */
+  signUp: (email: string, password: string, fullName: string, returnUrl?: string | null) => Promise<{ error: Error | null; message?: string }>;
   forgotPassword: (email: string) => Promise<{ error: Error | null; message?: string }>;
   resetPassword: (newPassword: string) => Promise<{ error: Error | null }>;
   logout: () => Promise<void>;
@@ -396,7 +397,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   // Action: Sign Up via Supabase
-  const signUp = async (email: string, password: string, fullName: string): Promise<{ error: Error | null; message?: string }> => {
+  const signUp = async (email: string, password: string, fullName: string, returnUrl?: string | null): Promise<{ error: Error | null; message?: string }> => {
     setIsLoading(true);
     setAuthError(null);
 
@@ -415,7 +416,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           data: {
             full_name: fullName.trim(),
           },
-          emailRedirectTo: typeof window !== 'undefined' ? `${window.location.origin}/login` : undefined,
+          emailRedirectTo: typeof window !== 'undefined'
+            ? `${window.location.origin}/login${returnUrl ? `?returnUrl=${encodeURIComponent(returnUrl)}` : ''}`
+            : undefined,
         },
       });
 

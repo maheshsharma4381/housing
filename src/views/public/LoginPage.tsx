@@ -5,16 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { useRouter, Link } from '../../router/RouterContext';
 import { useAuth } from '../../context/AuthContext';
 import { safeInternalPath } from '../../lib/safe-redirect';
-import { 
-  KeyRound, 
-  Mail, 
-  Lock, 
-  ArrowRight, 
-  AlertCircle, 
-  Loader2, 
-  ShieldCheck, 
-  Building2 
-} from 'lucide-react';
+import { Mail, Lock, ArrowRight, AlertCircle, Loader2 } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
   const { 
@@ -170,7 +161,7 @@ export const LoginPage: React.FC = () => {
 
         <div className="text-center text-xs text-slate-500">
           New to Sahvaas?{' '}
-          <Link href="/signup" className="text-sky-400 hover:underline">
+          <Link href={returnUrl ? `/signup?returnUrl=${encodeURIComponent(returnUrl)}` : '/signup'} className="text-sky-400 hover:underline">
             Create an account
           </Link>
         </div>

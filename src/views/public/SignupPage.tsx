@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { safeInternalPath } from '../../lib/safe-redirect';
 import { useRouter, Link } from '../../router/RouterContext';
 import { useAuth } from '../../context/AuthContext';
 import { Mail, Lock, User, ArrowRight, AlertCircle, Loader2, CheckCircle2 } from 'lucide-react';
@@ -8,6 +10,9 @@ import { Mail, Lock, User, ArrowRight, AlertCircle, Loader2, CheckCircle2 } from
 export const SignupPage: React.FC = () => {
   const { signUp, isAuthenticated, getRedirectPath, authError, clearAuthError, isSupabaseConfigured } = useAuth();
   const { navigate } = useRouter();
+  // e.g. a joining link: come back to it after signing up
+  const returnUrl = safeInternalPath(useSearchParams().get('returnUrl'));
+  const loginHref = returnUrl ? `/login?returnUrl=${encodeURIComponent(returnUrl)}` : '/login';
 
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -19,9 +24,9 @@ export const SignupPage: React.FC = () => {
 
   useEffect(() => {
     if (isAuthenticated) {
-      navigate(getRedirectPath(), { replace: true });
+      navigate(returnUrl || getRedirectPath(), { replace: true });
     }
-  }, [isAuthenticated, navigate, getRedirectPath]);
+  }, [isAuthenticated, navigate, getRedirectPath, returnUrl]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,7 +47,7 @@ export const SignupPage: React.FC = () => {
     }
 
     setSubmitting(true);
-    const { error, message } = await signUp(email, password, fullName);
+    const { error, message } = await signUp(email, password, fullName, returnUrl);
     setSubmitting(false);
 
     // With email confirmation enabled, Supabase returns no session: ask user to verify
@@ -84,7 +89,7 @@ export const SignupPage: React.FC = () => {
                 We sent a verification link to <strong className="text-white">{email}</strong>. After verifying, sign in to
                 register your society. If your committee invited you, you&apos;ll see the invitation to accept.
               </p>
-              <Link href="/login" className="inline-block pt-2 text-sky-400 font-semibold hover:underline">
+              <Link href={loginHref} className="inline-block pt-2 text-sky-400 font-semibold hover:underline">
                 Go to Sign In
               </Link>
             </div>
@@ -127,7 +132,7 @@ export const SignupPage: React.FC = () => {
 
         <div className="text-center text-xs text-slate-500">
           Already have an account?{' '}
-          <Link href="/login" className="text-sky-400 hover:underline">
+          <Link href={loginHref} className="text-sky-400 hover:underline">
             Sign In
           </Link>
         </div>

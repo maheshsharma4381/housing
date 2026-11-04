@@ -152,6 +152,9 @@ export interface Unit {
   occupancy_status: UnitOccupancyStatus;
   current_owner_id?: string;
   current_tenant_id?: string;
+  /** The owner the committee expects (031): the joining link matches this mobile */
+  owner_name?: string | null;
+  owner_mobile?: string | null;
   created_at: string;
   updated_at: string;
 }

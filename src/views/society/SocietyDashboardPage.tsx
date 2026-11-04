@@ -20,6 +20,7 @@ import { AssetRegister } from '../../components/AssetRegister';
 import { BankReconciliation } from '../../components/BankReconciliation';
 import { AdjustmentsPanel } from '../../components/AdjustmentsPanel';
 import { OpeningBalanceReview } from '../../components/OpeningBalanceReview';
+import { JoinRequests } from '../../components/JoinRequests';
 import { NotificationBell } from '../../components/NotificationBell';
 import { OpeningBalanceEditor } from '../../components/OpeningBalanceEditor';
 import { ChartOfAccounts } from '../../components/ChartOfAccounts';
@@ -123,7 +124,7 @@ export const SocietyDashboardPage: React.FC = () => {
 
     setLoading(true);
     try {
-      const [uRes, bRes, eRes, nRes, cRes, sRes, aRes, oRes] = await Promise.all([
+      const [uRes, bRes, eRes, nRes, cRes, sRes, aRes, oRes, jRes] = await Promise.all([
         supabase.from('units').select('*').eq('society_id', activeSociety.id).order('unit_number').limit(1000),
         supabase.from('bills').select('*').eq('society_id', activeSociety.id).order('bill_date', { ascending: false }).limit(LIST_LIMIT),
         supabase.from('expenses').select('*').eq('society_id', activeSociety.id).order('created_at', { ascending: false }).limit(LIST_LIMIT),
@@ -133,6 +134,8 @@ export const SocietyDashboardPage: React.FC = () => {
         // Approvals: CA adjustments waiting, and the opening balance once the CA submits it
         supabase.from('adjustment_proposals').select('id', { count: 'exact', head: true }).eq('society_id', activeSociety.id).eq('status', 'pending'),
         supabase.from('opening_balances').select('status').eq('society_id', activeSociety.id).maybeSingle(),
+        // ...and people who asked to join through the joining link (031)
+        supabase.from('join_requests').select('id', { count: 'exact', head: true }).eq('society_id', activeSociety.id).eq('status', 'pending'),
       ]);
 
       if (uRes.data) setUnits(uRes.data);
@@ -141,7 +144,7 @@ export const SocietyDashboardPage: React.FC = () => {
       if (nRes.data) setNotices(nRes.data);
       if (cRes.data) setComplaints(cRes.data);
       setSummary((sRes.data as SocietySummary) ?? null);
-      setApprovalsCount((aRes.count ?? 0) + (oRes.data?.status === 'submitted' ? 1 : 0));
+      setApprovalsCount((aRes.count ?? 0) + (jRes.count ?? 0) + (oRes.data?.status === 'submitted' ? 1 : 0));
     } catch (err) {
       console.warn('Error querying society records:', err);
     } finally {
@@ -456,7 +459,7 @@ export const SocietyDashboardPage: React.FC = () => {
         {/* MEMBERS */}
         {activeTab === 'members' && activeSociety && (
           <MembersTab societyId={activeSociety.id} societyName={activeSociety.name} currentUserId={user?.id} units={units}
-            canChooseAccountant={!readOnly} onAccountantChanged={(id) => { if (id === user?.id) refreshUserData(activeSociety.id); }} />
+            canChooseAccountant={!readOnly} canManage={!readOnly} onAccountantChanged={(id) => { if (id === user?.id) refreshUserData(activeSociety.id); }} />
         )}
 
         {/* SETTINGS */}
@@ -518,6 +521,7 @@ export const SocietyDashboardPage: React.FC = () => {
 
         {activeTab === 'approvals' && activeSociety && (
           <div className="space-y-8">
+            <JoinRequests societyId={activeSociety.id} units={units} canDecide={!readOnly} onDecided={loadSocietyData} />
             <OpeningBalanceReview societyId={activeSociety.id} canDecide={!readOnly} onDecided={loadSocietyData} />
             <AdjustmentsPanel societyId={activeSociety.id} currentUserId={user?.id} canDecide={!readOnly} canPropose={false} />
           </div>
