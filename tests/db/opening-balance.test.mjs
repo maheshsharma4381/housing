@@ -89,3 +89,36 @@ test('a draft refuses impossible dates, ledgers, flats and vendors', async () =>
   await assert.rejects(save(A, A.ca, { flats: [{ unit_id: A.u101, amount: 1 }, { unit_id: A.u101, amount: 2 }] }), /Each flat appears once/);
   await assert.rejects(save(A, A.ca, { vendors: [{ vendor_id: A.vendor, amount: -5 }] }), /positive amounts/);
 });
+
+const submit = (s, user) => val(user, 'SELECT public.submit_opening_balance($1)', [s.societyId]);
+const reopen = (s, user) => val(user, 'SELECT public.reopen_opening_balance($1)', [s.societyId]);
+
+test('submit refuses until every part ties, then sends it to the committee', async () => {
+  await save(A, A.ca, {});
+  await assert.rejects(submit(A, A.ca), /Nothing to submit/);
+  await save(A, A.ca, { audited: AUDITED.slice(1) });
+  await assert.rejects(submit(A, A.ca), /The balance sheet does not tally — the two sides differ by ₹60,000\.00/);
+  await save(A, A.ca, { audited: AUDITED, catchup: CATCHUP.slice(1) });
+  await assert.rejects(submit(A, A.ca), /The catch-up entry does not tally/);
+  await save(A, A.ca, { audited: AUDITED, catchup: CATCHUP, flats: [{ unit_id: A.u101, amount: 4000 }, { unit_id: A.u102, amount: -1500 }] });
+  await assert.rejects(submit(A, A.ca), /Flat-wise dues add up to ₹4,000\.00 but Members' dues come to ₹5,000\.00/);
+  await save(A, A.ca, { audited: AUDITED, catchup: CATCHUP, flats: [{ unit_id: A.u101, amount: 5000 }] });
+  await assert.rejects(submit(A, A.ca), /Flat-wise advances add up to ₹0\.00 but Advances from members come to ₹1,500\.00/);
+  await save(A, A.ca, { audited: AUDITED, catchup: CATCHUP, flats: flatsA(), vendors: [{ vendor_id: A.vendor, amount: 3500 }] });
+  await assert.rejects(submit(A, A.ca), /more than Sundry Creditors of ₹3,000\.00/);
+  await save(A, A.ca, { audited: AUDITED, catchup: CATCHUP, vendors: vendorsA(),
+    flats: [{ unit_id: A.u101, amount: 4000 }, { unit_id: A.u103, amount: 1000 }, { unit_id: A.u102, amount: -1500 }] });
+  await assert.rejects(submit(A, A.ca), /Flat 103 has no owner linked/);
+  await assert.rejects(submit(A, A.secretary), /Only the society's CA or accountant/);
+
+  await save(A, A.ca, { audited: AUDITED, catchup: CATCHUP, flats: flatsA(), vendors: vendorsA() });
+  assert.equal((await submit(A, A.ca)).status, 'submitted');
+});
+
+test('a submitted opening balance is changed only after withdrawing it', async () => {
+  await assert.rejects(save(A, A.ca, { audited: AUDITED }), /waiting for the committee — withdraw it/);
+  await assert.rejects(reopen(A, A.secretary), /Only the society's CA or accountant/);
+  assert.equal((await reopen(A, A.ca)).status, 'draft');
+  await assert.rejects(reopen(A, A.ca), /Only a submitted opening balance can be withdrawn/);
+  assert.equal((await submit(A, A.ca)).status, 'submitted');
+});

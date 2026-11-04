@@ -265,8 +265,138 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- ============================================================================
+-- 4. SUBMIT (every part must tie) AND WITHDRAW
+-- ============================================================================
+-- NULL when the stored draft may be posted; otherwise the first problem
+CREATE OR REPLACE FUNCTION public.opening_balance_problem(p_society_id UUID)
+RETURNS TEXT AS $$
+DECLARE
+    v_ob opening_balances%ROWTYPE;
+    v_both JSONB;
+    v_code TEXT;
+    v_diff NUMERIC;
+    v_expected NUMERIC;
+    v_entered NUMERIC;
+    v_flat TEXT;
+BEGIN
+    SELECT * INTO v_ob FROM opening_balances WHERE society_id = p_society_id;
+    IF NOT FOUND OR (jsonb_array_length(v_ob.audited_lines) = 0 AND jsonb_array_length(v_ob.catchup_lines) = 0
+                     AND jsonb_array_length(v_ob.flat_lines) = 0) THEN
+        RETURN 'Nothing to submit — enter the balance sheet first';
+    END IF;
+    v_both := v_ob.audited_lines || v_ob.catchup_lines;
+
+    SELECT x ->> 'code' INTO v_code
+    FROM jsonb_array_elements(v_both) x
+    JOIN accounts a ON a.society_id = p_society_id AND a.code = x ->> 'code'
+    WHERE NOT a.is_active
+    LIMIT 1;
+    IF v_code IS NOT NULL THEN
+        RETURN format('Ledger %s is inactive — choose an active ledger', v_code);
+    END IF;
+
+    v_diff := opening_lines_sum(v_ob.audited_lines);
+    IF v_diff <> 0 THEN
+        RETURN 'The balance sheet does not tally — the two sides differ by ' || money_text(v_diff);
+    END IF;
+    v_diff := opening_lines_sum(v_ob.catchup_lines);
+    IF v_diff <> 0 THEN
+        RETURN 'The catch-up entry does not tally — debits and credits differ by ' || money_text(v_diff);
+    END IF;
+
+    v_expected := opening_lines_sum(v_both, '1200');
+    SELECT coalesce(sum((x ->> 'amount')::numeric), 0) INTO v_entered
+    FROM jsonb_array_elements(v_ob.flat_lines) x WHERE (x ->> 'amount')::numeric > 0;
+    IF v_entered <> v_expected THEN
+        RETURN format('Flat-wise dues add up to %s but Members'' dues come to %s', money_text(v_entered), money_text(v_expected));
+    END IF;
+
+    v_expected := -opening_lines_sum(v_both, '2300');
+    SELECT -coalesce(sum((x ->> 'amount')::numeric), 0) INTO v_entered
+    FROM jsonb_array_elements(v_ob.flat_lines) x WHERE (x ->> 'amount')::numeric < 0;
+    IF v_entered <> v_expected THEN
+        RETURN format('Flat-wise advances add up to %s but Advances from members come to %s', money_text(v_entered), money_text(v_expected));
+    END IF;
+
+    v_expected := -opening_lines_sum(v_both, '2000');
+    v_entered := opening_lines_sum(v_ob.vendor_lines);
+    IF v_entered > v_expected THEN
+        RETURN format('Vendor-wise payables add up to %s — more than Sundry Creditors of %s', money_text(v_entered), money_text(v_expected));
+    END IF;
+
+    SELECT party_name(p_society_id, 'flat', u.id::text) INTO v_flat
+    FROM jsonb_array_elements(v_ob.flat_lines) x
+    JOIN units u ON u.id::text = x ->> 'unit_id'
+    JOIN wings w ON w.id = u.wing_id
+    WHERE (x ->> 'amount')::numeric > 0 AND opening_unit_owner(u.id) IS NULL
+    ORDER BY w.name, u.unit_number
+    LIMIT 1;
+    IF v_flat IS NOT NULL THEN
+        RETURN v_flat || ' has no owner linked — ask the secretary to invite the owner first';
+    END IF;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public;
+
+CREATE OR REPLACE FUNCTION public.submit_opening_balance(p_society_id UUID)
+RETURNS JSONB AS $$
+DECLARE
+    v_status TEXT;
+    v_problem TEXT;
+BEGIN
+    IF NOT can_manage_accounts(p_society_id) THEN
+        RAISE EXCEPTION 'Only the society''s CA or accountant can prepare the opening balance';
+    END IF;
+    SELECT status INTO v_status FROM opening_balances WHERE society_id = p_society_id FOR UPDATE;
+    IF v_status IS NULL THEN
+        RAISE EXCEPTION 'Nothing to submit — enter the balance sheet first';
+    ELSIF v_status <> 'draft' THEN
+        RAISE EXCEPTION 'Only a draft can be submitted';
+    END IF;
+    v_problem := opening_balance_problem(p_society_id);
+    IF v_problem IS NOT NULL THEN
+        RAISE EXCEPTION '%', v_problem;
+    END IF;
+
+    UPDATE opening_balances
+    SET status = 'submitted', submitted_by = auth.uid(), submitted_at = timezone('utc'::text, now()),
+        updated_at = timezone('utc'::text, now())
+    WHERE society_id = p_society_id;
+    INSERT INTO audit_logs (society_id, user_id, action, entity_type, entity_id, new_value)
+    VALUES (p_society_id, auth.uid(), 'opening_balance.submitted', 'opening_balance', p_society_id::text, '{}'::jsonb);
+    RETURN opening_balance(p_society_id);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+CREATE OR REPLACE FUNCTION public.reopen_opening_balance(p_society_id UUID)
+RETURNS JSONB AS $$
+DECLARE
+    v_status TEXT;
+BEGIN
+    IF NOT can_manage_accounts(p_society_id) THEN
+        RAISE EXCEPTION 'Only the society''s CA or accountant can prepare the opening balance';
+    END IF;
+    SELECT status INTO v_status FROM opening_balances WHERE society_id = p_society_id FOR UPDATE;
+    IF v_status IS DISTINCT FROM 'submitted' THEN
+        RAISE EXCEPTION 'Only a submitted opening balance can be withdrawn';
+    END IF;
+    UPDATE opening_balances
+    SET status = 'draft', submitted_by = NULL, submitted_at = NULL, updated_at = timezone('utc'::text, now())
+    WHERE society_id = p_society_id;
+    INSERT INTO audit_logs (society_id, user_id, action, entity_type, entity_id, new_value)
+    VALUES (p_society_id, auth.uid(), 'opening_balance.withdrawn', 'opening_balance', p_society_id::text, '{}'::jsonb);
+    RETURN opening_balance(p_society_id);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- ============================================================================
 -- PRIVILEGES
 -- ============================================================================
+REVOKE ALL ON FUNCTION public.opening_balance_problem(UUID) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.submit_opening_balance(UUID) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.reopen_opening_balance(UUID) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.submit_opening_balance(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.reopen_opening_balance(UUID) TO authenticated;
 REVOKE ALL ON FUNCTION public.money_text(NUMERIC) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.opening_lines_sum(JSONB, TEXT) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.opening_unit_owner(UUID) FROM PUBLIC, anon, authenticated;
