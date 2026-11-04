@@ -119,3 +119,65 @@ Nothing was pushed to GitHub. No migration was applied to the live database: run
 - The owner-contacts audit records a count, not each old and new mobile.
 - A changed link is reported only after logging in.
 - Test gaps: read-only committee and other-society refusals, RLS on reading join requests, receipts moving through the link.
+
+---
+
+## Phase 3C — mobile + WhatsApp code login (migration 032)
+
+**Built**
+- **Mobile login.** "Your mobile number" → "Send code on WhatsApp" → "Enter the 6-digit code".
+  - Supabase phone auth makes the code and calls our **Send SMS hook** (`/api/auth/sms-hook`). The hook checks Supabase's signature, asks the database whether this number may get a code, sends it on WhatsApp, and falls back to SMS (MSG91) for Indian numbers. A resend after a WhatsApp code that never arrived goes by SMS first.
+  - Numbers outside India: type the country code (+65 …). They get WhatsApp only.
+- **Limits and cost.**
+  - Per number: 60 seconds between codes. 5 a day for a registered number, 3 a day for an unknown one.
+  - Each society's numbers share a daily bound of 2 per flat + 20.
+  - Platform-wide: a daily cap for unregistered numbers (2000) and an emergency cap for registered ones (20000).
+  - Blocked numbers are refused.
+  - Every send is logged with its cost.
+- **Platform → "OTP & cost".** WhatsApp, SMS and foreign counts; estimated cost; a per-society table with an alert above 5 codes per flat a year; editable limits; block and unblock a number.
+- **Accounts.**
+  - A phone-only account works; it no longer needs an email.
+  - Logging in with the mobile the committee entered for a flat joins that flat, under the committee's name for the owner.
+  - Invites (member and CA) can name a mobile. Only a confirmed phone sees them.
+  - An owner change can name the new owner by mobile.
+  - "Log out of all devices" is in every portal.
+  - The middleware refreshes the session on every page (iPhone).
+  - A one-time "What is your name?" card for new mobile accounts; an "Add your mobile number" card for existing email accounts.
+
+**Switched off until you are ready.** The login page shows mobile login only when `NEXT_PUBLIC_PHONE_LOGIN=1`. Until then:
+- email login works as before;
+- invites and owner changes still need an email.
+
+**What you need to set (when WhatsApp Business is approved)**
+1. Supabase → Authentication → Providers → **Phone**:
+   - enable it;
+   - keep **Confirm phone** ON;
+   - set the OTP expiry to about 300 seconds;
+   - set SMS max frequency to 60 seconds.
+2. Supabase → Authentication → **Hooks** → "Send SMS hook" (HTTP): URL `https://<your-app>/api/auth/sms-hook`. Copy its secret into `SEND_SMS_HOOK_SECRET`.
+3. Supabase → Authentication → **Rate limits**: raise "SMS sent" (default 30 per hour for the whole project).
+4. In Vercel:
+   - `SEND_SMS_HOOK_SECRET`;
+   - `SUPABASE_SERVICE_ROLE_KEY` (already needed for push);
+   - `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_TEMPLATE_NAME` (an approved **authentication** template with a copy-code button), `WHATSAPP_TEMPLATE_LANG`;
+   - optional SMS backup: `MSG91_AUTH_KEY`, `MSG91_TEMPLATE_ID` (DLT-approved);
+   - then `NEXT_PUBLIC_PHONE_LOGIN=1`.
+5. Tell existing users: log in with email once, and add your mobile from the card at the bottom of the screen. Otherwise a mobile login makes a second, empty account.
+
+**Rulings I made (cost if wrong)**
+1. Email login stays as a fallback; spec 12 call 5 said no email. Cost: one more login option on screen until you remove it.
+2. Unknown numbers get 3 codes a day. This covers both "Register your society" and the joining link, with no separate per-link limit. Cost: none.
+3. A failed send counts toward the 60-second wait but not toward the daily limits, and costs nothing. Cost: a broken provider is retried once a minute per person.
+4. Each provider gets 2 seconds inside one 3.5-second budget; Supabase allows a hook 5 seconds. Cost: a slow WhatsApp reply falls back to SMS, or the person is asked to try again in a minute.
+5. MSG91's request shape could not be checked without an account. Cost: the SMS backup may need a small fix when you configure it.
+6. A CA can be invited by mobile too. Cost: none.
+7. The iPhone "Add to Home Screen" hint is the one from 3A in the bell. Cost: none.
+8. Rejected-at-review behaviours are fixed. The redirect after a mobile login has no automated UI test, because the project has no React test harness. Cost: check it by hand once.
+
+**Deferred minors**
+- "Log out of all devices" does not remove the lost phone's push subscription. The pushes carry no content.
+- A pending owner invite stays after the flat is claimed by phone.
+- Professional invites by mobile have no duplicate check.
+- A rotated hook secret (`a|b`) is not supported.
+- A few screens show a blank email for phone-only users.
+- OTP settings accept negative costs.
