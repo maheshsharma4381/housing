@@ -55,7 +55,6 @@ import {
   LogOut,
   RefreshCw,
   QrCode,
-  CheckCircle2,
   ChevronRight,
   Menu,
   Boxes,
@@ -191,14 +190,30 @@ export const SocietyDashboardPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAccountant, activeTab]);
 
-  // Onboarding checklist shown until the society is set up
-  const setupSteps = [
-    { done: true, label: 'Register society', tab: 'home' as const },
-    { done: (summary?.units ?? units.length) > 0, label: 'Import flats', tab: 'flats' as const },
-    { done: Boolean(summary?.upi_configured), label: 'Add society UPI ID', tab: 'settings' as const },
-    { done: (summary?.members ?? 0) > 1, label: 'Invite members', tab: 'members' as const },
-  ];
-  const setupComplete = setupSteps.every(s => s.done);
+  // A link such as /society?tab=members (from the setup wizard) opens that screen
+  useEffect(() => {
+    const wanted = new URLSearchParams(window.location.search).get('tab');
+    if (wanted && NAV_ITEMS.some(item => item.id === wanted)) setActiveTab(wanted as Tab);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // What the setup wizard still has to do (034): shown until the first bills are out
+  const [setupLeft, setSetupLeft] = useState<string[]>([]);
+  useEffect(() => {
+    if (!supabase || !activeSociety || readOnly) return;
+    supabase.rpc('setup_status', { p_society_id: activeSociety.id }).then(({ data }) => {
+      const st = data as { steps: string[]; flats: number; rules: number; upi: boolean; bills: number } | null;
+      if (!st) return;
+      const done = new Set(st.steps);
+      setSetupLeft([
+        st.flats === 0 ? 'flats' : null,
+        st.rules === 0 ? 'maintenance' : null,
+        !st.upi ? 'UPI' : null,
+        !done.has('owners') && !done.has('owners_skipped') ? 'owners' : null,
+        st.bills === 0 ? 'first bills' : null,
+      ].filter((x): x is string => x !== null));
+    });
+  }, [activeSociety, readOnly, units.length]);
 
   const outstandingTotal = Number(summary?.outstanding ?? 0);
   const pendingApprovalCount = summary?.pending_expenses ?? expenses.filter(e => e.status === 'pending_approval').length;
@@ -343,30 +358,13 @@ export const SocietyDashboardPage: React.FC = () => {
             </div>
 
             {/* Getting started checklist */}
-            {!loading && !setupComplete && (
-              <div className="p-4 rounded-2xl bg-sky-500/5 border border-sky-500/30 space-y-3">
+            {!loading && setupLeft.length > 0 && (
+              <a href="/setup" className="block p-4 rounded-2xl bg-sky-500/5 border border-sky-500/30 hover:border-sky-500 space-y-1">
                 <div className="text-xs font-bold text-sky-300 uppercase tracking-wider">Finish setting up your society</div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {setupSteps.map(step => (
-                    <button
-                      key={step.label}
-                      onClick={() => setActiveTab(step.tab)}
-                      disabled={step.done}
-                      className={`flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl text-xs text-left border transition ${
-                        step.done
-                          ? 'bg-slate-900/50 border-slate-800 text-slate-500 line-through'
-                          : 'bg-slate-900 border-slate-700 text-white hover:border-sky-500 cursor-pointer'
-                      }`}
-                    >
-                      <span className="flex items-center gap-2">
-                        <CheckCircle2 className={`w-4 h-4 ${step.done ? 'text-emerald-500' : 'text-slate-600'}`} />
-                        {step.label}
-                      </span>
-                      {!step.done && <ChevronRight className="w-3.5 h-3.5 text-sky-400" />}
-                    </button>
-                  ))}
+                <div className="text-xs text-slate-300 flex items-center gap-1">
+                  Still to do: {setupLeft.join(', ')} <ChevronRight className="w-3.5 h-3.5 text-sky-400" />
                 </div>
-              </div>
+              </a>
             )}
 
             {/* Quick Metrics */}
