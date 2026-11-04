@@ -11391,6 +11391,196 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- ============================================================================
+-- 5b. OPENING ADVANCES ARE USED ON BILLS; OPENING PAYABLES ARE PAID IN THE APP
+-- ============================================================================
+-- A flat's advance on the go-live date: used on its bills before any payment advance
+CREATE TABLE IF NOT EXISTS opening_advances (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    society_id UUID NOT NULL REFERENCES societies(id) ON DELETE CASCADE,
+    unit_id UUID NOT NULL REFERENCES units(id) ON DELETE CASCADE,
+    amount NUMERIC(12,2) NOT NULL CHECK (amount > 0),
+    remaining NUMERIC(12,2) NOT NULL CHECK (remaining >= 0 AND remaining <= amount),
+    as_of DATE NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+CREATE INDEX IF NOT EXISTS idx_opening_advances_unit ON opening_advances (unit_id);
+ALTER TABLE opening_advances ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS opening_advances_select ON opening_advances;
+CREATE POLICY opening_advances_select ON opening_advances FOR SELECT USING (can_view_financials(society_id));
+
+-- A vendor's payable on the go-live date: already in the opening party journal, paid like any bill
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS is_opening_balance BOOLEAN NOT NULL DEFAULT false;
+
+-- from 010_launch.sql; + the flat's opening advance is used first
+CREATE OR REPLACE FUNCTION public.ledger_apply_advance(p_bill_id UUID)
+RETURNS NUMERIC AS $$
+DECLARE
+    v_bill bills%ROWTYPE;
+    v_pay RECORD;
+    v_adv RECORD;
+    v_balance NUMERIC;
+    v_alloc NUMERIC;
+    v_total NUMERIC := 0;
+BEGIN
+    SELECT * INTO v_bill FROM bills WHERE id = p_bill_id FOR UPDATE;
+    IF NOT FOUND OR v_bill.balance_due <= 0 OR v_bill.status NOT IN ('issued', 'partially_paid', 'overdue') THEN
+        RETURN 0;
+    END IF;
+    v_balance := v_bill.balance_due;
+
+    FOR v_adv IN
+        SELECT a.id, a.remaining FROM opening_advances a
+        WHERE a.society_id = v_bill.society_id AND a.unit_id = v_bill.unit_id AND a.remaining > 0
+        ORDER BY a.created_at
+        FOR UPDATE
+    LOOP
+        EXIT WHEN v_balance <= 0;
+        v_alloc := least(v_adv.remaining, v_balance);
+        UPDATE opening_advances SET remaining = remaining - v_alloc WHERE id = v_adv.id;
+        v_balance := v_balance - v_alloc;
+        v_total := v_total + v_alloc;
+    END LOOP;
+
+    IF v_balance > 0 THEN
+        FOR v_pay IN
+            SELECT p.id, p.amount - coalesce((SELECT sum(a.amount) FROM payment_allocations a WHERE a.payment_id = p.id), 0) AS remaining
+            FROM payments p
+            WHERE p.society_id = v_bill.society_id AND p.unit_id = v_bill.unit_id AND p.status = 'verified'
+            ORDER BY p.verified_at NULLS FIRST, p.created_at
+            FOR UPDATE OF p
+        LOOP
+            CONTINUE WHEN v_pay.remaining <= 0;
+            v_alloc := least(v_pay.remaining, v_balance);
+            INSERT INTO payment_allocations (society_id, payment_id, bill_id, amount)
+            VALUES (v_bill.society_id, v_pay.id, v_bill.id, v_alloc);
+            v_balance := v_balance - v_alloc;
+            v_total := v_total + v_alloc;
+            EXIT WHEN v_balance <= 0;
+        END LOOP;
+    END IF;
+
+    IF v_total > 0 THEN
+        UPDATE bills
+        SET amount_paid = amount_paid + v_total,
+            balance_due = balance_due - v_total,
+            status = CASE WHEN balance_due - v_total <= 0 THEN 'paid' ELSE 'partially_paid' END,
+            updated_at = timezone('utc'::text, now())
+        WHERE id = v_bill.id;
+
+        PERFORM post_journal(
+            v_bill.society_id, v_bill.bill_date, 'advance.applied', v_bill.id,
+            'Advance adjusted against bill ' || v_bill.bill_number,
+            jsonb_build_array(
+                jsonb_build_object('code', '2300', 'amount', v_total),
+                jsonb_build_object('code', '1200', 'amount', -v_total)
+            )
+        );
+    END IF;
+    RETURN v_total;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- from 013_accounting.sql; + an opening payable posts nothing (the opening party journal holds it)
+CREATE OR REPLACE FUNCTION public.ledger_post_expense_accrual(p_expense_id UUID)
+RETURNS UUID AS $$
+DECLARE
+    v_exp expenses%ROWTYPE;
+    v_vendor TEXT;
+    v_gst_input NUMERIC;
+BEGIN
+    SELECT * INTO v_exp FROM expenses WHERE id = p_expense_id;
+    IF NOT FOUND OR v_exp.status NOT IN ('approved', 'paid') OR v_exp.is_opening_balance THEN
+        RETURN NULL;
+    END IF;
+    -- Expenses paid before accrual accounting were posted on payment (cash basis)
+    IF EXISTS (SELECT 1 FROM journal_entries WHERE society_id = v_exp.society_id
+               AND reference_event_type = 'expense.paid' AND reference_event_id = v_exp.id) THEN
+        RETURN NULL;
+    END IF;
+    SELECT name INTO v_vendor FROM vendors WHERE id = v_exp.vendor_id;
+    v_gst_input := CASE WHEN v_exp.gst_claimable THEN v_exp.gst_amount ELSE 0 END;
+
+    RETURN post_journal(
+        v_exp.society_id, coalesce(v_exp.invoice_date, v_exp.approved_at::date, current_date), 'expense.approved', v_exp.id,
+        coalesce(v_exp.voucher_number, v_exp.expense_number) || ': ' || v_exp.title || coalesce(' (' || v_vendor || ')', coalesce(' (' || v_exp.payee_name || ')', '')),
+        jsonb_build_array(
+            jsonb_build_object('code', expense_debit_code(v_exp.society_id, v_exp.category, v_exp.expense_type, v_exp.asset_account_code),
+                               'amount', v_exp.subtotal + v_exp.gst_amount - v_gst_input),
+            jsonb_build_object('code', '1300', 'amount', v_gst_input),
+            jsonb_build_object('code', '2000', 'amount', -(v_exp.subtotal + v_exp.gst_amount))
+        )
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- from 013_accounting.sql; + an opening payable cannot be voided
+CREATE OR REPLACE FUNCTION public.void_expense(p_expense_id UUID, p_reason TEXT)
+RETURNS JSONB AS $$
+DECLARE
+    v_exp expenses%ROWTYPE;
+    v_vp RECORD;
+    v_asset fixed_assets%ROWTYPE;
+    v_reversed BOOLEAN := false;
+    v_reason TEXT := trim(coalesce(p_reason, ''));
+BEGIN
+    SELECT * INTO v_exp FROM expenses WHERE id = p_expense_id FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Expense not found';
+    END IF;
+    IF NOT (is_platform_admin() OR is_society_admin(v_exp.society_id)) THEN
+        RAISE EXCEPTION 'Only the society committee can void expenses';
+    END IF;
+    IF length(v_reason) = 0 THEN
+        RAISE EXCEPTION 'A reason is required to void an expense';
+    END IF;
+    IF v_exp.status = 'voided' THEN
+        RAISE EXCEPTION 'Expense is already voided';
+    END IF;
+    IF v_exp.is_opening_balance THEN
+        RAISE EXCEPTION 'An opening payable cannot be voided — it came from the approved opening balance';
+    END IF;
+
+    SELECT * INTO v_asset FROM fixed_assets WHERE expense_id = p_expense_id;
+    IF FOUND THEN
+        IF EXISTS (SELECT 1 FROM depreciation_lines WHERE asset_id = v_asset.id) THEN
+            RAISE EXCEPTION 'Depreciation is already posted on asset %; record a disposal instead', v_asset.asset_number;
+        END IF;
+        IF v_asset.status = 'disposed' THEN
+            RAISE EXCEPTION 'Asset % is already disposed', v_asset.asset_number;
+        END IF;
+        UPDATE fixed_assets SET status = 'voided', updated_at = timezone('utc'::text, now()) WHERE id = v_asset.id;
+    END IF;
+
+    FOR v_vp IN SELECT * FROM vendor_payments WHERE expense_id = p_expense_id AND status = 'recorded' ORDER BY created_at LOOP
+        PERFORM ledger_reverse(v_exp.society_id, 'vendor_payment.recorded', v_vp.id, 'vendor_payment.voided', current_date,
+                               'Payment ' || v_vp.payment_number || ' reversed: ' || v_reason);
+        UPDATE vendor_payments SET status = 'voided' WHERE id = v_vp.id;
+        v_reversed := true;
+    END LOOP;
+
+    IF ledger_reverse(v_exp.society_id, 'expense.approved', v_exp.id, 'expense.voided', current_date,
+                      coalesce(v_exp.voucher_number, v_exp.expense_number) || ' voided: ' || v_reason) IS NOT NULL THEN
+        v_reversed := true;
+    END IF;
+    IF ledger_reverse(v_exp.society_id, 'expense.paid', v_exp.id, 'expense.voided', current_date,
+                      'Expense ' || v_exp.expense_number || ' voided: ' || v_reason) IS NOT NULL THEN
+        v_reversed := true;
+    END IF;
+
+    PERFORM set_config('sahvaas.expense_workflow', 'on', true);
+    UPDATE expenses SET status = 'voided', updated_at = timezone('utc'::text, now()) WHERE id = p_expense_id;
+    PERFORM set_config('sahvaas.expense_workflow', 'off', true);
+
+    INSERT INTO audit_logs (society_id, user_id, action, entity_type, entity_id, old_value, reason)
+    VALUES (v_exp.society_id, auth.uid(), 'expense.voided', 'expense', p_expense_id::text,
+            jsonb_build_object('expense_number', v_exp.expense_number, 'status', v_exp.status, 'net_payable', v_exp.net_payable,
+                               'amount_settled', v_exp.amount_settled), v_reason);
+
+    RETURN jsonb_build_object('status', 'voided', 'reversed', v_reversed);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- ============================================================================
 -- 6. THE COMMITTEE DECIDES; APPROVAL POSTS THE BOOKS
 --    opening.balance  audited sheet, dated the 31 March
 --    opening.catchup  the months up to go-live, dated go-live
@@ -11410,6 +11600,12 @@ DECLARE
     v_payable NUMERIC := 0;
     v_tagged JSONB := '[]'::jsonb;
     v_lines JSONB := '[]'::jsonb;
+    v_applied JSONB := '[]'::jsonb;
+    v_open RECORD;
+    v_adv UUID;
+    v_used NUMERIC;
+    v_alloc NUMERIC;
+    v_vseq INT := 0;
 BEGIN
     IF NOT (is_platform_admin() OR is_society_admin(p_society_id)) THEN
         RAISE EXCEPTION 'Only the society committee can approve the opening balance';
@@ -11481,7 +11677,7 @@ BEGIN
             'narration', 'Opening dues — ' || party_name(p_society_id, 'flat', v_line.unit_id::text));
     END LOOP;
 
-    -- 4. Flat-wise advances
+    -- 4. Flat-wise advances: held for the flat and used on its open bills now, then on new bills
     FOR v_line IN
         SELECT u.id AS unit_id, -(x ->> 'amount')::numeric AS amount
         FROM jsonb_array_elements(v_ob.flat_lines) x
@@ -11493,9 +11689,35 @@ BEGIN
         v_advance := v_advance + v_line.amount;
         v_tagged := v_tagged || jsonb_build_object('code', '2300', 'amount', -v_line.amount, 'party', v_line.unit_id::text,
             'narration', 'Opening advance — ' || party_name(p_society_id, 'flat', v_line.unit_id::text));
+
+        INSERT INTO opening_advances (society_id, unit_id, amount, remaining, as_of)
+        VALUES (p_society_id, v_line.unit_id, v_line.amount, v_line.amount, v_ob.live_on)
+        RETURNING id INTO v_adv;
+        v_used := 0;
+        FOR v_open IN
+            SELECT b.id, b.balance_due FROM bills b
+            WHERE b.society_id = p_society_id AND b.unit_id = v_line.unit_id AND b.balance_due > 0
+              AND b.status IN ('issued', 'partially_paid', 'overdue')
+            ORDER BY b.due_date, b.bill_date, b.bill_number
+            FOR UPDATE
+        LOOP
+            EXIT WHEN v_used >= v_line.amount;
+            v_alloc := least(v_open.balance_due, v_line.amount - v_used);
+            UPDATE bills
+            SET amount_paid = amount_paid + v_alloc,
+                balance_due = balance_due - v_alloc,
+                status = CASE WHEN balance_due - v_alloc <= 0 THEN 'paid' ELSE 'partially_paid' END,
+                updated_at = timezone('utc'::text, now())
+            WHERE id = v_open.id;
+            v_used := v_used + v_alloc;
+        END LOOP;
+        IF v_used > 0 THEN
+            UPDATE opening_advances SET remaining = remaining - v_used WHERE id = v_adv;
+            v_applied := v_applied || jsonb_build_object('id', v_adv, 'unit_id', v_line.unit_id, 'used', v_used);
+        END IF;
     END LOOP;
 
-    -- 5. Vendor-wise payables
+    -- 5. Vendor-wise payables: an approved bill per vendor, paid like any other
     FOR v_line IN
         SELECT v.id AS vendor_id, (x ->> 'amount')::numeric AS amount
         FROM jsonb_array_elements(v_ob.vendor_lines) x
@@ -11505,6 +11727,16 @@ BEGIN
         v_payable := v_payable + v_line.amount;
         v_tagged := v_tagged || jsonb_build_object('code', '2000', 'amount', -v_line.amount, 'party', v_line.vendor_id::text,
             'narration', 'Opening payable — ' || party_name(p_society_id, 'vendor', v_line.vendor_id::text));
+
+        v_vseq := v_vseq + 1;
+        PERFORM set_config('sahvaas.expense_workflow', 'on', true);
+        INSERT INTO expenses (society_id, vendor_id, category, title, subtotal, gst_amount, tds_amount,
+                              invoice_number, invoice_date, expense_type, status, approved_by, approved_at, is_opening_balance)
+        VALUES (p_society_id, v_line.vendor_id, 'other',
+                'Opening balance (payable as on ' || to_char(v_ob.live_on, 'DD-Mon-YYYY') || ')',
+                v_line.amount, 0, 0, 'OB-' || lpad(v_vseq::text, 4, '0'), v_ob.live_on, 'revenue', 'approved',
+                auth.uid(), timezone('utc'::text, now()), true);
+        PERFORM set_config('sahvaas.expense_workflow', 'off', true);
     END LOOP;
 
     -- 6. Move those amounts from the control ledgers onto each flat and vendor
@@ -11520,6 +11752,18 @@ BEGIN
     PERFORM post_journal(p_society_id, v_ob.live_on, 'opening.parties', p_society_id,
         'Opening dues, advances and payables by flat and vendor as on ' || to_char(v_ob.live_on, 'DD-Mon-YYYY'),
         v_lines || v_tagged);
+
+    -- 7. Opening advances used on bills already issued
+    FOR v_line IN
+        SELECT (x ->> 'id')::uuid AS id, (x ->> 'unit_id')::uuid AS unit_id, (x ->> 'used')::numeric AS used
+        FROM jsonb_array_elements(v_applied) x
+    LOOP
+        PERFORM post_journal(p_society_id, current_date, 'opening_advance.applied', v_line.id,
+            'Opening advance adjusted against bills of ' || party_name(p_society_id, 'flat', v_line.unit_id::text),
+            jsonb_build_array(
+                jsonb_build_object('code', '2300', 'amount', v_line.used, 'party', v_line.unit_id::text),
+                jsonb_build_object('code', '1200', 'amount', -v_line.used, 'party', v_line.unit_id::text)));
+    END LOOP;
 
     UPDATE opening_balances
     SET status = 'approved', decided_by = auth.uid(), decided_at = timezone('utc'::text, now()),

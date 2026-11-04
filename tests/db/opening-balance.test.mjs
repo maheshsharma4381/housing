@@ -184,3 +184,44 @@ test('the secretary can no longer post opening balances directly', async () => {
   await assert.rejects(q(A.secretary, `SELECT public.post_opening_balances($1,'2026-03-31','[]','[]')`, [A.societyId]),
     /entered by the society's CA/);
 });
+
+test("a flat's opening advance pays its next bill first", async () => {
+  await q(A.secretary, `INSERT INTO billing_rules (society_id, name, calculation_type, rate) VALUES ($1,'Maintenance','flat_per_unit',1000)`, [A.societyId]);
+  await q(A.secretary, `SELECT public.generate_bills($1,'2026-11-01','2026-11-30','2026-11-10')`, [A.societyId]);
+  const b = (await db.query(`SELECT unit_id, balance_due, status FROM bills WHERE society_id=$1 AND NOT is_opening_balance`, [A.societyId])).rows;
+  const byUnit = Object.fromEntries(b.map((r) => [r.unit_id, [Number(r.balance_due), r.status]]));
+  assert.deepEqual(byUnit[A.u102], [0, 'paid']);
+  assert.deepEqual(byUnit[A.u101], [1000, 'issued']);
+  assert.equal(Number((await db.query(`SELECT remaining FROM opening_advances WHERE unit_id=$1`, [A.u102])).rows[0].remaining), 500);
+  const f = await parties(A, 'flat');
+  assert.equal(Number(f.parties.find((p) => p.name === 'Flat 102').advance), 500);
+  assert.equal(f.parties.reduce((s, p) => s + Number(p.advance), 0), Number(f.control.advance));
+});
+
+test('an opening advance clears bills issued before the approval', async () => {
+  const C = await makeSociety('c');
+  await q(C.secretary, `INSERT INTO billing_rules (society_id, name, calculation_type, rate) VALUES ($1,'Maintenance','flat_per_unit',1000)`, [C.societyId]);
+  await q(C.secretary, `SELECT public.generate_bills($1,'2026-10-01','2026-10-31','2026-10-10')`, [C.societyId]);
+  await approveOpening(db, { societyId: C.societyId, ca: C.ca, approver: C.treasurer, liveOn: '2026-10-01',
+    audited: [{ code: '2300', amount: -1500, side: 'liabilities' }, { code: '1000', amount: 1500, side: 'assets' }],
+    flats: [{ unit_id: C.u102, amount: -1500 }] });
+  const bill = (await db.query(`SELECT balance_due, status FROM bills WHERE unit_id=$1`, [C.u102])).rows[0];
+  assert.deepEqual([Number(bill.balance_due), bill.status], [0, 'paid']);
+  const j = await db.query(`SELECT count(*)::int n FROM journal_entries WHERE society_id=$1 AND reference_event_type='opening_advance.applied'`, [C.societyId]);
+  assert.equal(j.rows[0].n, 1);
+  const f = await parties(C, 'flat');
+  assert.equal(f.parties.reduce((s, p) => s + Number(p.dues), 0), Number(f.control.dues));
+  assert.equal(f.parties.reduce((s, p) => s + Number(p.advance), 0), Number(f.control.advance));
+});
+
+test('a vendor-wise opening payable is paid in the app and cannot be voided', async () => {
+  const e = (await db.query(`SELECT id, status, subtotal FROM expenses WHERE society_id=$1 AND is_opening_balance`, [A.societyId])).rows[0];
+  assert.deepEqual([e.status, Number(e.subtotal)], ['approved', 3000]);
+  const acc = await db.query(`SELECT count(*)::int n FROM journal_entries WHERE reference_event_type='expense.approved' AND reference_event_id=$1`, [e.id]);
+  assert.equal(acc.rows[0].n, 0);
+  await q(A.treasurer, `SELECT public.record_vendor_payment($1,3000,0,'neft','UTR-OB','2026-11-01')`, [e.id]);
+  const v = await parties(A, 'vendor');
+  assert.equal(Number(v.control.payable), 0);
+  assert.equal(v.parties.filter((p) => Number(p.balance) !== 0).length, 0);
+  await assert.rejects(q(A.secretary, `SELECT public.void_expense($1,'wrong')`, [e.id]), /opening payable cannot be voided/);
+});
