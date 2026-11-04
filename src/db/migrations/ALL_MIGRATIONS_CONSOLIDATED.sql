@@ -13028,8 +13028,227 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- ============================================================================
+-- 3. AN ENTRY BOOKED TO THE WRONG BANK MOVES BY AN APPROVED ADJUSTMENT
+-- ============================================================================
+ALTER TABLE adjustment_proposals DROP CONSTRAINT IF EXISTS adjustment_proposals_kind_check;
+ALTER TABLE adjustment_proposals ADD CONSTRAINT adjustment_proposals_kind_check
+    CHECK (kind IN ('journal', 'capitalise', 'year_lock', 'bank_move'));
+ALTER TABLE adjustment_proposals ADD COLUMN IF NOT EXISTS move_entity_type VARCHAR(16)
+    CHECK (move_entity_type IN ('payment', 'vendor_payment', 'tds_challan'));
+ALTER TABLE adjustment_proposals ADD COLUMN IF NOT EXISTS move_entity_id UUID;
+ALTER TABLE adjustment_proposals ADD COLUMN IF NOT EXISTS move_from_ledger_id UUID REFERENCES accounts(id);
+ALTER TABLE adjustment_proposals ADD COLUMN IF NOT EXISTS move_to_ledger_id UUID REFERENCES accounts(id);
+
+-- The entry a move is about: its bank, amount, date, direction and state
+CREATE OR REPLACE FUNCTION public.bank_move_entry(p_society_id UUID, p_type TEXT, p_id UUID)
+RETURNS TABLE (from_ledger UUID, amount NUMERIC, entry_date DATE, money_in BOOLEAN, is_cash BOOLEAN, usable BOOLEAN, matched BOOLEAN) AS $$
+    SELECT p.bank_ledger_id, p.amount, p.payment_date, true, p.payment_method = 'cash', p.status = 'verified',
+           EXISTS (SELECT 1 FROM bank_transactions b WHERE b.reconciled_payment_id = p.id)
+    FROM payments p WHERE p_type = 'payment' AND p.id = p_id AND p.society_id = p_society_id
+    UNION ALL
+    SELECT v.bank_ledger_id, v.amount, v.paid_on, false, v.mode = 'cash', v.status = 'recorded',
+           EXISTS (SELECT 1 FROM bank_transactions b WHERE b.reconciled_vendor_payment_id = v.id)
+    FROM vendor_payments v WHERE p_type = 'vendor_payment' AND v.id = p_id AND v.society_id = p_society_id
+    UNION ALL
+    SELECT c.bank_ledger_id, c.amount, c.paid_on, false, false, true,
+           EXISTS (SELECT 1 FROM bank_transactions b WHERE b.reconciled_challan_id = c.id)
+    FROM tds_challans c WHERE p_type = 'tds_challan' AND c.id = p_id AND c.society_id = p_society_id
+$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
+
+CREATE OR REPLACE FUNCTION public.propose_bank_move(
+    p_society_id UUID, p_entity_type TEXT, p_entity_id UUID, p_to_ledger_id UUID, p_reason TEXT
+)
+RETURNS JSONB AS $$
+DECLARE
+    v_e RECORD;
+    v_from_code TEXT;
+    v_to_code TEXT;
+    v_lines JSONB;
+    v_id UUID;
+    v_number TEXT;
+BEGIN
+    IF NOT can_propose_adjustment(p_society_id) THEN
+        RAISE EXCEPTION 'Only the committee or the society''s CA can propose adjustments';
+    END IF;
+    IF length(trim(coalesce(p_reason, ''))) < 5 THEN
+        RAISE EXCEPTION 'Explain the adjustment (at least a few words)';
+    END IF;
+    SELECT * INTO v_e FROM bank_move_entry(p_society_id, p_entity_type, p_entity_id);
+    IF NOT FOUND OR NOT v_e.usable THEN
+        RAISE EXCEPTION 'Entry not found';
+    END IF;
+    IF v_e.is_cash THEN
+        RAISE EXCEPTION '%', CASE WHEN v_e.money_in THEN 'This was received in cash — there is no bank to move'
+                                  ELSE 'This was paid in cash — there is no bank to move' END;
+    END IF;
+    IF p_to_ledger_id IS NULL OR NOT is_bank_ledger(p_society_id, p_to_ledger_id) THEN
+        RAISE EXCEPTION 'Choose a bank ledger of this society';
+    END IF;
+    IF v_e.from_ledger = p_to_ledger_id THEN
+        RAISE EXCEPTION 'It is already in %', (SELECT name FROM accounts WHERE id = p_to_ledger_id);
+    END IF;
+    IF v_e.matched THEN
+        RAISE EXCEPTION 'Unlink it from the bank statement first';
+    END IF;
+    IF EXISTS (SELECT 1 FROM adjustment_proposals
+               WHERE society_id = p_society_id AND status = 'pending' AND kind = 'bank_move' AND move_entity_id = p_entity_id) THEN
+        RAISE EXCEPTION 'A move for this entry is already waiting for the committee';
+    END IF;
+    PERFORM check_adjustment_date(p_society_id, v_e.entry_date);
+
+    SELECT code INTO v_from_code FROM accounts WHERE id = v_e.from_ledger;
+    SELECT code INTO v_to_code FROM accounts WHERE id = p_to_ledger_id;
+    v_lines := CASE WHEN v_e.money_in
+        THEN jsonb_build_array(jsonb_build_object('code', v_to_code, 'amount', v_e.amount),
+                               jsonb_build_object('code', v_from_code, 'amount', -v_e.amount))
+        ELSE jsonb_build_array(jsonb_build_object('code', v_from_code, 'amount', v_e.amount),
+                               jsonb_build_object('code', v_to_code, 'amount', -v_e.amount)) END;
+
+    v_number := 'AP-' || lpad(next_society_number(p_society_id, 'adjustment_proposals', 'proposal_number', 'AP-')::text, 4, '0');
+    INSERT INTO adjustment_proposals (society_id, proposal_number, kind, entry_date, reason, lines, proposed_by,
+                                      move_entity_type, move_entity_id, move_from_ledger_id, move_to_ledger_id)
+    VALUES (p_society_id, v_number, 'bank_move', v_e.entry_date, trim(p_reason), v_lines, auth.uid(),
+            p_entity_type, p_entity_id, v_e.from_ledger, p_to_ledger_id)
+    RETURNING id INTO v_id;
+
+    INSERT INTO audit_logs (society_id, user_id, action, entity_type, entity_id, new_value)
+    VALUES (p_society_id, auth.uid(), 'adjustment.proposed', 'adjustment_proposal', v_id::text,
+            jsonb_build_object('number', v_number, 'bank_move', jsonb_build_object('type', p_entity_type, 'id', p_entity_id,
+                                                                                  'from', v_from_code, 'to', v_to_code),
+                               'reason', trim(p_reason)));
+    RETURN jsonb_build_object('id', v_id, 'proposal_number', v_number);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- from 023_bank_statement_ledgers.sql; + an approved bank move may re-point a verified payment
+CREATE OR REPLACE FUNCTION public.trg_payment_bank()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF TG_OP = 'UPDATE' AND NEW.bank_ledger_id IS DISTINCT FROM OLD.bank_ledger_id AND OLD.status = 'verified'
+       AND coalesce(current_setting('sahvaas.bank_move', true), '') <> 'on' THEN
+        RAISE EXCEPTION 'This payment is already in the books — ask your CA to move it';
+    END IF;
+    IF NEW.bank_ledger_id IS NOT NULL
+       AND (TG_OP = 'INSERT' OR NEW.bank_ledger_id IS DISTINCT FROM OLD.bank_ledger_id)
+       AND NOT is_bank_ledger(NEW.society_id, NEW.bank_ledger_id) THEN
+        RAISE EXCEPTION 'Choose a bank ledger of this society';
+    END IF;
+    IF NEW.status = 'verified' AND (TG_OP = 'INSERT' OR OLD.status IS DISTINCT FROM 'verified')
+       AND NEW.payment_method <> 'cash' AND NEW.bank_ledger_id IS NULL THEN
+        NEW.bank_ledger_id := coalesce(
+            (SELECT ba.ledger_id FROM bank_transactions bt JOIN bank_accounts ba ON ba.id = bt.bank_account_id
+             WHERE bt.reconciled_payment_id = NEW.id LIMIT 1),
+            (SELECT ledger_id FROM bank_accounts WHERE id = NEW.bank_account_id),
+            default_bank_ledger(NEW.society_id, 'receipt'));
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- from 027_ca_workspace.sql; + a bank_move proposal posts the move and re-points the entry's bank
+CREATE OR REPLACE FUNCTION public.decide_adjustment(p_proposal_id UUID, p_approve BOOLEAN, p_note TEXT DEFAULT NULL)
+RETURNS JSONB AS $$
+DECLARE
+    v_p adjustment_proposals%ROWTYPE;
+    v_exp expenses%ROWTYPE;
+    v_journal UUID;
+    v_who TEXT;
+    v_pending INT;
+    v_move RECORD;
+BEGIN
+    SELECT * INTO v_p FROM adjustment_proposals WHERE id = p_proposal_id FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Proposal not found';
+    END IF;
+    IF NOT (is_platform_admin() OR is_society_admin(v_p.society_id)) THEN
+        RAISE EXCEPTION 'Only the society committee can approve adjustments';
+    END IF;
+    IF v_p.status <> 'pending' THEN
+        RAISE EXCEPTION 'This proposal is already %', v_p.status;
+    END IF;
+    IF v_p.proposed_by = auth.uid() THEN
+        RAISE EXCEPTION 'You proposed this adjustment; another committee member must decide';
+    END IF;
+    IF NOT p_approve AND length(trim(coalesce(p_note, ''))) = 0 THEN
+        RAISE EXCEPTION 'Give a reason for rejecting';
+    END IF;
+
+    IF p_approve AND v_p.kind = 'year_lock' THEN
+        -- A year lock: checked again now, then the books up to entry_date are locked; no journal
+        IF EXISTS (SELECT 1 FROM financial_year_locks WHERE society_id = v_p.society_id AND fy_end >= v_p.entry_date) THEN
+            RAISE EXCEPTION 'This year is already locked';
+        END IF;
+        SELECT count(*) INTO v_pending FROM adjustment_proposals
+        WHERE society_id = v_p.society_id AND status = 'pending' AND kind <> 'year_lock' AND entry_date <= v_p.entry_date;
+        IF v_pending > 0 THEN
+            RAISE EXCEPTION 'Decide the % pending adjustment(s) for this year first', v_pending;
+        END IF;
+        IF EXISTS (SELECT 1 FROM opening_balances WHERE society_id = v_p.society_id AND status = 'submitted' AND audited_as_of <= v_p.entry_date) THEN
+            RAISE EXCEPTION 'Approve or send back the submitted opening balance first';
+        END IF;
+        INSERT INTO financial_year_locks (society_id, fy_end, locked_by, note)
+        VALUES (v_p.society_id, v_p.entry_date, v_p.proposed_by, v_p.reason);
+        INSERT INTO audit_logs (society_id, user_id, action, entity_type, entity_id, new_value)
+        VALUES (v_p.society_id, auth.uid(), 'books.year_locked', 'society', v_p.society_id::text,
+                jsonb_build_object('fy_end', v_p.entry_date, 'note', v_p.reason, 'proposal', v_p.proposal_number));
+    ELSIF p_approve AND v_p.kind = 'bank_move' THEN
+        -- A bank move: the entry must still be as proposed; post the move, then re-point the entry
+        SELECT * INTO v_move FROM bank_move_entry(v_p.society_id, v_p.move_entity_type, v_p.move_entity_id);
+        IF NOT FOUND OR NOT v_move.usable OR v_move.matched OR v_move.from_ledger IS DISTINCT FROM v_p.move_from_ledger_id THEN
+            RAISE EXCEPTION 'This entry has changed since the proposal — ask for a new one';
+        END IF;
+        SELECT full_name INTO v_who FROM profiles WHERE id = v_p.proposed_by;
+        v_journal := post_journal(v_p.society_id, v_p.entry_date, 'adjustment.approved', v_p.id,
+                                  v_p.proposal_number || ' (' || coalesce(v_who, 'CA') || '): ' || v_p.reason, v_p.lines);
+        PERFORM set_config('sahvaas.bank_move', 'on', true);
+        IF v_p.move_entity_type = 'payment' THEN
+            UPDATE payments SET bank_ledger_id = v_p.move_to_ledger_id WHERE id = v_p.move_entity_id;
+        ELSIF v_p.move_entity_type = 'vendor_payment' THEN
+            UPDATE vendor_payments SET bank_ledger_id = v_p.move_to_ledger_id WHERE id = v_p.move_entity_id;
+        ELSE
+            UPDATE tds_challans SET bank_ledger_id = v_p.move_to_ledger_id WHERE id = v_p.move_entity_id;
+        END IF;
+        PERFORM set_config('sahvaas.bank_move', 'off', true);
+    ELSIF p_approve THEN
+        IF v_p.kind = 'capitalise' THEN
+            SELECT * INTO v_exp FROM expenses WHERE id = v_p.expense_id FOR UPDATE;
+            IF v_exp.status NOT IN ('approved', 'paid') OR v_exp.expense_type <> 'revenue' THEN
+                RAISE EXCEPTION 'The expense has changed since this proposal (now %) — ask for a new proposal', v_exp.status;
+            END IF;
+        END IF;
+        SELECT full_name INTO v_who FROM profiles WHERE id = v_p.proposed_by;
+        v_journal := post_journal(v_p.society_id, v_p.entry_date, 'adjustment.approved', v_p.id,
+                                  v_p.proposal_number || ' (' || coalesce(v_who, 'CA') || '): ' || v_p.reason, v_p.lines);
+        IF v_p.kind = 'capitalise' THEN
+            PERFORM set_config('sahvaas.expense_workflow', 'on', true);
+            UPDATE expenses SET expense_type = 'capital', asset_account_code = v_p.asset_account_code,
+                                updated_at = timezone('utc'::text, now())
+            WHERE id = v_exp.id;
+            PERFORM set_config('sahvaas.expense_workflow', 'off', true);
+            PERFORM create_asset_for_expense(v_exp.id);
+        END IF;
+    END IF;
+
+    UPDATE adjustment_proposals
+    SET status = CASE WHEN p_approve THEN 'approved' ELSE 'rejected' END,
+        decided_by = auth.uid(), decided_at = timezone('utc'::text, now()),
+        decision_note = nullif(trim(coalesce(p_note, '')), ''), journal_id = v_journal
+    WHERE id = p_proposal_id;
+
+    INSERT INTO audit_logs (society_id, user_id, action, entity_type, entity_id, new_value, reason)
+    VALUES (v_p.society_id, auth.uid(), CASE WHEN p_approve THEN 'adjustment.approved' ELSE 'adjustment.rejected' END,
+            'adjustment_proposal', p_proposal_id::text, jsonb_build_object('number', v_p.proposal_number, 'journal', v_journal),
+            nullif(trim(coalesce(p_note, '')), ''));
+    RETURN jsonb_build_object('status', CASE WHEN p_approve THEN 'approved' ELSE 'rejected' END, 'journal_id', v_journal);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- ============================================================================
 -- PRIVILEGES
 -- ============================================================================
+REVOKE ALL ON FUNCTION public.bank_move_entry(UUID, TEXT, UUID) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.propose_bank_move(UUID, TEXT, UUID, UUID, TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.propose_bank_move(UUID, TEXT, UUID, UUID, TEXT) TO authenticated;
 REVOKE ALL ON FUNCTION public.dispose_asset(UUID, DATE, NUMERIC, TEXT, TEXT, UUID) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.dispose_asset(UUID, DATE, NUMERIC, TEXT, TEXT, UUID) TO authenticated;
 REVOKE ALL ON FUNCTION public.is_asset_ledger(UUID, TEXT) FROM PUBLIC, anon, authenticated;

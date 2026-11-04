@@ -145,12 +145,12 @@ test('a default bank or a bill type ledger cannot be deactivated', async () => {
   await assert.rejects(q(ids.ca, `SELECT public.set_ledger_active($1,'5C001',false)`, [ids.societyId]), /A bill type uses this ledger/);
 });
 
-test('CA ledgers can go in Duties & Taxes, not in Fixed Assets', async () => {
+test('CA ledgers can go in Duties & Taxes and (since 028) in Fixed Assets', async () => {
   assert.equal(await createLedger(ids.ca, await groupId('duties_taxes'), 'Professional Tax Payable'), '2C001');
-  await assert.rejects(createLedger(ids.ca, await groupId('fixed_assets'), 'Lift'), /created by Sahvaas automatically/);
+  assert.ok(await createLedger(ids.ca, await groupId('fixed_assets'), 'Lift'), '028: asset types are fixed-asset ledgers');
   const chart = await val(ids.ca, `SELECT public.chart_of_accounts($1)`, [ids.societyId]);
   const allows = (key) => chart.groups.find((g) => g.system_key === key).allows_ledgers;
-  assert.deepEqual([allows('duties_taxes'), allows('fixed_assets'), allows('members_dues')], [true, false, false]);
+  assert.deepEqual([allows('duties_taxes'), allows('fixed_assets'), allows('members_dues')], [true, true, false]);
 });
 
 // ---------------------------------------------------------------------------
