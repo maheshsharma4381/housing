@@ -11318,8 +11318,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
--- from 025_party_ledgers.sql; + a line's party_key wins; opening lines without one stay "Not linked"
--- (the opening split now comes from the tagged opening.parties journal)
+-- from 025_party_ledgers.sql; + a line's party_key wins. A society whose opening balance was approved
+-- here gets its split from the tagged opening.parties journal; one that posted the old way (010)
+-- keeps 025's split of the opening Members Receivable line by its opening bills.
 CREATE OR REPLACE FUNCTION public.party_entries(p_society_id UUID)
 RETURNS TABLE (kind TEXT, party_key TEXT, ledger_entry_id UUID, code TEXT, entry_date DATE,
                entry_number TEXT, narration TEXT, amount NUMERIC) AS $$
@@ -11331,6 +11332,12 @@ RETURNS TABLE (kind TEXT, party_key TEXT, ledger_entry_id UUID, code TEXT, entry
         JOIN accounts a ON a.id = l.account_id
         JOIN journal_entries j ON j.id = l.journal_entry_id
         WHERE l.society_id = p_society_id AND a.code IN ('1200', '2300', '2000')
+    ),
+    legacy AS (
+        SELECT NOT EXISTS (SELECT 1 FROM opening_balances ob WHERE ob.society_id = p_society_id AND ob.status = 'approved') AS yes
+    ),
+    opening_bills AS (
+        SELECT b.unit_id, b.total_amount FROM bills b WHERE b.society_id = p_society_id AND b.is_opening_balance
     )
     -- Flats: bills, late fees, cancellations, advances applied, payments, opening lines
     SELECT 'flat'::text,
@@ -11343,6 +11350,18 @@ RETURNS TABLE (kind TEXT, party_key TEXT, ledger_entry_id UUID, code TEXT, entry
            x.id, x.code, x.date, x.entry_number, x.narration, x.amount
     FROM lines x
     WHERE x.code IN ('1200', '2300')
+      AND NOT (x.ev = 'opening.balance' AND x.code = '1200' AND (SELECT yes FROM legacy))
+    UNION ALL
+    -- Opening balances posted the old way (010): the opening Members Receivable line, flat by flat
+    SELECT 'flat', o.unit_id::text, x.id, x.code, x.date, x.entry_number, 'Opening balance (arrears)', o.total_amount
+    FROM lines x CROSS JOIN opening_bills o
+    WHERE x.ev = 'opening.balance' AND x.code = '1200' AND (SELECT yes FROM legacy)
+    UNION ALL
+    SELECT 'flat', 'unlinked', x.id, x.code, x.date, x.entry_number, 'Opening balance not split by flat',
+           x.amount - coalesce((SELECT sum(total_amount) FROM opening_bills), 0)
+    FROM lines x
+    WHERE x.ev = 'opening.balance' AND x.code = '1200' AND (SELECT yes FROM legacy)
+      AND x.amount <> coalesce((SELECT sum(total_amount) FROM opening_bills), 0)
     UNION ALL
     -- Vendors: bills (and their voids), payments (and their voids), opening lines
     SELECT 'vendor',
@@ -11410,6 +11429,27 @@ CREATE POLICY opening_advances_select ON opening_advances FOR SELECT USING (can_
 
 -- A vendor's payable on the go-live date: already in the opening party journal, paid like any bill
 ALTER TABLE expenses ADD COLUMN IF NOT EXISTS is_opening_balance BOOLEAN NOT NULL DEFAULT false;
+
+-- Only the approval of an opening balance marks a vendor bill as an opening payable
+CREATE OR REPLACE FUNCTION public.trg_expense_opening_flag()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF coalesce(current_setting('sahvaas.opening_payable', true), '') = 'on' THEN
+        RETURN NEW;
+    END IF;
+    IF TG_OP = 'INSERT' THEN
+        NEW.is_opening_balance := false;
+    ELSIF NEW.is_opening_balance IS DISTINCT FROM OLD.is_opening_balance THEN
+        RAISE EXCEPTION 'The opening-payable mark is set only by the approved opening balance';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+DROP TRIGGER IF EXISTS trg_expense_opening_flag ON expenses;
+CREATE TRIGGER trg_expense_opening_flag
+    BEFORE INSERT OR UPDATE OF is_opening_balance ON expenses
+    FOR EACH ROW EXECUTE FUNCTION public.trg_expense_opening_flag();
 
 -- from 010_launch.sql; + the flat's opening advance is used first
 CREATE OR REPLACE FUNCTION public.ledger_apply_advance(p_bill_id UUID)
@@ -11508,6 +11548,34 @@ BEGIN
                                'amount', v_exp.subtotal + v_exp.gst_amount - v_gst_input),
             jsonb_build_object('code', '1300', 'amount', v_gst_input),
             jsonb_build_object('code', '2000', 'amount', -(v_exp.subtotal + v_exp.gst_amount))
+        )
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- from 013_accounting.sql; + an opening payable never falls back to cash-basis posting when it is paid
+-- (it has no accrual journal on purpose: the opening party journal holds it)
+CREATE OR REPLACE FUNCTION public.ledger_post_expense(p_expense_id UUID)
+RETURNS UUID AS $$
+DECLARE
+    v_exp expenses%ROWTYPE;
+BEGIN
+    SELECT * INTO v_exp FROM expenses WHERE id = p_expense_id;
+    IF NOT FOUND OR NOT (v_exp.status = 'paid' OR v_exp.payment_status = 'paid') OR v_exp.is_opening_balance THEN
+        RETURN NULL;
+    END IF;
+    IF EXISTS (SELECT 1 FROM journal_entries WHERE society_id = v_exp.society_id
+               AND reference_event_type = 'expense.approved' AND reference_event_id = v_exp.id) THEN
+        RETURN NULL;
+    END IF;
+    RETURN post_journal(
+        v_exp.society_id, coalesce(v_exp.paid_date, v_exp.invoice_date, current_date), 'expense.paid', v_exp.id,
+        'Expense ' || v_exp.expense_number || ': ' || v_exp.title,
+        jsonb_build_array(
+            jsonb_build_object('code', expense_debit_code(v_exp.society_id, v_exp.category, v_exp.expense_type, v_exp.asset_account_code),
+                               'amount', v_exp.net_payable + v_exp.tds_amount),
+            jsonb_build_object('code', '1000', 'amount', -v_exp.net_payable),
+            jsonb_build_object('code', '2200', 'amount', -v_exp.tds_amount)
         )
     );
 END;
@@ -11730,12 +11798,14 @@ BEGIN
 
         v_vseq := v_vseq + 1;
         PERFORM set_config('sahvaas.expense_workflow', 'on', true);
+        PERFORM set_config('sahvaas.opening_payable', 'on', true);
         INSERT INTO expenses (society_id, vendor_id, category, title, subtotal, gst_amount, tds_amount,
                               invoice_number, invoice_date, expense_type, status, approved_by, approved_at, is_opening_balance)
         VALUES (p_society_id, v_line.vendor_id, 'other',
                 'Opening balance (payable as on ' || to_char(v_ob.live_on, 'DD-Mon-YYYY') || ')',
                 v_line.amount, 0, 0, 'OB-' || lpad(v_vseq::text, 4, '0'), v_ob.live_on, 'revenue', 'approved',
                 auth.uid(), timezone('utc'::text, now()), true);
+        PERFORM set_config('sahvaas.opening_payable', 'off', true);
         PERFORM set_config('sahvaas.expense_workflow', 'off', true);
     END LOOP;
 
@@ -11783,6 +11853,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 REVOKE ALL ON FUNCTION public.post_journal(UUID, DATE, TEXT, UUID, TEXT, JSONB) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.party_entries(UUID) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.trg_journal_respect_lock() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.trg_expense_opening_flag() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.decide_opening_balance(UUID, BOOLEAN, TEXT) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.decide_opening_balance(UUID, BOOLEAN, TEXT) TO authenticated;
 REVOKE ALL ON FUNCTION public.opening_balance_problem(UUID) FROM PUBLIC, anon, authenticated;

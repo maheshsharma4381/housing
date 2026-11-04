@@ -214,12 +214,25 @@ test('an opening advance clears bills issued before the approval', async () => {
   assert.equal(f.parties.reduce((s, p) => s + Number(p.advance), 0), Number(f.control.advance));
 });
 
+test('the opening-payable mark is set only by the approved opening balance', async () => {
+  const e = (await db.query(`SELECT id FROM expenses WHERE society_id=$1 AND is_opening_balance`, [A.societyId])).rows[0];
+  await assert.rejects(q(A.secretary, `UPDATE expenses SET is_opening_balance = false WHERE id = $1`, [e.id]),
+    /set only by the approved opening balance/);
+  const id = await val(A.treasurer, `INSERT INTO expenses (society_id, vendor_id, category, title, subtotal, tds_amount, invoice_number, invoice_date, is_opening_balance)
+    VALUES ($1,$2,'repairs','Pump repair',1000,0,'PR-1',current_date,true) RETURNING id`, [A.societyId, A.vendor]);
+  assert.equal((await db.query(`SELECT is_opening_balance FROM expenses WHERE id=$1`, [id])).rows[0].is_opening_balance, false);
+});
+
 test('a vendor-wise opening payable is paid in the app and cannot be voided', async () => {
   const e = (await db.query(`SELECT id, status, subtotal FROM expenses WHERE society_id=$1 AND is_opening_balance`, [A.societyId])).rows[0];
   assert.deepEqual([e.status, Number(e.subtotal)], ['approved', 3000]);
   const acc = await db.query(`SELECT count(*)::int n FROM journal_entries WHERE reference_event_type='expense.approved' AND reference_event_id=$1`, [e.id]);
   assert.equal(acc.rows[0].n, 0);
+  const bankBefore = (await codeBalances(A, '2999-12-31'))['1000'];
   await q(A.treasurer, `SELECT public.record_vendor_payment($1,3000,0,'neft','UTR-OB','2026-11-01')`, [e.id]);
+  assert.equal((await codeBalances(A, '2999-12-31'))['1000'], bankBefore - 3000, 'the bank moves once, by the payment');
+  const paid = await db.query(`SELECT count(*)::int n FROM journal_entries WHERE reference_event_type='expense.paid' AND reference_event_id=$1`, [e.id]);
+  assert.equal(paid.rows[0].n, 0, 'no cash-basis expense is booked for an opening payable');
   const v = await parties(A, 'vendor');
   assert.equal(Number(v.control.payable), 0);
   assert.equal(v.parties.filter((p) => Number(p.balance) !== 0).length, 0);

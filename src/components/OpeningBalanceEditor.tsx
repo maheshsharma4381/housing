@@ -5,8 +5,8 @@ import { supabase } from '../lib/supabase/client';
 import { formatINR } from '../lib/inr';
 import { EMPTY_CHART, type Chart, type ChartLedger } from '../lib/chart';
 import {
-  OPENING_TEMPLATE, catchupLabel, fyEnds, signed, sideTotal,
-  type AuditedLine, type OpeningBalance, type Side,
+  OPENING_TEMPLATE, catchupLabel, fyEnds, previewLines, signed, sideTotal,
+  type OpeningBalance, type Side,
 } from '../lib/opening-balance';
 import { Banner } from './Banner';
 import { CheckCircle2, Loader2, Plus, Save, Send, Undo2, X } from 'lucide-react';
@@ -108,9 +108,8 @@ export const OpeningBalanceEditor: React.FC<{ societyId: string; canManage: bool
   const fixedAssetLedgers = useMemo(() => sheetLedgers.filter(l => l.group_id === groupId(chart, 'fixed_assets')), [sheetLedgers, chart, groupId]);
 
   // ---- the figures, exactly as the server will check them
-  const audited: AuditedLine[] = rows
-    .filter(r => r.code && n(r.amount) !== 0)
-    .map(r => ({ code: r.code, amount: signed(r.side, n(r.amount)), side: r.side, label: r.label }));
+  // Every typed amount counts, including lines whose ledger is created on save
+  const audited = previewLines(rows);
   const catchupLines = catchup.filter(r => r.code && n(r.debit) - n(r.credit) !== 0).map(r => ({ code: r.code, amount: n(r.debit) - n(r.credit) }));
   const liabilities = sideTotal(audited, 'liabilities');
   const assets = sideTotal(audited, 'assets');

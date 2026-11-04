@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { signed, sideTotal, fyEnds, catchupLabel, OPENING_TEMPLATE, type AuditedLine } from '../../src/lib/opening-balance.ts';
+import { signed, sideTotal, fyEnds, catchupLabel, previewLines, OPENING_TEMPLATE, type AuditedLine } from '../../src/lib/opening-balance.ts';
 
 test('a liability is stored as a credit and reads back as entered', () => {
   assert.equal(signed('liabilities', 500), -500);
@@ -37,4 +37,16 @@ test('every starting line names a ledger, a group to create one in, or a list to
   }
   assert.ok(OPENING_TEMPLATE.some((l) => l.side === 'liabilities' && l.code === '2000'));
   assert.ok(OPENING_TEMPLATE.some((l) => l.side === 'assets' && l.code === '1200'));
+});
+
+test('every line with an amount counts in the totals, even before its ledger exists', () => {
+  const lines = previewLines([
+    { side: 'liabilities', label: 'Share Capital', code: '', amount: '5000' },
+    { side: 'assets', label: 'Bank', code: '1000', amount: '5000' },
+    { side: 'assets', label: 'Cash in hand', code: '1100', amount: '' },
+  ]);
+  assert.equal(lines.length, 2);
+  assert.equal(sideTotal(lines, 'liabilities'), 5000);
+  assert.equal(sideTotal(lines, 'assets'), 5000);
+  assert.deepEqual(lines[0], { code: '', amount: -5000, side: 'liabilities', label: 'Share Capital' });
 });

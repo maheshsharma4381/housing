@@ -76,6 +76,16 @@ export function sideTotal(lines: AuditedLine[], side: Side): number {
   return lines.filter(l => l.side === side).reduce((s, l) => s + signed(side, Number(l.amount)), 0);
 }
 
+/** A balance sheet row as the CA types it: the amount as printed, the ledger possibly not chosen or created yet */
+export interface SheetRow { side: Side; label: string; code: string; amount: string | number }
+
+/** The rows with an amount, as stored lines — so the totals move as soon as an amount is typed */
+export function previewLines(rows: SheetRow[]): AuditedLine[] {
+  return rows
+    .filter(r => (Number(r.amount) || 0) !== 0)
+    .map(r => ({ code: r.code, amount: signed(r.side, Number(r.amount)), side: r.side, label: r.label }));
+}
+
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 /** The last `count` 31 Marches strictly before `today`, newest first */
