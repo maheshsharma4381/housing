@@ -20,6 +20,7 @@ import { AssetRegister } from '../../components/AssetRegister';
 import { BankReconciliation } from '../../components/BankReconciliation';
 import { AdjustmentsPanel } from '../../components/AdjustmentsPanel';
 import { OpeningBalanceReview } from '../../components/OpeningBalanceReview';
+import { NotificationBell } from '../../components/NotificationBell';
 import { OpeningBalanceEditor } from '../../components/OpeningBalanceEditor';
 import { ChartOfAccounts } from '../../components/ChartOfAccounts';
 import { PartyLedgers } from '../../components/PartyLedgers';
@@ -174,6 +175,12 @@ export const SocietyDashboardPage: React.FC = () => {
     setShowMore(false);
   };
 
+  // A notification's link names a screen; residents' "bills" is the committee's Maintenance Billing
+  const openFromNotification = (link: string) => {
+    const tab = (link === 'bills' ? 'billing' : link) as Tab;
+    if (NAV_ITEMS.some(item => item.id === tab)) goTo(tab);
+  };
+
   // An old link to an accounting screen goes home for anyone who is not the Accountant
   useEffect(() => {
     if (!NAV_ITEMS.some(item => item.id === activeTab)) setActiveTab('home');
@@ -211,6 +218,7 @@ export const SocietyDashboardPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          <NotificationBell onOpen={openFromNotification} />
           <WorkspaceSelector />
           <button
             onClick={() => logout()}
@@ -236,8 +244,9 @@ export const SocietyDashboardPage: React.FC = () => {
               Role: <strong className="text-sky-300 capitalize">{roleName}</strong>
             </div>
 
-            <div className="pt-2">
-              <WorkspaceSelector />
+            <div className="pt-2 flex items-center gap-2">
+              <div className="flex-1 min-w-0"><WorkspaceSelector /></div>
+              <NotificationBell onOpen={openFromNotification} />
             </div>
           </div>
 

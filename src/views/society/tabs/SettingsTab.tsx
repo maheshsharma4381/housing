@@ -173,6 +173,45 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ societyId }) => {
         <span>{saving ? 'Saving…' : 'Save Settings'}</span>
       </button>
     </form>
+    <ReminderSchedule societyId={societyId} />
     </div>
+  );
+};
+
+/** Dues reminders (Phase 3A): the committee decides when unpaid bills are reminded; a nightly job sends them. */
+const ReminderSchedule: React.FC<{ societyId: string }> = ({ societyId }) => {
+  const [first, setFirst] = useState('3');
+  const [every, setEvery] = useState('7');
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+
+  useEffect(() => {
+    if (!supabase) return;
+    supabase.from('society_settings').select('reminder_first_days, reminder_every_days').eq('society_id', societyId).maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          setFirst(String(data.reminder_first_days));
+          setEvery(String(data.reminder_every_days));
+        }
+      });
+  }, [societyId]);
+
+  const save = async () => {
+    if (!supabase) return;
+    const { error } = await supabase.rpc('set_reminder_schedule', { p_society_id: societyId, p_first: Number(first), p_every: Number(every) });
+    setMessage(error ? { ok: false, text: error.message } : { ok: true, text: 'Reminder schedule saved.' });
+  };
+
+  const box = 'w-16 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-white outline-none focus:border-sky-500 text-center';
+  return (
+    <section className="mt-4 p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-2 text-xs">
+      <h3 className="font-bold text-white">Dues reminders</h3>
+      <p className="text-slate-400">Owners with unpaid bills get a reminder in the app (and on their phone, if they turned it on).</p>
+      <div className="flex flex-wrap items-center gap-2 text-slate-300">
+        Remind <input type="number" min={1} max={60} value={first} onChange={e => setFirst(e.target.value)} className={box} /> days after the due date,
+        then every <input type="number" min={1} max={60} value={every} onChange={e => setEvery(e.target.value)} className={box} /> days.
+        <button onClick={save} className="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold cursor-pointer">Save</button>
+      </div>
+      {message && <p className={message.ok ? 'text-emerald-300' : 'text-rose-300'}>{message.text}</p>}
+    </section>
   );
 };

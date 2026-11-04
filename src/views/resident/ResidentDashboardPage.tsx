@@ -5,6 +5,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase/client';
 import { Bill, Payment, Notice, Complaint, Unit, SocietySetting } from '../../types/database';
+import { NotificationBell } from '../../components/NotificationBell';
 import { EmptyState } from '../../components/EmptyState';
 import { Link } from '../../router/RouterContext';
 import { DocumentsVault } from '../../components/DocumentsVault';
@@ -217,6 +218,10 @@ export const ResidentDashboardPage: React.FC = () => {
             )}
           </div>
 
+          <NotificationBell onOpen={(link) => {
+            if (link === 'bills' || link === 'payments') setActiveTab('bills');
+            else if (link === 'notices' || link === 'complaints') setActiveTab(link);
+          }} />
           <button
             onClick={() => logout()}
             className="p-2 rounded-xl bg-slate-800 text-slate-300 hover:text-rose-400 cursor-pointer"
