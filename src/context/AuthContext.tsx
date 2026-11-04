@@ -11,6 +11,7 @@ import {
   SocietyRole, 
   ProfessionalRole 
 } from '../types/database';
+import { toMembership, type MembershipRow } from '../lib/memberships';
 
 export interface SocietyMembershipWithDetails extends SocietyMembership {
   society: Society;
@@ -71,7 +72,6 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const COMMITTEE_ROLES: SocietyRole[] = ['society_admin', 'secretary', 'chairman', 'treasurer', 'committee_member'];
 
-type MembershipRow = SocietyMembership & { societies: Society | null };
 type GrantRow = SocietyProfessionalAccess & { societies: Society | null };
 
 interface LoadedAuthorizations {
@@ -203,19 +203,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .eq('is_active', true);
 
       const typedMemberships: SocietyMembershipWithDetails[] = ((membershipsData || []) as unknown as MembershipRow[])
-        .map((m) => ({
-          id: m.id,
-          society_id: m.society_id,
-          user_id: m.user_id,
-          role: m.role,
-          unit_id: m.unit_id,
-          is_primary_contact: m.is_primary_contact,
-          is_active: m.is_active,
-          joined_date: m.joined_date,
-          created_at: m.created_at,
-          updated_at: m.updated_at,
-          society: m.societies as Society,
-        }))
+        .map(toMembership)
         .filter(m => m.society && m.society.is_active);
 
       setSocietyMemberships(typedMemberships);

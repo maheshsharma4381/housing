@@ -210,10 +210,15 @@ export const BankReconciliation: React.FC<BankReconciliationProps> = ({ societyI
     if (action.kind === 'ignore') {
       if (await rpc(l.id, 'ignore_bank_line', { p_line_id: l.id, p_note: action.value })) done('Line marked as not needing a match.');
     } else if (action.kind === 'record') {
-      const r = await rpc(l.id, 'record_bank_receipt', { p_line_id: l.id, p_unit_id: action.value }) as { receipt_number: string; payment_id: string } | null;
+      const r = await rpc(l.id, 'record_bank_receipt', { p_line_id: l.id, p_unit_id: action.value }) as { receipt_number?: string; payment_id: string; status?: string } | null;
       if (!r) return;
-      await sendReceipts([r.payment_id]);
-      done(`${formatINR(l.amount)} recorded for flat ${units.find(u => u.id === action.value)?.unit_number}. Receipt ${r.receipt_number}.`);
+      const flat = units.find(u => u.id === action.value)?.unit_number;
+      if (r.status === 'pending_verification') {
+        done(`${formatINR(l.amount)} recorded for flat ${flat}. The committee verifies it in Payments.`);
+      } else {
+        await sendReceipts([r.payment_id]);
+        done(`${formatINR(l.amount)} recorded for flat ${flat}. Receipt ${r.receipt_number}.`);
+      }
     } else {
       const c = candidateById.get(action.value);
       if (c && await rpc(l.id, 'link_bank_line', { p_line_id: l.id, p_kind: c.kind, p_target_id: c.id, p_note: null })) done(`Matched with ${c.label}.`);
@@ -454,7 +459,7 @@ export const BankReconciliation: React.FC<BankReconciliationProps> = ({ societyI
                             <Link2 className="w-3.5 h-3.5" /> Match with…
                           </button>
                         )}
-                        {l.type === 'credit' && canVerify && (
+                        {l.type === 'credit' && (
                           <button onClick={() => setAction(acting?.kind === 'record' ? null : { lineId: l.id, kind: 'record', value: '' })} className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-800 text-emerald-300 font-semibold cursor-pointer">
                             <Plus className="w-3.5 h-3.5" /> Record as a flat&apos;s payment
                           </button>

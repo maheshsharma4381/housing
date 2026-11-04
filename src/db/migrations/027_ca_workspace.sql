@@ -521,6 +521,9 @@ BEGIN
     IF v_pending > 0 THEN
         RAISE EXCEPTION 'Decide the % pending adjustment(s) for this year first', v_pending;
     END IF;
+    IF EXISTS (SELECT 1 FROM opening_balances WHERE society_id = p_society_id AND status = 'submitted' AND audited_as_of <= p_fy_end) THEN
+        RAISE EXCEPTION 'Approve or send back the submitted opening balance first';
+    END IF;
     IF EXISTS (SELECT 1 FROM adjustment_proposals
                WHERE society_id = p_society_id AND status = 'pending' AND kind = 'year_lock' AND entry_date = p_fy_end) THEN
         RAISE EXCEPTION 'A lock for this year is already waiting for the committee';
@@ -577,6 +580,9 @@ BEGIN
         IF v_pending > 0 THEN
             RAISE EXCEPTION 'Decide the % pending adjustment(s) for this year first', v_pending;
         END IF;
+        IF EXISTS (SELECT 1 FROM opening_balances WHERE society_id = v_p.society_id AND status = 'submitted' AND audited_as_of <= v_p.entry_date) THEN
+            RAISE EXCEPTION 'Approve or send back the submitted opening balance first';
+        END IF;
         INSERT INTO financial_year_locks (society_id, fy_end, locked_by, note)
         VALUES (v_p.society_id, v_p.entry_date, v_p.proposed_by, v_p.reason);
         INSERT INTO audit_logs (society_id, user_id, action, entity_type, entity_id, new_value)
@@ -617,8 +623,126 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- ============================================================================
+-- 4. AFTER REVIEW
+-- ============================================================================
+-- An Accountant who leaves the committee (removed, or now a resident) stops being the Accountant;
+-- rejoining later does not bring the role back.
+CREATE OR REPLACE FUNCTION public.trg_membership_accountant()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.is_accountant AND (NOT NEW.is_active OR NOT OLD.is_active
+        OR NEW.role NOT IN ('society_admin', 'secretary', 'chairman', 'treasurer', 'committee_member')) THEN
+        NEW.is_accountant := false;
+        IF auth.uid() IS NOT NULL THEN
+            INSERT INTO audit_logs (society_id, user_id, action, entity_type, entity_id, new_value)
+            VALUES (NEW.society_id, auth.uid(), 'member.accountant_off', 'society_membership', NEW.id::text,
+                    jsonb_build_object('user_id', NEW.user_id,
+                                       'reason', CASE WHEN NOT NEW.is_active THEN 'removed from the society' ELSE 'no longer on the committee' END));
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+DROP TRIGGER IF EXISTS trg_membership_accountant ON society_memberships;
+CREATE TRIGGER trg_membership_accountant
+    BEFORE UPDATE ON society_memberships
+    FOR EACH ROW EXECUTE FUNCTION public.trg_membership_accountant();
+
+-- from 017_bank_reconciliation.sql; + the CA / Accountant records a pending payment that the committee verifies
+CREATE OR REPLACE FUNCTION public.record_bank_receipt(p_line_id UUID, p_unit_id UUID)
+RETURNS JSONB AS $$
+DECLARE
+    v_line bank_transactions;
+    v_unit units%ROWTYPE;
+    v_owner UUID;
+    v_utr TEXT;
+    v_payment UUID;
+    v_result JSONB;
+BEGIN
+    v_line := bank_line_for_update(p_line_id);
+    IF v_line.type <> 'credit' OR v_line.match_kind IS NOT NULL THEN
+        RAISE EXCEPTION 'Only an unmatched credit can be recorded as a payment';
+    END IF;
+    SELECT * INTO v_unit FROM units WHERE id = p_unit_id AND society_id = v_line.society_id;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Flat not found';
+    END IF;
+    SELECT m.user_id INTO v_owner FROM society_memberships m
+    WHERE m.society_id = v_line.society_id AND m.unit_id = p_unit_id AND m.role = 'resident_owner' AND m.is_active
+    ORDER BY m.created_at LIMIT 1;
+    v_owner := coalesce(v_owner, v_unit.current_owner_id);
+    IF v_owner IS NULL THEN
+        RAISE EXCEPTION 'Flat % has no owner linked yet — invite the owner first', v_unit.unit_number;
+    END IF;
+
+    v_utr := coalesce(substring(bank_line_text(v_line) FROM '([0-9]{12})'), v_line.reference_number, 'BANK-' || left(v_line.id::text, 8));
+    INSERT INTO payments (society_id, unit_id, user_id, payment_number, amount, payment_method, transaction_reference_utr,
+                          payment_date, status, bank_account_id)
+    VALUES (v_line.society_id, p_unit_id, v_owner, 'BNK-' || to_char(v_line.transaction_date, 'YYYYMMDD') || '-' || left(md5(v_line.id::text), 6),
+            v_line.amount, CASE WHEN bank_line_text(v_line) ~ 'UPI' THEN 'upi' ELSE 'neft_rtgs' END, v_utr,
+            v_line.transaction_date, 'pending_verification', v_line.bank_account_id)
+    RETURNING id INTO v_payment;
+    IF is_platform_admin() OR is_society_admin(v_line.society_id) THEN
+        v_result := verify_payment(v_payment, true, 'Received in bank; recorded by the committee from the statement');
+    ELSE
+        -- The CA / Accountant points the credit at the flat; the committee verifies it in Payments
+        v_result := jsonb_build_object('status', 'pending_verification');
+    END IF;
+
+    UPDATE bank_transactions
+    SET match_kind = 'payment', match_method = 'recorded', is_reconciled = true, reconciled_payment_id = v_payment,
+        suggested_kind = NULL, suggested_id = NULL, matched_by = auth.uid(), matched_at = timezone('utc'::text, now()),
+        match_note = 'Recorded for flat ' || v_unit.unit_number
+                     || CASE WHEN v_result ->> 'status' = 'pending_verification' THEN ' — waiting for the committee to verify' ELSE '' END
+    WHERE id = p_line_id;
+    RETURN v_result || jsonb_build_object('payment_id', v_payment);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- from 014_ca_workspace.sql; + the Accountant enters last year's figures too
+CREATE OR REPLACE FUNCTION public.save_prior_year_balances(p_society_id UUID, p_fy_end DATE, p_lines JSONB)
+RETURNS JSONB AS $$
+DECLARE
+    v_line JSONB;
+    v_code TEXT;
+    v_amount NUMERIC;
+    v_count INT := 0;
+    v_sum NUMERIC := 0;
+BEGIN
+    IF NOT (is_platform_admin() OR is_society_admin(p_society_id) OR has_professional_permission(p_society_id, 'view_reports')
+            OR can_manage_accounts(p_society_id)) THEN
+        RAISE EXCEPTION 'Only the committee or the society''s CA can enter last year''s figures';
+    END IF;
+    IF p_fy_end IS NULL OR extract(month FROM p_fy_end) <> 3 OR extract(day FROM p_fy_end) <> 31 OR p_fy_end >= current_date THEN
+        RAISE EXCEPTION 'Choose a financial year that has ended (31 March)';
+    END IF;
+
+    DELETE FROM prior_year_balances WHERE society_id = p_society_id AND fy_end = p_fy_end;
+    FOR v_line IN SELECT * FROM jsonb_array_elements(coalesce(p_lines, '[]'::jsonb)) LOOP
+        v_code := v_line ->> 'code';
+        v_amount := round(coalesce((v_line ->> 'amount')::numeric, 0), 2);
+        CONTINUE WHEN v_amount = 0;
+        IF NOT EXISTS (SELECT 1 FROM accounts WHERE society_id = p_society_id AND code = v_code) THEN
+            RAISE EXCEPTION 'Unknown account code %', v_code;
+        END IF;
+        INSERT INTO prior_year_balances (society_id, fy_end, account_code, amount, entered_by)
+        VALUES (p_society_id, p_fy_end, v_code, v_amount, auth.uid());
+        v_count := v_count + 1;
+        v_sum := v_sum + v_amount;
+    END LOOP;
+
+    INSERT INTO audit_logs (society_id, user_id, action, entity_type, entity_id, new_value)
+    VALUES (p_society_id, auth.uid(), 'reports.prior_year_saved', 'society', p_society_id::text,
+            jsonb_build_object('fy_end', p_fy_end, 'lines', v_count, 'difference', v_sum));
+    RETURN jsonb_build_object('lines', v_count, 'difference', v_sum);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- ============================================================================
 -- PRIVILEGES
 -- ============================================================================
+REVOKE ALL ON FUNCTION public.trg_membership_accountant() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.can_keep_books(UUID) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.set_accountant(UUID, UUID, BOOLEAN) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.set_accountant(UUID, UUID, BOOLEAN) TO authenticated;

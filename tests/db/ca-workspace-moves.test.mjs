@@ -57,9 +57,15 @@ test('the CA matches bank lines but never verifies a payment', async () => {
   const credit = (await db.query(`SELECT id FROM bank_transactions WHERE bank_account_id=$1 AND type='credit'`, [bank])).rows[0].id;
   const charges = (await db.query(`SELECT id FROM bank_transactions WHERE bank_account_id=$1 AND type='debit'`, [bank])).rows[0].id;
 
-  await assert.rejects(q(ids.ca, 'SELECT public.record_bank_receipt($1,$2)', [credit, ids.unit101]));
-  assert.equal((await db.query(`SELECT count(*)::int n FROM payments WHERE society_id=$1`, [ids.societyId])).rows[0].n, 0);
+  // The CA points the credit at flat 101: a pending payment the committee verifies in Payments
+  const rec = await val(ids.ca, 'SELECT public.record_bank_receipt($1,$2)', [credit, ids.unit101]);
+  const pay = (await db.query(`SELECT status, amount FROM payments WHERE id=$1`, [rec.payment_id])).rows[0];
+  assert.deepEqual([pay.status, Number(pay.amount)], ['pending_verification', 4170]);
+  assert.equal((await db.query(`SELECT reconciled_payment_id FROM bank_transactions WHERE id=$1`, [credit])).rows[0].reconciled_payment_id, rec.payment_id);
   await assert.rejects(q(ids.ca, 'SELECT public.verify_matched_payments($1)', [ids.societyId]), /Only the society committee can verify payments/);
+  await assert.rejects(q(ids.ca, 'SELECT public.verify_payment($1,true)', [rec.payment_id]));
+  await q(ids.secretary, 'SELECT public.verify_payment($1,true)', [rec.payment_id]);
+  assert.equal((await db.query(`SELECT status FROM payments WHERE id=$1`, [rec.payment_id])).rows[0].status, 'verified');
 
   await q(ids.ca, `SELECT public.ignore_bank_line($1,'Bank SMS charges')`, [charges]);
   assert.equal((await db.query(`SELECT match_kind FROM bank_transactions WHERE id=$1`, [charges])).rows[0].match_kind, 'ignored');
@@ -91,5 +97,18 @@ test('an adjustment raised after the lock was proposed blocks the approval', asy
   await q(S.ca, `SELECT public.propose_adjustment($1,'2026-03-15','Year-end provision',$2)`, [S.societyId,
     JSON.stringify([{ code: '5300', amount: 1500 }, { code: '5900', amount: -1500 }])]);
   await assert.rejects(q(S.treasurer, 'SELECT public.decide_adjustment($1,true)', [lock.id]), /Decide the 1 pending adjustment/);
+  assert.equal(await locked(S), null);
+});
+
+test('a submitted opening balance is decided before the year it opens is locked', async () => {
+  const S = await makeSociety('lock3');
+  const sheet = JSON.stringify([{ code: '1000', amount: 5000 }, { code: '3000', amount: -5000 }]);
+  await q(S.ca, `SELECT public.save_opening_balance($1,'2026-03-31','2026-04-01',$2,'[]','[]','[]')`, [S.societyId, sheet]);
+  await q(S.ca, 'SELECT public.submit_opening_balance($1)', [S.societyId]);
+  await assert.rejects(q(S.ca, `SELECT public.lock_financial_year($1,'2026-03-31')`, [S.societyId]), /opening balance first/);
+  await q(S.ca, 'SELECT public.reopen_opening_balance($1)', [S.societyId]);
+  const lock = await val(S.ca, `SELECT public.lock_financial_year($1,'2026-03-31')`, [S.societyId]);
+  await q(S.ca, 'SELECT public.submit_opening_balance($1)', [S.societyId]);
+  await assert.rejects(q(S.secretary, 'SELECT public.decide_adjustment($1,true)', [lock.id]), /opening balance first/);
   assert.equal(await locked(S), null);
 });

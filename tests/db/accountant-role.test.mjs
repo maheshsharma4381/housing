@@ -59,6 +59,9 @@ test('a read-only committee member can be the accountant but approves nothing', 
   const p = await val(ids.cm, `SELECT public.propose_adjustment($1,current_date,'Reclass garden spend',$2)`, [ids.societyId,
     JSON.stringify([{ code: '5900', amount: 100 }, { code: '5000', amount: -100 }])]);
   await assert.rejects(q(ids.cm, 'SELECT public.decide_adjustment($1,true)', [p.id]), /Only the society committee can approve/);
+  // last year's audited figures are the Accountant's to enter too
+  await q(ids.cm, `SELECT public.save_prior_year_balances($1,'2026-03-31',$2)`, [ids.societyId,
+    JSON.stringify([{ code: '4000', amount: -120000 }, { code: '5100', amount: 80000 }, { code: '1000', amount: 40000 }])]);
 });
 
 test('switching the accountant off, or leaving the committee, takes the books back at once', async () => {
@@ -68,4 +71,20 @@ test('switching the accountant off, or leaving the committee, takes the books ba
   await db.query(`UPDATE society_memberships SET is_active=false WHERE society_id=$1 AND user_id=$2`, [ids.societyId, ids.treasurer]);
   await assert.rejects(val(ids.treasurer, `SELECT public.create_ledger($1,(SELECT id FROM account_groups WHERE society_id=$1 AND system_key='expenses'),'Shrubs')`,
     [ids.societyId]), /Only the society's CA or accountant/);
+});
+
+test('a removed accountant who rejoins is not the accountant again; a demoted one becomes a resident cleanly', async () => {
+  // the treasurer was removed in the previous test while Accountant
+  assert.equal((await db.query(`SELECT is_accountant FROM society_memberships WHERE society_id=$1 AND user_id=$2`,
+    [ids.societyId, ids.treasurer])).rows[0].is_accountant, false);
+  await q(ids.secretary, `INSERT INTO member_invites (society_id,email,role,invited_by) VALUES ($1,'tre@acct.test','committee_member',$2)`,
+    [ids.societyId, ids.secretary]);
+  await q(ids.treasurer, 'SELECT public.claim_my_invites()');
+  await assert.rejects(val(ids.treasurer, `SELECT public.create_ledger($1,(SELECT id FROM account_groups WHERE society_id=$1 AND system_key='expenses'),'Trees')`,
+    [ids.societyId]), /Only the society's CA or accountant/);
+
+  await setAcc(ids.secretary, ids.cm, true);
+  await q(ids.secretary, `UPDATE society_memberships SET role='resident_owner' WHERE society_id=$1 AND user_id=$2`, [ids.societyId, ids.cm]);
+  assert.equal((await db.query(`SELECT is_accountant FROM society_memberships WHERE society_id=$1 AND user_id=$2`,
+    [ids.societyId, ids.cm])).rows[0].is_accountant, false);
 });
