@@ -123,3 +123,14 @@ test('reminders follow the schedule, once a day, never for paid bills', async ()
   assert.match(rows[0].title, /^Reminder: ₹1,000\.00 due for Flat 101$/);
   assert.equal((await inbox(ids.t1, 'dues_reminder')).length, 0);
 });
+
+test('a browser push subscription belongs to the user logged in on it', async () => {
+  await q(ids.r1, `SELECT public.save_push_subscription('https://fcm.googleapis.com/fcm/send/r1-phone','pk','au')`);
+  assert.equal((await q(ids.r1, 'SELECT endpoint FROM push_subscriptions')).length, 1);
+  assert.equal((await q(ids.t1, 'SELECT endpoint FROM push_subscriptions')).length, 0, 'nobody sees another user’s subscriptions');
+  await assert.rejects(q(ids.r1, `SELECT public.save_push_subscription('http://evil.example/x','pk','au')`), /Not a push endpoint/);
+  // the same phone, now logged in as t1
+  await q(ids.t1, `SELECT public.save_push_subscription('https://fcm.googleapis.com/fcm/send/r1-phone','pk2','au2')`);
+  assert.equal((await q(ids.r1, 'SELECT endpoint FROM push_subscriptions')).length, 0);
+  assert.equal((await q(ids.t1, 'SELECT endpoint FROM push_subscriptions')).length, 1);
+});

@@ -259,8 +259,62 @@ END
 $outer$;
 
 -- ============================================================================
+-- 4. WEB PUSH SUBSCRIPTIONS (one per browser; the sender runs at /api/push/send-pending)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    endpoint TEXT NOT NULL UNIQUE,
+    p256dh TEXT,
+    auth TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+ALTER TABLE push_subscriptions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS push_subscriptions_select_own ON push_subscriptions;
+DROP POLICY IF EXISTS push_subscriptions_delete_own ON push_subscriptions;
+CREATE POLICY push_subscriptions_select_own ON push_subscriptions FOR SELECT USING (user_id = auth.uid());
+CREATE POLICY push_subscriptions_delete_own ON push_subscriptions FOR DELETE USING (user_id = auth.uid());
+
+-- A browser's subscription belongs to whoever is logged in on it now
+CREATE OR REPLACE FUNCTION public.save_push_subscription(p_endpoint TEXT, p_p256dh TEXT, p_auth TEXT)
+RETURNS VOID AS $$
+BEGIN
+    IF auth.uid() IS NULL THEN
+        RAISE EXCEPTION 'Log in first';
+    END IF;
+    IF coalesce(p_endpoint, '') NOT LIKE 'https://%' THEN
+        RAISE EXCEPTION 'Not a push endpoint';
+    END IF;
+    INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
+    VALUES (auth.uid(), p_endpoint, p_p256dh, p_auth)
+    ON CONFLICT (endpoint) DO UPDATE SET user_id = EXCLUDED.user_id, p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- When pg_net and the app's URL are set (Supabase: ALTER DATABASE postgres SET app.push_url = 'https://…/api/push/send-pending';
+-- ALTER DATABASE postgres SET app.cron_secret = '…'), the push sender runs every 5 minutes.
+DO $outer$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'pg_cron')
+       AND EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'pg_net') THEN
+        CREATE EXTENSION IF NOT EXISTS pg_cron;
+        CREATE EXTENSION IF NOT EXISTS pg_net;
+        PERFORM cron.unschedule(jobid) FROM cron.job WHERE jobname = 'sahvaas-push';
+        PERFORM cron.schedule('sahvaas-push', '*/5 * * * *', $cron$
+            SELECT net.http_post(
+                url := current_setting('app.push_url', true),
+                headers := jsonb_build_object('Authorization', 'Bearer ' || current_setting('app.cron_secret', true)))
+            WHERE coalesce(current_setting('app.push_url', true), '') <> ''
+        $cron$);
+    END IF;
+END
+$outer$;
+
+-- ============================================================================
 -- PRIVILEGES
 -- ============================================================================
+REVOKE ALL ON FUNCTION public.save_push_subscription(TEXT, TEXT, TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.save_push_subscription(TEXT, TEXT, TEXT) TO authenticated;
 REVOKE ALL ON FUNCTION public.send_dues_reminders(DATE) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.set_reminder_schedule(UUID, INT, INT) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.set_reminder_schedule(UUID, INT, INT) TO authenticated;
