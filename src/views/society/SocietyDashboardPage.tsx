@@ -440,6 +440,7 @@ export const SocietyDashboardPage: React.FC = () => {
             units={units}
             loading={loading}
             onChanged={loadSocietyData}
+            canManage={!readOnly}
           />
         )}
 

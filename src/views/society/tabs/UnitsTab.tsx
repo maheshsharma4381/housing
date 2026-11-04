@@ -4,6 +4,8 @@ import React, { useMemo, useState } from 'react';
 import { supabase } from '../../../lib/supabase/client';
 import { parseUnitCsv, UNIT_CSV_TEMPLATE } from '../../../lib/unit-csv';
 import { EmptyState } from '../../../components/EmptyState';
+import { OwnerChange } from '../../../components/OwnerChange';
+import { OwnerHistory } from '../../../components/OwnerHistory';
 import { Unit } from '../../../types/database';
 import { Building2, Upload, FileDown, AlertCircle, CheckCircle2, Loader2, X } from 'lucide-react';
 
@@ -13,9 +15,14 @@ interface UnitsTabProps {
   units: Unit[];
   loading: boolean;
   onChanged: () => void;
+  /** secretary / chairman / treasurer / society admin may record an owner change */
+  canManage?: boolean;
 }
 
-export const UnitsTab: React.FC<UnitsTabProps> = ({ societyId, societyName, units, loading, onChanged }) => {
+export const UnitsTab: React.FC<UnitsTabProps> = ({ societyId, societyName, units, loading, onChanged, canManage = false }) => {
+  const [panel, setPanel] = useState<{ unitId: string; kind: 'owners' | 'change' } | null>(null);
+  const toggle = (unitId: string, kind: 'owners' | 'change') =>
+    setPanel(p => (p && p.unitId === unitId && p.kind === kind ? null : { unitId, kind }));
   const [showImport, setShowImport] = useState(false);
   const [csvText, setCsvText] = useState('');
   const [importing, setImporting] = useState(false);
@@ -158,6 +165,14 @@ export const UnitsTab: React.FC<UnitsTabProps> = ({ societyId, societyName, unit
                 <div className="text-slate-400">
                   Type: <strong className="text-white">{u.unit_type}</strong> • Area: {u.carpet_area_sqft} sqft
                 </div>
+                <div className="flex gap-3">
+                  <button onClick={() => toggle(u.id, 'owners')} className="text-sky-400 hover:underline cursor-pointer">Owners</button>
+                  {canManage && <button onClick={() => toggle(u.id, 'change')} className="text-sky-400 hover:underline cursor-pointer">Owner change</button>}
+                </div>
+                {panel?.unitId === u.id && panel.kind === 'owners' && <OwnerHistory societyId={societyId} unitId={u.id} />}
+                {panel?.unitId === u.id && panel.kind === 'change' && (
+                  <OwnerChange societyId={societyId} unitId={u.id} unitLabel={`Flat ${u.unit_number}`} onDone={onChanged} />
+                )}
               </div>
             ))}
         </div>
