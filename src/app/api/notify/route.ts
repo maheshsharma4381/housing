@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '../../../lib/supabase/server';
 import { sendEmails, type OutgoingEmail } from '../../../lib/email-sender';
 import { billEmail, inviteEmail, receiptEmail } from '../../../lib/messages';
+import { withoutWaitingFlats } from '../../../lib/notify-recipients';
 import { roleLabel } from '../../../lib/professional-permissions';
 
 /**
@@ -85,10 +86,16 @@ export async function POST(request: NextRequest) {
   } else if (type === 'bills_issued') {
     const { data } = await supabase
       .from('bills')
-      .select('bill_number, total_amount, due_date, society_id, profiles:user_id (full_name, email), units:unit_id (unit_number), societies:society_id (name)')
+      .select('bill_number, total_amount, due_date, society_id, unit_id, profiles:user_id (full_name, email), units:unit_id (unit_number), societies:society_id (name)')
       .eq('cycle_id', id)
       .limit(MAX_RECIPIENTS);
-    for (const b of data ?? []) {
+    const rows = data ?? [];
+    // A flat whose new owner has not joined yet still bills the previous owner: email no one (029)
+    const { data: waiting } = rows.length > 0
+      ? await supabase.from('unit_ownerships').select('unit_id').in('unit_id', rows.map(r => r.unit_id))
+          .is('to_date', null).is('owner_user_id', null)
+      : { data: [] as { unit_id: string }[] };
+    for (const b of withoutWaitingFlats(rows, (waiting ?? []).map(w => w.unit_id as string))) {
       societyId = b.society_id;
       const owner = one(b.profiles as One<{ full_name: string; email: string }>);
       if (!owner?.email) continue;
@@ -108,9 +115,13 @@ export async function POST(request: NextRequest) {
   } else if (type === 'receipt') {
     const { data } = await supabase
       .from('payments')
-      .select('id, amount, receipt_number, transaction_reference_utr, status, society_id, profiles:user_id (full_name, email), units:unit_id (unit_number), societies:society_id (name)')
+      .select('id, amount, receipt_number, transaction_reference_utr, status, society_id, unit_id, profiles:user_id (full_name, email), units:unit_id (unit_number), societies:society_id (name)')
       .eq('id', id).eq('status', 'verified').maybeSingle();
-    const owner = data ? one(data.profiles as One<{ full_name: string; email: string }>) : null;
+    const { data: waiting } = data
+      ? await supabase.from('unit_ownerships').select('unit_id').eq('unit_id', data.unit_id).is('to_date', null).is('owner_user_id', null)
+      : { data: [] as { unit_id: string }[] };
+    const owner = data && withoutWaitingFlats([data], (waiting ?? []).map(w => w.unit_id as string)).length > 0
+      ? one(data.profiles as One<{ full_name: string; email: string }>) : null;
     if (data && owner?.email && data.receipt_number) {
       societyId = data.society_id;
       emails.push({

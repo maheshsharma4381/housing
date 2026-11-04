@@ -86,8 +86,6 @@ test('the secretary records an owner change; the old owner loses the flat; the n
   assert.equal(tenant.is_active, true, 'the tenant keeps the flat');
   await assert.rejects(q(ids.r1, `INSERT INTO payments (society_id, unit_id, user_id, payment_number, amount, transaction_reference_utr, status)
     VALUES ($1,$2,$3,'P-OLD',100,'111111111111','pending_verification')`, [ids.societyId, ids.u101, ids.r1]), /row-level security/);
-  await assert.rejects(q(ids.secretary, `SELECT public.transfer_flat_owner($1,'Someone Else','else@owners.test',NULL,current_date)`, [ids.u101]),
-    /already has a new owner waiting to join/);
   const periods = await val(ids.secretary, 'SELECT public.flat_owner_periods($1)', [ids.u101]);
   assert.deepEqual(periods.map((p) => [p.owner_name, p.joined, p.owner_mobile]), [[periods[0].owner_name, true, null], ['Neha Shah', false, '9876500000']]);
   const invite = (await db.query(`SELECT role, status FROM member_invites WHERE email='neha@owners.test'`)).rows[0];
@@ -128,4 +126,43 @@ test("an owner change must come after the current owner's start", async () => {
   await asUser(db, r2, (tx) => tx.query('SELECT public.claim_my_invites()'));
   await assert.rejects(q(ids.secretary, `SELECT public.transfer_flat_owner($1,'Amit Rao','amit@owners.test',NULL,current_date)`, [ids.u102]),
     /must be after .* \(when the current owner's period began\)/);
+});
+
+test('a wrong email is corrected by recording the change again; the person who joins gets the flat and its payments', async () => {
+  // r2 has owned flat 102 since April 2025
+  await db.query(`UPDATE unit_ownerships SET from_date = '2025-04-01' WHERE unit_id = $1 AND to_date IS NULL`, [ids.u102]);
+  await q(ids.secretary, `SELECT public.transfer_flat_owner($1,'Amit Rao','amit@gmial.test','9876511111',current_date)`, [ids.u102]);
+  // corrected: same flat, right email
+  await q(ids.secretary, `SELECT public.transfer_flat_owner($1,'Amit Rao','amit@owners.test','9876511111',current_date)`, [ids.u102]);
+  const periods = await val(ids.secretary, 'SELECT public.flat_owner_periods($1)', [ids.u102]);
+  assert.deepEqual(periods.map((p) => [p.owner_email, p.joined]), [['r2@owners.test', true], ['amit@owners.test', false]]);
+  const invites = (await db.query(`SELECT email, status FROM member_invites WHERE unit_id=$1 AND role='resident_owner' AND email LIKE 'amit@%' ORDER BY created_at`,
+    [ids.u102])).rows;
+  assert.deepEqual(invites.map((i) => [i.email, i.status]), [['amit@gmial.test', 'revoked'], ['amit@owners.test', 'pending']]);
+  // a receipt recorded for the flat before Amit joins (as the bank match does) carries the old owner until then
+  const pay = (await db.query(`INSERT INTO payments (society_id, unit_id, user_id, payment_number, amount, transaction_reference_utr, status)
+    VALUES ($1,$2,(SELECT current_owner_id FROM units WHERE id=$2),'BNK-1',700,'333333333333','pending_verification') RETURNING id`,
+    [ids.societyId, ids.u102])).rows[0].id;
+  const amit = await createUser(db, 'amit@owners.test');
+  await asUser(db, amit, (tx) => tx.query('SELECT public.claim_my_invites()'));
+  assert.equal((await db.query('SELECT user_id FROM payments WHERE id=$1', [pay])).rows[0].user_id, amit);
+  assert.equal((await val(ids.secretary, 'SELECT public.flat_owner_periods($1)', [ids.u102]))[1].joined, true);
+});
+
+test('an owner change re-invited from Members still completes for whoever joins', async () => {
+  // Neha has owned flat 101 since the last transfer; record a new sale with a mistyped email
+  await db.query(`UPDATE unit_ownerships SET from_date = '2026-05-01' WHERE unit_id = $1 AND to_date IS NULL`, [ids.u101]);
+  await db.query(`UPDATE unit_ownerships SET to_date = '2026-04-30' WHERE unit_id = $1 AND to_date IS NOT NULL`, [ids.u101]);
+  await q(ids.secretary, `SELECT public.transfer_flat_owner($1,'Ravi Iyer','ravi@typo.test',NULL,current_date)`, [ids.u101]);
+  // the secretary revokes that invite in Members and invites the right email
+  await db.query(`UPDATE member_invites SET status='revoked' WHERE email='ravi@typo.test'`);
+  await q(ids.secretary, `INSERT INTO member_invites (society_id,email,role,unit_id,invited_by) VALUES ($1,'ravi@owners.test','resident_owner',$2,$3)`,
+    [ids.societyId, ids.u101, ids.secretary]);
+  const ravi = await createUser(db, 'ravi@owners.test');
+  await asUser(db, ravi, (tx) => tx.query('SELECT public.claim_my_invites()'));
+  const periods = await val(ids.secretary, 'SELECT public.flat_owner_periods($1)', [ids.u101]);
+  assert.deepEqual(periods.at(-1).owner_email, 'ravi@owners.test');
+  assert.equal(periods.at(-1).joined, true);
+  const open = (await db.query(`SELECT user_id FROM bills WHERE unit_id=$1 AND balance_due > 0`, [ids.u101])).rows;
+  assert.ok(open.length > 0 && open.every((b) => b.user_id === ravi), 'the dues reached the person who joined');
 });

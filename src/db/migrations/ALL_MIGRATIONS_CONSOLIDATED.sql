@@ -13314,6 +13314,8 @@ WHERE o.user_id IS NOT NULL
 -- from 012_consent_and_roles.sql; + the ownership history is kept as owners join
 CREATE OR REPLACE FUNCTION public.accept_member_invite_row(p_invite member_invites, p_uid UUID)
 RETURNS VOID AS $$
+DECLARE
+    v_waiting_since TIMESTAMPTZ;
 BEGIN
     IF EXISTS (
         SELECT 1 FROM society_memberships
@@ -13342,12 +13344,21 @@ BEGIN
 
     -- Ownership history (029): the owner an owner change was waiting for, or a flat's first owner
     IF p_invite.unit_id IS NOT NULL AND p_invite.role = 'resident_owner' THEN
-        UPDATE unit_ownerships SET owner_user_id = p_uid
-        WHERE invite_id = p_invite.id AND owner_user_id IS NULL;
+        -- An owner change waiting on this flat is completed by whoever joins as its owner
+        -- (the invite may have been corrected or re-sent from Members)
+        UPDATE unit_ownerships o
+        SET owner_user_id = p_uid,
+            owner_email = coalesce((SELECT email FROM profiles WHERE id = p_uid), p_invite.email),
+            invite_id = p_invite.id
+        WHERE o.unit_id = p_invite.unit_id AND o.to_date IS NULL AND o.owner_user_id IS NULL
+        RETURNING o.created_at INTO v_waiting_since;
         IF FOUND THEN
             -- The dues stay with the flat: its unpaid bills are now the new owner's to pay
             UPDATE bills SET user_id = p_uid, updated_at = timezone('utc'::text, now())
             WHERE unit_id = p_invite.unit_id AND balance_due > 0 AND status IN ('issued', 'partially_paid', 'overdue');
+            -- Receipts recorded for the flat while the change waited are the new owner's too
+            UPDATE payments SET user_id = p_uid
+            WHERE unit_id = p_invite.unit_id AND created_at >= v_waiting_since AND user_id IS DISTINCT FROM p_uid;
         ELSIF NOT EXISTS (SELECT 1 FROM unit_ownerships WHERE unit_id = p_invite.unit_id AND to_date IS NULL) THEN
             INSERT INTO unit_ownerships (society_id, unit_id, owner_user_id, owner_name, owner_email, from_date)
             SELECT p_invite.society_id, p_invite.unit_id, p_uid, coalesce(p.full_name, p.email, p_invite.email),
@@ -13420,6 +13431,9 @@ DECLARE
     v_invite UUID;
     v_period UUID;
     v_balance JSONB;
+    v_waiting BOOLEAN := false;
+    v_prev unit_ownerships%ROWTYPE;
+    v_has_prev BOOLEAN := false;
 BEGIN
     SELECT * INTO v_unit FROM units WHERE id = p_unit_id FOR UPDATE;
     IF NOT FOUND THEN
@@ -13439,13 +13453,40 @@ BEGIN
     END IF;
     SELECT * INTO v_open FROM unit_ownerships WHERE unit_id = p_unit_id AND to_date IS NULL FOR UPDATE;
     IF FOUND AND v_open.owner_user_id IS NULL THEN
-        RAISE EXCEPTION 'This flat already has a new owner waiting to join';
-    END IF;
-    IF FOUND AND p_transfer_date <= v_open.from_date THEN
+        -- A change already waits: this one corrects it, checked against the previous owner's start
+        v_waiting := true;
+        SELECT * INTO v_prev FROM unit_ownerships
+        WHERE unit_id = p_unit_id AND to_date IS NOT NULL ORDER BY from_date DESC LIMIT 1 FOR UPDATE;
+        v_has_prev := FOUND;
+        IF v_has_prev AND p_transfer_date <= v_prev.from_date THEN
+            RAISE EXCEPTION 'The transfer date must be after % (when the current owner''s period began)', to_char(v_prev.from_date, 'DD Mon YYYY');
+        END IF;
+    ELSIF FOUND AND p_transfer_date <= v_open.from_date THEN
         RAISE EXCEPTION 'The transfer date must be after % (when the current owner''s period began)', to_char(v_open.from_date, 'DD Mon YYYY');
     END IF;
 
     v_balance := flat_balance(p_unit_id);
+
+    IF v_waiting THEN
+        IF v_has_prev THEN
+            UPDATE unit_ownerships SET to_date = p_transfer_date - 1 WHERE id = v_prev.id;
+        END IF;
+        UPDATE member_invites SET status = 'revoked'
+        WHERE society_id = v_unit.society_id AND unit_id = p_unit_id AND role = 'resident_owner' AND status = 'pending';
+        INSERT INTO member_invites (society_id, email, full_name, role, unit_id, invited_by)
+        VALUES (v_unit.society_id, v_email, v_name, 'resident_owner', p_unit_id, auth.uid())
+        RETURNING id INTO v_invite;
+        UPDATE unit_ownerships
+        SET owner_name = v_name, owner_email = v_email, owner_mobile = nullif(trim(coalesce(p_new_owner_mobile, '')), ''),
+            from_date = p_transfer_date, invite_id = v_invite
+        WHERE id = v_open.id
+        RETURNING id INTO v_period;
+        INSERT INTO audit_logs (society_id, user_id, action, entity_type, entity_id, new_value)
+        VALUES (v_unit.society_id, auth.uid(), 'unit.owner_change_corrected', 'unit', p_unit_id::text,
+                jsonb_build_object('new_owner', v_name, 'email', v_email, 'transfer_date', p_transfer_date));
+        RETURN jsonb_build_object('ownership_id', v_period, 'invite_id', v_invite,
+                                  'dues', v_balance -> 'dues', 'advance', v_balance -> 'advance');
+    END IF;
 
     -- The current owner's period ends the day before; they lose the flat
     UPDATE unit_ownerships SET to_date = p_transfer_date - 1 WHERE unit_id = p_unit_id AND to_date IS NULL;

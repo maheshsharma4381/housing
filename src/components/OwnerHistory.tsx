@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase/client';
 import { formatINR } from '../lib/inr';
+import { statementHtml } from '../lib/statement-html';
 import { Banner } from './Banner';
 import { Loader2, Printer, Users } from 'lucide-react';
 
@@ -74,7 +75,17 @@ export const OwnerHistory: React.FC<{ societyId: string; unitId: string }> = ({ 
             <>
               <div className="flex items-center justify-between">
                 <div className="text-white font-semibold">{open.statement.name} · {periods[open.index].owner_name}</div>
-                <button onClick={() => window.print()} className="flex items-center gap-1 text-slate-300 hover:text-white cursor-pointer print:hidden">
+                <button onClick={() => {
+                  // The statement prints on a page of its own, not the whole Flats screen
+                  const w = window.open('', '_blank');
+                  if (!w || !open.statement) return;
+                  w.document.write(statementHtml({
+                    title: `${open.statement.name} · ${periods[open.index].owner_name}`,
+                    openingLabel: open.index > 0 ? 'Brought forward from previous owner' : 'Opening balance',
+                    statement: open.statement,
+                  }));
+                  w.document.close();
+                }} className="flex items-center gap-1 text-slate-300 hover:text-white cursor-pointer">
                   <Printer className="w-3.5 h-3.5" /> Print
                 </button>
               </div>

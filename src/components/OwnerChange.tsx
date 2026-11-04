@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase/client';
 import { formatINR } from '../lib/inr';
+import { describeNotify, notify } from '../lib/notify';
 import { Banner } from './Banner';
 import { Loader2, UserRoundCog } from 'lucide-react';
 
@@ -35,13 +36,18 @@ export const OwnerChange: React.FC<{ societyId: string; unitId: string; unitLabe
     if (!supabase) return;
     setBusy(true);
     setError(null);
-    const { error: err } = await supabase.rpc('transfer_flat_owner', {
+    const { data, error: err } = await supabase.rpc('transfer_flat_owner', {
       p_unit_id: unitId, p_new_owner_name: form.name, p_new_owner_email: form.email,
       p_new_owner_mobile: form.mobile || null, p_transfer_date: form.date,
     });
+    if (err) {
+      setBusy(false);
+      return setError(err.message);
+    }
+    // Email the invite, as Members does
+    const emailed = await notify('member_invite', (data as { invite_id: string }).invite_id);
     setBusy(false);
-    if (err) return setError(err.message);
-    setNotice(`Owner change recorded. ${form.name} gets an invite at ${form.email}.`);
+    setNotice(`Owner change recorded. Invite saved for ${form.email}.${describeNotify(emailed, 'person')}`);
     onDone();
   };
 
