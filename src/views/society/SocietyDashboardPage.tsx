@@ -26,7 +26,9 @@ import { OpeningBalanceEditor } from '../../components/OpeningBalanceEditor';
 import { ChartOfAccounts } from '../../components/ChartOfAccounts';
 import { PartyLedgers } from '../../components/PartyLedgers';
 import { BillTypes } from '../../components/BillTypes';
-import { societyNav, type SocietyTab } from '../../lib/society-nav';
+import { societyNav, societyTabFor, GROUP_LABELS, PHONE_BAR, type SocietyTab } from '../../lib/society-nav';
+import { HomeCards } from '../../components/HomeCards';
+import { PendingVendorBills } from '../../components/PendingVendorBills';
 import { PriorYearEditor } from '../../components/PriorYearEditor';
 import { YearLockPanel } from '../../components/YearLockPanel';
 import { FeatureGate, PlanBilling } from '../../components/PlanBilling';
@@ -104,6 +106,8 @@ export const SocietyDashboardPage: React.FC = () => {
   const NAV_ITEMS = societyNav({ isAccountant }).map(item => ({ ...item, icon: ICONS[item.id] }));
 
   const [activeTab, setActiveTab] = useState<Tab>('home');
+  // Flats & residents (spec 9.3): flats, members and owner change on one screen
+  const [flatsView, setFlatsView] = useState<'flats' | 'members'>('flats');
   const [showMore, setShowMore] = useState(false);
 
   const [units, setUnits] = useState<Unit[]>([]);
@@ -175,13 +179,16 @@ export const SocietyDashboardPage: React.FC = () => {
     : null;
 
   const goTo = (tab: Tab) => {
-    setActiveTab(tab);
+    // "members" is a part of Flats & residents now
+    if (tab === 'members') setFlatsView('members');
+    setActiveTab(tab === 'members' ? 'flats' : tab);
     setShowMore(false);
   };
 
   // A notification's link names a screen; residents' "bills" is the committee's Maintenance Billing
   const openFromNotification = (link: string) => {
-    const tab = (link === 'bills' ? 'billing' : link) as Tab;
+    if (link === 'members') return goTo('members');
+    const tab = societyTabFor(link);
     if (NAV_ITEMS.some(item => item.id === tab)) goTo(tab);
   };
 
@@ -194,7 +201,8 @@ export const SocietyDashboardPage: React.FC = () => {
   // A link such as /society?tab=members (from the setup wizard) opens that screen
   useEffect(() => {
     const wanted = new URLSearchParams(window.location.search).get('tab');
-    if (wanted && NAV_ITEMS.some(item => item.id === wanted)) setActiveTab(wanted as Tab);
+    if (wanted === 'members') goTo('members');
+    else if (wanted && NAV_ITEMS.some(item => item.id === societyTabFor(wanted))) setActiveTab(societyTabFor(wanted));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -209,9 +217,7 @@ export const SocietyDashboardPage: React.FC = () => {
     });
   }, [activeSociety, readOnly, units.length]);
 
-  const outstandingTotal = Number(summary?.outstanding ?? 0);
   const pendingApprovalCount = summary?.pending_expenses ?? expenses.filter(e => e.status === 'pending_approval').length;
-  const openComplaintCount = summary?.open_complaints ?? complaints.filter(c => c.status === 'open' || c.status === 'in_progress').length;
   const pendingPayments = summary?.pending_payments ?? 0;
 
   return (
@@ -261,10 +267,11 @@ export const SocietyDashboardPage: React.FC = () => {
             {NAV_ITEMS.map((tab, index) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
-              const firstAccounts = tab.group === 'accounts' && NAV_ITEMS[index - 1]?.group !== 'accounts';
+              // a heading where each group starts: Money, Society, Settings (and Accounts for the Accountant)
+              const firstOfGroup = tab.group !== 'top' && NAV_ITEMS[index - 1]?.group !== tab.group;
               return (
                 <React.Fragment key={tab.id}>
-                {firstAccounts && <div className="px-3 pt-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Accounts</div>}
+                {firstOfGroup && <div className="px-3 pt-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">{GROUP_LABELS[tab.group]}</div>}
                 <button
                   onClick={() => goTo(tab.id)}
                   className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition cursor-pointer ${
@@ -277,9 +284,9 @@ export const SocietyDashboardPage: React.FC = () => {
                     <Icon className="w-4 h-4" />
                     <span>{tab.label}</span>
                   </div>
-                  {tab.id === 'approvals' && approvalsCount > 0 && (
+                  {tab.id === 'approvals' && (approvalsCount + pendingApprovalCount) > 0 && (
                     <span className="w-5 h-5 rounded-full bg-amber-500 text-slate-950 font-bold text-[10px] flex items-center justify-center">
-                      {approvalsCount}
+                      {approvalsCount + pendingApprovalCount}
                     </span>
                   )}
                   {tab.id === 'expenses' && pendingApprovalCount > 0 && (
@@ -361,49 +368,8 @@ export const SocietyDashboardPage: React.FC = () => {
               </a>
             )}
 
-            {/* Quick Metrics */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <button 
-                onClick={() => setActiveTab('billing')}
-                className="p-4 rounded-2xl bg-gradient-to-br from-sky-600 to-sky-700 text-white text-left shadow-lg shadow-sky-600/20 active:scale-95 transition cursor-pointer"
-              >
-                <CreditCard className="w-5 h-5 mb-2 opacity-90" />
-                <div className="text-xs font-medium opacity-80">Outstanding Balance</div>
-                <div className="text-lg font-bold">₹{outstandingTotal.toLocaleString('en-IN')}</div>
-              </button>
-
-              <button 
-                onClick={() => setActiveTab('expenses')}
-                className="p-4 rounded-2xl bg-slate-900 border border-slate-800 text-left active:scale-95 transition cursor-pointer"
-              >
-                <Receipt className="w-5 h-5 mb-2 text-amber-400" />
-                <div className="text-xs text-slate-400">Pending Approvals</div>
-                <div className="text-lg font-bold text-white flex items-center gap-1.5">
-                  <span>{pendingApprovalCount}</span>
-                  {pendingApprovalCount > 0 && (
-                    <span className="text-[10px] font-semibold text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded">Action Req</span>
-                  )}
-                </div>
-              </button>
-
-              <button 
-                onClick={() => setActiveTab('complaints')}
-                className="p-4 rounded-2xl bg-slate-900 border border-slate-800 text-left active:scale-95 transition cursor-pointer"
-              >
-                <MessageSquare className="w-5 h-5 mb-2 text-rose-400" />
-                <div className="text-xs text-slate-400">Open Complaints</div>
-                <div className="text-lg font-bold text-white">{openComplaintCount}</div>
-              </button>
-
-              <button 
-                onClick={() => setActiveTab('flats')}
-                className="p-4 rounded-2xl bg-slate-900 border border-slate-800 text-left active:scale-95 transition cursor-pointer"
-              >
-                <Building2 className="w-5 h-5 mb-2 text-emerald-400" />
-                <div className="text-xs text-slate-400">Registered Units</div>
-                <div className="text-lg font-bold text-white">{summary?.units ?? units.length}</div>
-              </button>
-            </div>
+            {/* Home cards (spec 9.4) */}
+            {activeSociety && <HomeCards societyId={activeSociety.id} canManage={!readOnly} onOpen={goTo} />}
 
             {/* Pinned Notices */}
             {notices.length > 0 ? (
@@ -434,20 +400,29 @@ export const SocietyDashboardPage: React.FC = () => {
 
         {/* TAB 2: FLATS */}
         {activeTab === 'flats' && activeSociety && (
-          <UnitsTab
-            societyId={activeSociety.id}
-            societyName={activeSociety.name}
-            units={units}
-            loading={loading}
-            onChanged={loadSocietyData}
-            canManage={!readOnly}
-          />
-        )}
-
-        {/* MEMBERS */}
-        {activeTab === 'members' && activeSociety && (
-          <MembersTab societyId={activeSociety.id} societyName={activeSociety.name} currentUserId={user?.id} units={units}
-            canChooseAccountant={!readOnly} canManage={!readOnly} onAccountantChanged={(id) => { if (id === user?.id) refreshUserData(activeSociety.id); }} />
+          <div className="space-y-4">
+            <div className="inline-flex rounded-xl bg-slate-900 border border-slate-800 p-1 text-xs">
+              {(['flats', 'members'] as const).map(v => (
+                <button key={v} onClick={() => setFlatsView(v)}
+                  className={`px-4 py-1.5 rounded-lg font-semibold cursor-pointer ${flatsView === v ? 'bg-sky-600 text-white' : 'text-slate-400 hover:text-white'}`}>
+                  {v === 'flats' ? 'Flats' : 'Members'}
+                </button>
+              ))}
+            </div>
+            {flatsView === 'flats' ? (
+              <UnitsTab
+                societyId={activeSociety.id}
+                societyName={activeSociety.name}
+                units={units}
+                loading={loading}
+                onChanged={loadSocietyData}
+                canManage={!readOnly}
+              />
+            ) : (
+              <MembersTab societyId={activeSociety.id} societyName={activeSociety.name} currentUserId={user?.id} units={units}
+                canChooseAccountant={!readOnly} canManage={!readOnly} onAccountantChanged={(id) => { if (id === user?.id) refreshUserData(activeSociety.id); }} />
+            )}
+          </div>
         )}
 
         {/* SETTINGS */}
@@ -509,6 +484,7 @@ export const SocietyDashboardPage: React.FC = () => {
 
         {activeTab === 'approvals' && activeSociety && (
           <div className="space-y-8">
+            <PendingVendorBills societyId={activeSociety.id} currentUserId={user?.id} canDecide={!readOnly} onDecided={loadSocietyData} />
             <JoinRequests societyId={activeSociety.id} units={units} canDecide={!readOnly} onDecided={loadSocietyData} />
             <OpeningBalanceReview societyId={activeSociety.id} canDecide={!readOnly} onDecided={loadSocietyData} />
             <AdjustmentsPanel societyId={activeSociety.id} currentUserId={user?.id} canDecide={!readOnly} canPropose={false} />
@@ -549,12 +525,11 @@ export const SocietyDashboardPage: React.FC = () => {
 
       {/* Mobile Bottom Navigation Bar */}
       <nav className="md:hidden print:hidden fixed bottom-0 left-0 right-0 z-30 bg-slate-900/95 backdrop-blur-md border-t border-slate-800 px-2 py-1.5 flex items-center justify-around text-[10px] text-slate-400">
-        {([
-          { id: 'home', label: 'Feed', icon: Home },
-          { id: 'billing', label: 'Bills', icon: CreditCard },
-          { id: 'payments', label: pendingPayments > 0 ? `Verify (${pendingPayments})` : 'Payments', icon: QrCode },
-          { id: 'complaints', label: 'Tickets', icon: MessageSquare },
-        ] as { id: Tab; label: string; icon: React.ComponentType<{ className?: string }> }[]).map(item => {
+        {(PHONE_BAR.map(id => ({
+          id,
+          label: id === 'home' ? 'Home' : id === 'billing' ? 'Bills' : id === 'payments' ? (pendingPayments > 0 ? `Verify (${pendingPayments})` : 'Payments') : 'Complaints',
+          icon: id === 'home' ? Home : id === 'billing' ? CreditCard : id === 'payments' ? QrCode : MessageSquare,
+        })) as { id: Tab; label: string; icon: React.ComponentType<{ className?: string }> }[]).map(item => {
           const Icon = item.icon;
           const isActive = activeTab === item.id && !showMore;
           return (
@@ -589,7 +564,7 @@ export const SocietyDashboardPage: React.FC = () => {
           >
             {NAV_ITEMS.map(item => {
               const Icon = item.icon;
-              const badge = item.id === 'payments' ? pendingPayments : item.id === 'expenses' ? pendingApprovalCount : item.id === 'approvals' ? approvalsCount : 0;
+              const badge = item.id === 'payments' ? pendingPayments : item.id === 'expenses' ? pendingApprovalCount : item.id === 'approvals' ? approvalsCount + pendingApprovalCount : 0;
               return (
                 <button
                   key={item.id}

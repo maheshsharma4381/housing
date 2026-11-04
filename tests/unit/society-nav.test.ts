@@ -1,15 +1,31 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { societyNav } from '../../src/lib/society-nav.ts';
+import { societyNav, societyTabFor, PHONE_BAR } from '../../src/lib/society-nav.ts';
 
-test('the secretary menu has no accounting screens', () => {
-  const ids = societyNav({ isAccountant: false }).map(i => i.id);
-  for (const moved of ['assets', 'bank', 'audit', 'ledgers', 'billtypes', 'opening']) assert.ok(!ids.includes(moved as never), moved);
-  assert.deepEqual(ids.slice(0, 2), ['home', 'approvals']);
+test('the secretary menu: Home and Approvals, then Money, Society and Settings (spec 9.3)', () => {
+  const nav = societyNav({ isAccountant: false });
+  const by = (g: string) => nav.filter(i => i.group === g).map(i => i.label);
+  assert.deepEqual(by('top'), ['Home', 'Approvals']);
+  assert.deepEqual(by('money'), ['Maintenance bills', 'Payments received', 'Vendor bills', 'Reports']);
+  assert.deepEqual(by('society'), ['Flats & residents', 'Notices', 'Complaints', 'Documents']);
+  assert.deepEqual(by('settings'), ['Society settings', 'CA & auditor', 'Plan & billing']);
+  for (const moved of ['assets', 'bank', 'audit', 'ledgers', 'billtypes', 'opening', 'members']) assert.ok(!nav.some(i => i.id === moved), moved);
 });
 
-test('the accountant sees the Accounts group after the main items', () => {
+test('the accountant sees the Accounts group last', () => {
   const nav = societyNav({ isAccountant: true });
   assert.deepEqual(nav.filter(i => i.group === 'accounts').map(i => i.id), ['ledgers', 'billtypes', 'opening', 'assets', 'bank', 'audit']);
-  assert.equal(nav.findIndex(i => i.group === 'accounts'), nav.filter(i => i.group === 'main').length);
+  assert.equal(nav.findIndex(i => i.group === 'accounts'), nav.length - 6);
+});
+
+test('old links and notification links open the right screen', () => {
+  assert.equal(societyTabFor('members'), 'flats');
+  assert.equal(societyTabFor('bills'), 'billing');
+  assert.equal(societyTabFor('approvals'), 'approvals');
+  assert.equal(societyTabFor('nonsense'), 'home');
+  assert.equal(societyTabFor(null), 'home');
+});
+
+test('the phone bar', () => {
+  assert.deepEqual(PHONE_BAR, ['home', 'billing', 'payments', 'complaints']);
 });
