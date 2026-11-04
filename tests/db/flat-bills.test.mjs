@@ -43,9 +43,13 @@ test('bills are issued for every flat, even before anyone has joined', async () 
 
 test('the owner who joins takes the flat\'s bills, with one notification', async () => {
   await q(ids.secretary, `SELECT public.generate_bills($1,'2026-11-01','2026-11-30','2026-11-10')`, [ids.societyId]);
+  // money for the flat arrived before anyone joined (recorded from the bank statement)
+  await db.query(`INSERT INTO payments (society_id, unit_id, user_id, payment_number, amount, transaction_reference_utr, status)
+                  VALUES ($1,$2,NULL,'PAY-NOBODY',500,'999988887777','pending_verification')`, [ids.societyId, ids.u101]);
   const asha = await invite('asha@flatbills.test', ids.u101);
   const bills = await billsOf(ids.u101);
   assert.equal(bills.length, 2);
+  assert.equal((await db.query(`SELECT user_id FROM payments WHERE payment_number='PAY-NOBODY'`)).rows[0].user_id, asha, 'the payment recorded before joining is hers');
   assert.ok(bills.every((b) => b.user_id === asha));
   const n = await q(asha, `SELECT title, body FROM notifications WHERE kind='bill'`);
   assert.deepEqual(n.map((x) => x.title), ['Bills for Flat 101']);
@@ -96,6 +100,10 @@ test('a society with one committee member approves its own vendor bills', async 
   assert.equal(r.status, 'approved', 'one approval is enough even with two-step approval on');
   const audit = (await db.query(`SELECT action FROM audit_logs WHERE entity_id=$1 AND action LIKE 'expense.%'`, [e1])).rows.map((a) => a.action);
   assert.deepEqual(audit, ['expense.self_approved']);
+  // a bill Sahvaas itself created (no maker) — one approval from the only member is enough
+  const e0 = (await db.query(`INSERT INTO expenses (society_id, category, title, subtotal, gst_amount, tds_amount, net_payable, status)
+    VALUES ($1,'other','Sahvaas plan',500,90,0,590,'pending_approval') RETURNING id`, [ids.societyId])).rows[0].id;
+  assert.equal((await val(ids.secretary, 'SELECT public.decide_expense($1,true,NULL)', [e0])).status, 'approved');
 
   const treasurer = await createUser(db, 'tre@flatbills.test');
   await db.query(`INSERT INTO society_memberships (society_id, user_id, role) VALUES ($1,$2,'treasurer')`, [ids.societyId, treasurer]);
@@ -105,8 +113,8 @@ test('a society with one committee member approves its own vendor bills', async 
 });
 
 test('the bill document has the breakup, arrears and the payable amount, for the right people only', async () => {
+  await q(ids.secretary, `SELECT public.apply_late_fees($1,'2026-11-11')`, [ids.societyId]);
   const [oct, nov] = await billsOf(ids.u101);
-  await db.query(`UPDATE bills SET interest_or_late_fee = 100, total_amount = total_amount + 100, balance_due = balance_due + 100 WHERE id = $1`, [nov.id]);
   const d = await val(ids.asha, 'SELECT public.bill_document($1)', [nov.id]);
   assert.equal(d.society.name, 'Flat Bills CHS');
   assert.equal(d.society.upi_id, 'flatbills@upi');
@@ -116,7 +124,7 @@ test('the bill document has the breakup, arrears and the payable amount, for the
   assert.deepEqual(d.bill.items.map((i) => [i.description, Number(i.amount)]), [['Maintenance', 1000]]);
   assert.equal(Number(d.bill.late_fee), 100);
   assert.equal(Number(d.arrears), Number(oct.due), 'the October bill is still open');
-  assert.equal(Number(d.payable), 1100 + Number(oct.due));
+  assert.equal(Number(d.payable), Math.max(1100 + Number(oct.due) - Number(d.advance), 0));
   assert.equal(d.late_fee_rule, '₹100 after the due date');
   assert.equal(d.bill.period, 'November 2026 Maintenance');
 

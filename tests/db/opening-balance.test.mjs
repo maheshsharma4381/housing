@@ -108,7 +108,8 @@ test('submit refuses until every part ties, then sends it to the committee', asy
   await assert.rejects(submit(A, A.ca), /more than Sundry Creditors of ₹3,000\.00/);
   await save(A, A.ca, { audited: AUDITED, catchup: CATCHUP, vendors: vendorsA(),
     flats: [{ unit_id: A.u101, amount: 4000 }, { unit_id: A.u103, amount: 1000 }, { unit_id: A.u102, amount: -1500 }] });
-  await assert.rejects(submit(A, A.ca), /Flat 103 has no owner linked/);
+  // 033: a flat nobody has joined may carry opening dues; they wait for the owner like any bill
+  assert.equal((await db.query('SELECT public.opening_balance_problem($1) AS p', [A.societyId])).rows[0].p, null, 'flat 103 needs no owner');
   await assert.rejects(submit(A, A.secretary), /Only the society's CA or accountant/);
 
   await save(A, A.ca, { audited: AUDITED, catchup: CATCHUP, flats: flatsA(), vendors: vendorsA() });

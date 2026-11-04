@@ -50,6 +50,130 @@ BEGIN
 END;
 $$;
 
+-- Money received for a flat nobody has joined yet is recorded too; the owner who joins takes it
+ALTER TABLE payments ALTER COLUMN user_id DROP NOT NULL;
+
+-- from 027_ca_workspace.sql; + a flat nobody has joined can be paid for
+CREATE OR REPLACE FUNCTION public.record_bank_receipt(p_line_id UUID, p_unit_id UUID)
+RETURNS JSONB AS $$
+DECLARE
+    v_line bank_transactions;
+    v_unit units%ROWTYPE;
+    v_owner UUID;
+    v_utr TEXT;
+    v_payment UUID;
+    v_result JSONB;
+BEGIN
+    v_line := bank_line_for_update(p_line_id);
+    IF v_line.type <> 'credit' OR v_line.match_kind IS NOT NULL THEN
+        RAISE EXCEPTION 'Only an unmatched credit can be recorded as a payment';
+    END IF;
+    SELECT * INTO v_unit FROM units WHERE id = p_unit_id AND society_id = v_line.society_id;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Flat not found';
+    END IF;
+    SELECT m.user_id INTO v_owner FROM society_memberships m
+    WHERE m.society_id = v_line.society_id AND m.unit_id = p_unit_id AND m.role = 'resident_owner' AND m.is_active
+    ORDER BY m.created_at LIMIT 1;
+    -- 033: nobody joined yet means no payer yet; the owner who joins takes the payment (never the seller)
+
+    v_utr := coalesce(substring(bank_line_text(v_line) FROM '([0-9]{12})'), v_line.reference_number, 'BANK-' || left(v_line.id::text, 8));
+    INSERT INTO payments (society_id, unit_id, user_id, payment_number, amount, payment_method, transaction_reference_utr,
+                          payment_date, status, bank_account_id)
+    VALUES (v_line.society_id, p_unit_id, v_owner, 'BNK-' || to_char(v_line.transaction_date, 'YYYYMMDD') || '-' || left(md5(v_line.id::text), 6),
+            v_line.amount, CASE WHEN bank_line_text(v_line) ~ 'UPI' THEN 'upi' ELSE 'neft_rtgs' END, v_utr,
+            v_line.transaction_date, 'pending_verification', v_line.bank_account_id)
+    RETURNING id INTO v_payment;
+    IF is_platform_admin() OR is_society_admin(v_line.society_id) THEN
+        v_result := verify_payment(v_payment, true, 'Received in bank; recorded by the committee from the statement');
+    ELSE
+        -- The CA / Accountant points the credit at the flat; the committee verifies it in Payments
+        v_result := jsonb_build_object('status', 'pending_verification');
+    END IF;
+
+    UPDATE bank_transactions
+    SET match_kind = 'payment', match_method = 'recorded', is_reconciled = true, reconciled_payment_id = v_payment,
+        suggested_kind = NULL, suggested_id = NULL, matched_by = auth.uid(), matched_at = timezone('utc'::text, now()),
+        match_note = 'Recorded for flat ' || v_unit.unit_number
+                     || CASE WHEN v_result ->> 'status' = 'pending_verification' THEN ' — waiting for the committee to verify' ELSE '' END
+    WHERE id = p_line_id;
+    RETURN v_result || jsonb_build_object('payment_id', v_payment);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- ============================================================================
+-- 1b. OPENING DUES WAIT FOR THE OWNER LIKE ANY BILL
+-- ============================================================================
+-- from 026; + the joined owner only (no current_owner_id fallback: that is the seller while a change waits)
+CREATE OR REPLACE FUNCTION public.opening_unit_owner(p_unit_id UUID)
+RETURNS UUID AS $$
+    SELECT m.user_id FROM society_memberships m JOIN units u ON u.id = m.unit_id
+    WHERE u.id = p_unit_id AND m.society_id = u.society_id AND m.role = 'resident_owner' AND m.is_active = true
+    ORDER BY m.created_at LIMIT 1
+$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
+
+-- from 026_opening_balance.sql; + no owner needed for opening dues
+CREATE OR REPLACE FUNCTION public.opening_balance_problem(p_society_id UUID)
+RETURNS TEXT AS $$
+DECLARE
+    v_ob opening_balances%ROWTYPE;
+    v_both JSONB;
+    v_code TEXT;
+    v_diff NUMERIC;
+    v_expected NUMERIC;
+    v_entered NUMERIC;
+    v_flat TEXT;
+BEGIN
+    SELECT * INTO v_ob FROM opening_balances WHERE society_id = p_society_id;
+    IF NOT FOUND OR (jsonb_array_length(v_ob.audited_lines) = 0 AND jsonb_array_length(v_ob.catchup_lines) = 0
+                     AND jsonb_array_length(v_ob.flat_lines) = 0) THEN
+        RETURN 'Nothing to submit — enter the balance sheet first';
+    END IF;
+    v_both := v_ob.audited_lines || v_ob.catchup_lines;
+
+    SELECT x ->> 'code' INTO v_code
+    FROM jsonb_array_elements(v_both) x
+    JOIN accounts a ON a.society_id = p_society_id AND a.code = x ->> 'code'
+    WHERE NOT a.is_active
+    LIMIT 1;
+    IF v_code IS NOT NULL THEN
+        RETURN format('Ledger %s is inactive — choose an active ledger', v_code);
+    END IF;
+
+    v_diff := opening_lines_sum(v_ob.audited_lines);
+    IF v_diff <> 0 THEN
+        RETURN 'The balance sheet does not tally — the two sides differ by ' || money_text(v_diff);
+    END IF;
+    v_diff := opening_lines_sum(v_ob.catchup_lines);
+    IF v_diff <> 0 THEN
+        RETURN 'The catch-up entry does not tally — debits and credits differ by ' || money_text(v_diff);
+    END IF;
+
+    v_expected := opening_lines_sum(v_both, '1200');
+    SELECT coalesce(sum((x ->> 'amount')::numeric), 0) INTO v_entered
+    FROM jsonb_array_elements(v_ob.flat_lines) x WHERE (x ->> 'amount')::numeric > 0;
+    IF v_entered <> v_expected THEN
+        RETURN format('Flat-wise dues add up to %s but Members'' dues come to %s', money_text(v_entered), money_text(v_expected));
+    END IF;
+
+    v_expected := -opening_lines_sum(v_both, '2300');
+    SELECT -coalesce(sum((x ->> 'amount')::numeric), 0) INTO v_entered
+    FROM jsonb_array_elements(v_ob.flat_lines) x WHERE (x ->> 'amount')::numeric < 0;
+    IF v_entered <> v_expected THEN
+        RETURN format('Flat-wise advances add up to %s but Advances from members come to %s', money_text(v_entered), money_text(v_expected));
+    END IF;
+
+    v_expected := -opening_lines_sum(v_both, '2000');
+    v_entered := opening_lines_sum(v_ob.vendor_lines);
+    IF v_entered > v_expected THEN
+        RETURN format('Vendor-wise payables add up to %s — more than Sundry Creditors of %s', money_text(v_entered), money_text(v_expected));
+    END IF;
+
+    -- 033: opening dues of a flat nobody has joined wait for the owner like any bill
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public;
+
 -- ============================================================================
 -- 2. CHARGES FOR CHOSEN FLATS
 -- ============================================================================
@@ -299,8 +423,11 @@ BEGIN
         WHERE unit_id = p_unit_id AND user_id IS NULL
         RETURNING balance_due, status
     )
-    SELECT count(*), coalesce(sum(balance_due) FILTER (WHERE status IN ('issued', 'partially_paid', 'overdue')), 0)
+    SELECT count(*) FILTER (WHERE balance_due > 0 AND status IN ('issued', 'partially_paid', 'overdue')),
+           coalesce(sum(balance_due) FILTER (WHERE status IN ('issued', 'partially_paid', 'overdue')), 0)
     INTO v_claimed, v_due FROM claimed;
+    -- money received for the flat before anyone joined is theirs too
+    UPDATE payments SET user_id = p_uid WHERE unit_id = p_unit_id AND user_id IS NULL;
     IF v_claimed > 0 THEN
         PERFORM notify_users(p_society_id, ARRAY[p_uid], 'bill',
             'Bills for Flat ' || (SELECT unit_number FROM units WHERE id = p_unit_id),
@@ -397,8 +524,8 @@ BEGIN
     SELECT CASE WHEN require_two_step_expense_approval THEN 2 ELSE 1 END INTO v_required
     FROM society_settings WHERE society_id = v_exp.society_id;
     v_required := coalesce(v_required, 1);
-    IF v_self THEN
-        v_required := 1; -- a single member cannot be two approvers
+    IF sole_committee_admin(v_exp.society_id) THEN
+        v_required := 1; -- a single member cannot be two approvers, whoever made the bill
     END IF;
 
     SELECT count(*) INTO v_approvals FROM expense_approvals WHERE expense_id = p_expense_id AND decision = 'approved';
@@ -479,9 +606,12 @@ BEGIN
             'id', v_b.id, 'number', v_b.bill_number, 'bill_date', v_b.bill_date, 'due_date', v_b.due_date,
             'period', v_cycle.cycle_name, 'period_start', v_cycle.period_start, 'period_end', v_cycle.period_end,
             'status', v_b.status,
+            -- the late fee is shown once, as its own line (run_late_fees also adds it as an item)
             'items', coalesce((SELECT jsonb_agg(jsonb_build_object('description', i.description, 'quantity', i.quantity, 'rate', i.unit_rate,
-                                                                   'amount', i.amount, 'tax', i.tax_amount, 'total', i.total_item_amount) ORDER BY i.description)
-                               FROM bill_items i WHERE i.bill_id = v_b.id), '[]'::jsonb),
+                                                                   'amount', i.amount, 'tax', i.tax_amount, 'total', i.total_item_amount)
+                                                ORDER BY r.created_at NULLS LAST, i.description)
+                               FROM bill_items i LEFT JOIN billing_rules r ON r.id = i.rule_id
+                               WHERE i.bill_id = v_b.id AND NOT (i.rule_id IS NULL AND i.description = 'Late payment charge')), '[]'::jsonb),
             'subtotal', v_b.subtotal_amount, 'tax', v_b.tax_amount, 'late_fee', v_b.interest_or_late_fee,
             'total', v_b.total_amount, 'paid', v_b.amount_paid, 'balance', v_b.balance_due),
         'arrears', v_arrears,
@@ -498,6 +628,8 @@ $$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public;
 -- ============================================================================
 -- PRIVILEGES
 -- ============================================================================
+REVOKE ALL ON FUNCTION public.opening_unit_owner(UUID) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.opening_balance_problem(UUID) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.set_rule_flats(UUID, UUID[]) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.sole_committee_admin(UUID) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.bill_document(UUID) FROM PUBLIC, anon;

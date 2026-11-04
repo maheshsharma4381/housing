@@ -419,7 +419,8 @@ export interface Payment {
   id: string;
   society_id: string;
   unit_id: string;
-  user_id: string;
+  /** 033: NULL for money received before anyone joined the flat */
+  user_id: string | null;
   bill_id?: string;
   payment_number: string;
   amount: number;

@@ -113,7 +113,13 @@ test('verify all matched: UTRs found in the bank are verified with a receipt', a
 
 test('an unknown credit is recorded as the flat\'s payment; charges are ignored with a reason', async () => {
   const extra = await line('IMPS');
-  await assert.rejects(val(ids.secretary, 'SELECT public.record_bank_receipt($1,$2)', [extra.id, ids.unit102]), /no owner linked/);
+  // 033: bills belong to flats, so money for a flat nobody has joined is recorded too (no payer yet)
+  await val(ids.secretary, `SELECT public.import_bank_statement($1,'oct-2.csv','hdfc',$2)`,
+    [ids.bank, JSON.stringify([{ date: '2026-10-20', description: 'NEFT/111122223333/Flat 102 owner abroad', credit: 2000, balance: 55852.3 }])]);
+  const abroad = await line('111122223333');
+  const r102 = await val(ids.secretary, 'SELECT public.record_bank_receipt($1,$2)', [abroad.id, ids.unit102]);
+  assert.equal(r102.status, 'verified');
+  assert.equal((await db.query('SELECT user_id FROM payments WHERE id=$1', [r102.payment_id])).rows[0].user_id, null);
   const r = await val(ids.secretary, 'SELECT public.record_bank_receipt($1,$2)', [extra.id, ids.unit101]);
   assert.equal(r.status, 'verified');
   const p = (await db.query('SELECT amount, transaction_reference_utr, payment_method, unit_id FROM payments WHERE id=$1', [r.payment_id])).rows[0];
@@ -138,8 +144,8 @@ test('manual link checks the amount and direction; unlink reopens the line', asy
 test('summary: statement vs book balance, nothing left open', async () => {
   const s = await val(ids.secretary, 'SELECT public.bank_reconciliation_summary($1)', [ids.bank]);
   assert.deepEqual([Number(s.statement_balance), s.statement_date, s.lines, s.matched, s.ignored, s.open_credits, s.open_debits, s.ready_to_verify],
-    [53852.3, '2026-10-19', 6, 5, 1, 0, 0, 0]);
-  // Book: three resident receipts (4170 + 2500 + 3000) minus the vendor payment (5000)
-  assert.equal(Number(s.book_balance), 4670);
+    [55852.3, '2026-10-20', 7, 6, 1, 0, 0, 0]);
+  // Book: four receipts (4170 + 2500 + 3000 + 2000 for flat 102, nobody joined yet) minus the vendor payment (5000)
+  assert.equal(Number(s.book_balance), 6670);
   await assert.rejects(q(ids.resident, 'SELECT public.bank_reconciliation_summary($1)', [ids.bank]), /Bank account not found/);
 });

@@ -5,6 +5,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { supabase } from '../../lib/supabase/client';
 import { amountInWords, formatINR } from '../../lib/inr';
 import { useRouter } from '../../router/RouterContext';
+import { billView } from '../../lib/bill-view';
 import { ArrowLeft, Printer, Loader2 } from 'lucide-react';
 
 interface BillDocument {
@@ -60,7 +61,9 @@ export const BillPage: React.FC<{ billId: string }> = ({ billId }) => {
   }
 
   const { society: s, bill: b } = doc;
-  const payable = Number(doc.payable);
+  const view = billView(b.status, Number(b.balance));
+  // a cancelled or paid bill asks for nothing: no total payable and no QR
+  const payable = view.asksForPayment ? Number(doc.payable) : 0;
   const upi = s.upi_id && payable > 0
     ? `upi://pay?${new URLSearchParams({ pa: s.upi_id, pn: s.payee_name ?? s.name, am: payable.toFixed(2), cu: 'INR', tn: `${b.number} Flat ${doc.flat.number}` }).toString()}`
     : null;
@@ -82,7 +85,7 @@ export const BillPage: React.FC<{ billId: string }> = ({ billId }) => {
             <h1 className="text-xl font-bold">{s.name}</h1>
             {s.registration_number && <div className="text-xs text-slate-500">Reg. No. {s.registration_number}</div>}
             <div className="text-xs text-slate-500">{s.address}</div>
-            <div className="pt-2 text-base font-semibold tracking-widest">MAINTENANCE BILL</div>
+            <div className={`pt-2 text-base font-semibold tracking-widest ${b.status === 'cancelled' ? 'text-rose-600' : ''}`}>{view.heading}</div>
           </header>
 
           <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
@@ -113,13 +116,16 @@ export const BillPage: React.FC<{ billId: string }> = ({ billId }) => {
               {Number(doc.arrears) > 0 && <tr><td className="py-2">Add: previous dues</td><td className="py-2 text-right">{formatINR(doc.arrears)}</td></tr>}
               {Number(doc.advance) > 0 && <tr><td className="py-2">Less: advance with the society</td><td className="py-2 text-right">− {formatINR(doc.advance)}</td></tr>}
             </tbody>
-            <tfoot>
-              <tr className="border-t border-slate-300 font-bold text-sm">
-                <td className="py-2">Total payable by {fmtDate(b.due_date)}</td><td className="py-2 text-right">{formatINR(payable)}</td>
-              </tr>
-            </tfoot>
+            {view.asksForPayment && (
+              <tfoot>
+                <tr className="border-t border-slate-300 font-bold text-sm">
+                  <td className="py-2">Total payable by {fmtDate(b.due_date)}</td><td className="py-2 text-right">{formatINR(payable)}</td>
+                </tr>
+              </tfoot>
+            )}
           </table>
           {payable > 0 && <p className="text-xs italic text-slate-600">{amountInWords(payable)}</p>}
+          {b.status === 'cancelled' && <p className="text-xs font-semibold text-rose-600">This bill was cancelled. Nothing is payable against it.</p>}
 
           <footer className="pt-4 border-t border-slate-200 grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-4 text-[11px] text-slate-600 items-start">
             {upi && (
