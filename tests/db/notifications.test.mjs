@@ -96,3 +96,30 @@ test('a removed member gets no new notifications', async () => {
   await notice('all', 'Lift maintenance');
   assert.equal((await inbox(ids.r2)).length, before);
 });
+
+const remind = async (asOf) => (await db.query('SELECT public.send_dues_reminders($1) AS n', [asOf])).rows[0].n;
+
+test('the committee sets the reminder schedule', async () => {
+  const s = (await db.query('SELECT reminder_first_days f, reminder_every_days e FROM society_settings WHERE society_id=$1', [ids.societyId])).rows[0];
+  assert.deepEqual([s.f, s.e], [3, 7]);
+  await assert.rejects(q(ids.r1, 'SELECT public.set_reminder_schedule($1,2,5)', [ids.societyId]), /Only the society committee can set reminders/);
+  await assert.rejects(q(ids.secretary, 'SELECT public.set_reminder_schedule($1,0,5)', [ids.societyId]), /between 1 and 60 days/);
+  assert.deepEqual(await val(ids.secretary, 'SELECT public.set_reminder_schedule($1,2,5)', [ids.societyId]), { first: 2, every: 5 });
+  await assert.rejects(q(ids.r1, `SELECT public.send_dues_reminders('2026-10-12')`), /permission denied/);
+});
+
+test('reminders follow the schedule, once a day, never for paid bills', async () => {
+  // r1's November bill was paid in full earlier; a December bill for r1 stays unpaid
+  await q(ids.secretary, `SELECT public.generate_bills($1,'2026-12-01','2026-12-31','2026-12-10')`, [ids.societyId]);
+  await db.query(`UPDATE bills SET bill_date = '2026-10-01', due_date = '2026-10-10' WHERE society_id = $1 AND unit_id = $2`, [ids.societyId, ids.u101]);
+  const unpaid = (await db.query(`SELECT count(*)::int n FROM bills WHERE unit_id = $1 AND balance_due > 0`, [ids.u101])).rows[0].n;
+  assert.equal(unpaid, 1, 'one unpaid bill, one paid bill on flat 101');
+  assert.equal(await remind('2026-10-12'), 1);
+  assert.equal(await remind('2026-10-12'), 0, 'once a day');
+  assert.equal(await remind('2026-10-13'), 0);
+  assert.equal(await remind('2026-10-17'), 1);
+  const rows = await inbox(ids.r1, 'dues_reminder');
+  assert.equal(rows.length, 2);
+  assert.match(rows[0].title, /^Reminder: ₹1,000\.00 due for Flat 101$/);
+  assert.equal((await inbox(ids.t1, 'dues_reminder')).length, 0);
+});

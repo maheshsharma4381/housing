@@ -13543,6 +13543,7 @@ CREATE TABLE IF NOT EXISTS notifications (
     body TEXT,
     link VARCHAR(32),
     ref_id UUID,
+    ref_date DATE,                       -- the day a dues reminder is for (one per bill per day)
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
     read_at TIMESTAMPTZ,
     pushed_at TIMESTAMPTZ
@@ -13555,14 +13556,15 @@ CREATE POLICY notifications_select_own ON notifications FOR SELECT USING (user_i
 
 -- One row per distinct user who still belongs to the society (a removed member hears nothing)
 CREATE OR REPLACE FUNCTION public.notify_users(
-    p_society_id UUID, p_user_ids UUID[], p_kind TEXT, p_title TEXT, p_body TEXT, p_link TEXT, p_ref_id UUID DEFAULT NULL
+    p_society_id UUID, p_user_ids UUID[], p_kind TEXT, p_title TEXT, p_body TEXT, p_link TEXT, p_ref_id UUID DEFAULT NULL,
+    p_ref_date DATE DEFAULT NULL
 )
 RETURNS INT AS $$
 DECLARE
     v_count INT;
 BEGIN
-    INSERT INTO notifications (user_id, society_id, kind, title, body, link, ref_id)
-    SELECT DISTINCT u, p_society_id, p_kind, p_title, p_body, p_link, p_ref_id
+    INSERT INTO notifications (user_id, society_id, kind, title, body, link, ref_id, ref_date)
+    SELECT DISTINCT u, p_society_id, p_kind, p_title, p_body, p_link, p_ref_id, p_ref_date
     FROM unnest(coalesce(p_user_ids, '{}'::uuid[])) AS u
     WHERE u IS NOT NULL
       AND (p_society_id IS NULL OR EXISTS (
@@ -13720,9 +13722,75 @@ DROP TRIGGER IF EXISTS trg_notify_opening_balance ON opening_balances;
 CREATE TRIGGER trg_notify_opening_balance AFTER UPDATE OF status ON opening_balances FOR EACH ROW EXECUTE FUNCTION public.trg_notify_opening_balance();
 
 -- ============================================================================
+-- 3. DUES REMINDERS ON THE COMMITTEE'S SCHEDULE
+--    On day `first` after the due date, then every `every` days while unpaid.
+-- ============================================================================
+ALTER TABLE society_settings ADD COLUMN IF NOT EXISTS reminder_first_days INT NOT NULL DEFAULT 3
+    CHECK (reminder_first_days BETWEEN 1 AND 60);
+ALTER TABLE society_settings ADD COLUMN IF NOT EXISTS reminder_every_days INT NOT NULL DEFAULT 7
+    CHECK (reminder_every_days BETWEEN 1 AND 60);
+
+CREATE OR REPLACE FUNCTION public.set_reminder_schedule(p_society_id UUID, p_first INT, p_every INT)
+RETURNS JSONB AS $$
+BEGIN
+    IF NOT (is_platform_admin() OR is_society_admin(p_society_id)) THEN
+        RAISE EXCEPTION 'Only the society committee can set reminders';
+    END IF;
+    IF p_first IS NULL OR p_every IS NULL OR p_first NOT BETWEEN 1 AND 60 OR p_every NOT BETWEEN 1 AND 60 THEN
+        RAISE EXCEPTION 'Reminders run between 1 and 60 days';
+    END IF;
+    UPDATE society_settings SET reminder_first_days = p_first, reminder_every_days = p_every WHERE society_id = p_society_id;
+    INSERT INTO audit_logs (society_id, user_id, action, entity_type, entity_id, new_value)
+    VALUES (p_society_id, auth.uid(), 'settings.reminders', 'society', p_society_id::text,
+            jsonb_build_object('first', p_first, 'every', p_every));
+    RETURN jsonb_build_object('first', p_first, 'every', p_every);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- System job (pg_cron); one reminder per unpaid bill per day at most
+CREATE OR REPLACE FUNCTION public.send_dues_reminders(p_as_of DATE DEFAULT current_date)
+RETURNS INT AS $$
+DECLARE
+    r RECORD;
+    v_sent INT := 0;
+BEGIN
+    FOR r IN
+        SELECT b.id, b.society_id, b.user_id, b.balance_due, b.due_date, u.unit_number,
+               s.reminder_first_days AS first_days, s.reminder_every_days AS every_days, (p_as_of - b.due_date) AS d
+        FROM bills b
+        JOIN units u ON u.id = b.unit_id
+        JOIN society_settings s ON s.society_id = b.society_id
+        WHERE b.balance_due > 0 AND b.status IN ('issued', 'partially_paid', 'overdue') AND b.due_date < p_as_of
+    LOOP
+        CONTINUE WHEN NOT (r.d = r.first_days OR (r.d > r.first_days AND (r.d - r.first_days) % r.every_days = 0));
+        CONTINUE WHEN EXISTS (SELECT 1 FROM notifications n
+                              WHERE n.kind = 'dues_reminder' AND n.ref_id = r.id AND n.ref_date = p_as_of);
+        v_sent := v_sent + notify_users(r.society_id, ARRAY[r.user_id], 'dues_reminder',
+            'Reminder: ' || money_text(r.balance_due) || ' due for Flat ' || r.unit_number,
+            'Due since ' || to_char(r.due_date, 'DD Mon YYYY'), 'bills', r.id, p_as_of);
+    END LOOP;
+    RETURN v_sent;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- Nightly at 01:00 IST (19:30 UTC), after the late-fee job, when pg_cron is available
+DO $outer$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'pg_cron') THEN
+        CREATE EXTENSION IF NOT EXISTS pg_cron;
+        PERFORM cron.unschedule(jobid) FROM cron.job WHERE jobname = 'sahvaas-dues-reminders';
+        PERFORM cron.schedule('sahvaas-dues-reminders', '30 19 * * *', $cron$SELECT public.send_dues_reminders()$cron$);
+    END IF;
+END
+$outer$;
+
+-- ============================================================================
 -- PRIVILEGES
 -- ============================================================================
-REVOKE ALL ON FUNCTION public.notify_users(UUID, UUID[], TEXT, TEXT, TEXT, TEXT, UUID) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.send_dues_reminders(DATE) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.set_reminder_schedule(UUID, INT, INT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.set_reminder_schedule(UUID, INT, INT) TO authenticated;
+REVOKE ALL ON FUNCTION public.notify_users(UUID, UUID[], TEXT, TEXT, TEXT, TEXT, UUID, DATE) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.committee_admin_ids(UUID) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.trg_notify_bill() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.trg_notify_notice() FROM PUBLIC, anon, authenticated;
