@@ -77,7 +77,7 @@ test('the secretary records an owner change; the old owner loses the flat; the n
   await assert.rejects(q(ids.secretary, `SELECT public.transfer_flat_owner($1,'Neha Shah','neha@owners.test','9876500000',current_date + 1)`, [ids.u101]),
     /cannot be in the future/);
   await assert.rejects(q(ids.secretary, `SELECT public.transfer_flat_owner($1,'Neha Shah','neha-at-owners',NULL,current_date)`, [ids.u101]),
-    /email — they join with it/);
+    /Enter a valid email for the new owner/);
   const r = await val(ids.secretary, `SELECT public.transfer_flat_owner($1,'Neha Shah','neha@owners.test','9876500000',current_date)`, [ids.u101]);
   assert.equal(Number(r.dues), ids.duesAtTransfer);
   const m = (await db.query(`SELECT is_active FROM society_memberships WHERE user_id=$1 AND unit_id=$2`, [ids.r1, ids.u101])).rows[0];
