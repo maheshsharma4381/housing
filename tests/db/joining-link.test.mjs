@@ -9,9 +9,9 @@ let ids;
 
 const q = async (user, sql, params = []) => (await asUser(db, user, (tx) => tx.query(sql, params))).rows;
 const val = async (user, sql, params = []) => Object.values((await q(user, sql, params))[0])[0];
-const withPhone = async (email, phone) => {
+const withPhone = async (email, phone, { confirmed = true } = {}) => {
   const id = await createUser(db, email);
-  if (phone) await db.query('UPDATE auth.users SET phone = $2 WHERE id = $1', [id, phone]);
+  if (phone) await db.query('UPDATE auth.users SET phone = $2, phone_confirmed_at = $3 WHERE id = $1', [id, phone, confirmed ? new Date().toISOString() : null]);
   return id;
 };
 const join = (user, code, name, mobile = null, flat = null) => val(user, 'SELECT public.join_society($1,$2,$3,$4)', [code, name, mobile, flat]);
@@ -57,6 +57,14 @@ test('the owner whose verified mobile matches joins their flat', async () => {
   assert.deepEqual([m.role, m.is_active], ['resident_owner', true]);
   assert.equal((await db.query(`SELECT count(*)::int n FROM unit_ownerships WHERE unit_id=$1 AND to_date IS NULL AND owner_user_id=$2`, [ids.u101, asha])).rows[0].n, 1);
   await assert.rejects(join(asha, ids.code, 'Asha Rao'), /You are already a member of Join Heights/);
+});
+
+test('an unconfirmed phone on the login does not attach a flat', async () => {
+  const half = await withPhone('half@join.test', '919876543210', { confirmed: false });
+  assert.equal((await join(half, ids.code, 'Half Asha')).status, 'requested');
+  assert.equal((await db.query(`SELECT count(*)::int n FROM society_memberships WHERE user_id=$1`, [half])).rows[0].n, 0);
+  await db.query(`DELETE FROM join_requests WHERE user_id=$1`, [half]);
+  await db.query(`DELETE FROM notifications WHERE kind='join_request'`);
 });
 
 test('a typed mobile never attaches anyone', async () => {
@@ -106,6 +114,8 @@ test('a waiting owner change completes through the link', async () => {
   await asUser(db, o103, (tx) => tx.query('SELECT public.claim_my_invites()'));
   await db.query(`UPDATE unit_ownerships SET from_date = '2025-04-01' WHERE unit_id = $1`, [ids.u103]);
   await q(ids.secretary, `SELECT public.generate_bills($1,'2026-12-01','2026-12-31','2026-12-10')`, [ids.societyId]);
+  await assert.rejects(q(ids.secretary, `SELECT public.transfer_flat_owner($1,'Vikram Shah','vikram@join.test','12345',current_date)`, [ids.u103]),
+    /Mobile 12345 is not a valid number/);
   await q(ids.secretary, `SELECT public.transfer_flat_owner($1,'Vikram Shah','vikram@join.test','98111 11111',current_date)`, [ids.u103]);
   assert.equal((await db.query('SELECT owner_mobile FROM units WHERE id=$1', [ids.u103])).rows[0].owner_mobile, '919811111111');
   const vikram = await withPhone('vikram.other@join.test', '919811111111');

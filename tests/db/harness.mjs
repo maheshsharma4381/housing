@@ -18,6 +18,7 @@ const SUPABASE_STUB = `
     id UUID PRIMARY KEY,
     email TEXT,
     phone TEXT,
+    phone_confirmed_at TIMESTAMPTZ,
     raw_user_meta_data JSONB DEFAULT '{}'::jsonb,
     email_confirmed_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT now()

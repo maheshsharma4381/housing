@@ -13992,6 +13992,44 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
+-- The login's own mobile, only once Supabase has confirmed it with a code (never a typed number)
+CREATE OR REPLACE FUNCTION public.current_verified_phone()
+RETURNS TEXT AS $$
+    SELECT normalize_mobile(phone) FROM auth.users WHERE id = auth.uid() AND phone_confirmed_at IS NOT NULL
+$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
+
+-- Every flat whose expected owner mobile is this phone becomes this user's (one society, or all when NULL)
+CREATE OR REPLACE FUNCTION public.attach_flats_by_phone(p_society_id UUID, p_uid UUID, p_phone TEXT)
+RETURNS TABLE (society_id UUID, society_name TEXT, flat TEXT) AS $$
+DECLARE
+    v_unit RECORD;
+BEGIN
+    IF p_phone IS NULL OR p_uid IS NULL THEN
+        RETURN;
+    END IF;
+    FOR v_unit IN
+        SELECT u.id, u.society_id, u.unit_number, s.name FROM units u JOIN societies s ON s.id = u.society_id AND s.is_active
+        WHERE (p_society_id IS NULL OR u.society_id = p_society_id)
+          AND (u.owner_mobile = p_phone
+               OR EXISTS (SELECT 1 FROM unit_ownerships o WHERE o.unit_id = u.id AND o.to_date IS NULL
+                            AND o.owner_user_id IS NULL AND normalize_mobile(o.owner_mobile) = p_phone))
+          -- already this user's flat: nothing to do
+          AND NOT EXISTS (SELECT 1 FROM society_memberships m WHERE m.user_id = p_uid AND m.unit_id = u.id
+                            AND m.role = 'resident_owner' AND m.is_active)
+        ORDER BY s.name, u.unit_number
+    LOOP
+        PERFORM upsert_flat_membership(v_unit.society_id, p_uid, v_unit.id, 'resident_owner');
+        PERFORM attach_flat_owner(v_unit.society_id, v_unit.id, p_uid, NULL);
+        INSERT INTO audit_logs (society_id, user_id, action, entity_type, entity_id, new_value)
+        VALUES (v_unit.society_id, p_uid, 'member.joined_by_mobile', 'unit', v_unit.id::text, jsonb_build_object('flat', v_unit.unit_number));
+        society_id := v_unit.society_id;
+        society_name := v_unit.name;
+        flat := v_unit.unit_number;
+        RETURN NEXT;
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
 -- from 029_owner_change.sql; + the owner steps live in attach_flat_owner (shared with the joining link)
 CREATE OR REPLACE FUNCTION public.accept_member_invite_row(p_invite member_invites, p_uid UUID)
 RETURNS VOID AS $$
@@ -14065,6 +14103,9 @@ BEGIN
     END IF;
     IF position('@' IN v_email) < 2 THEN
         RAISE EXCEPTION 'Enter the new owner''s email — they join with it';
+    END IF;
+    IF length(trim(coalesce(p_new_owner_mobile, ''))) > 0 AND normalize_mobile(p_new_owner_mobile) IS NULL THEN
+        RAISE EXCEPTION 'Mobile % is not a valid number', p_new_owner_mobile;
     END IF;
     IF p_transfer_date IS NULL OR p_transfer_date > current_date THEN
         RAISE EXCEPTION 'The transfer date cannot be in the future';
@@ -14196,9 +14237,7 @@ CREATE OR REPLACE FUNCTION public.join_society(p_code TEXT, p_name TEXT, p_mobil
 RETURNS JSONB AS $$
 DECLARE
     v_soc societies%ROWTYPE;
-    v_phone TEXT;
-    v_unit RECORD;
-    v_flats TEXT[] := '{}';
+    v_flats TEXT[];
     v_name TEXT := trim(coalesce(p_name, ''));
     v_hint TEXT := nullif(trim(coalesce(p_flat_hint, '')), '');
     v_req UUID;
@@ -14217,26 +14256,10 @@ BEGIN
         RETURN jsonb_build_object('status', 'requested', 'society_name', v_soc.name, 'flat', NULL);
     END IF;
 
-    -- Only the login's own verified mobile attaches anyone (a typed number never does)
-    SELECT normalize_mobile(phone) INTO v_phone FROM auth.users WHERE id = auth.uid();
-    IF v_phone IS NOT NULL THEN
-        FOR v_unit IN
-            SELECT u.id, u.unit_number FROM units u
-            WHERE u.society_id = v_soc.id
-              AND (u.owner_mobile = v_phone
-                   OR EXISTS (SELECT 1 FROM unit_ownerships o WHERE o.unit_id = u.id AND o.to_date IS NULL
-                                AND o.owner_user_id IS NULL AND normalize_mobile(o.owner_mobile) = v_phone))
-            ORDER BY u.unit_number
-        LOOP
-            PERFORM upsert_flat_membership(v_soc.id, auth.uid(), v_unit.id, 'resident_owner');
-            PERFORM attach_flat_owner(v_soc.id, v_unit.id, auth.uid(), NULL);
-            v_flats := v_flats || v_unit.unit_number::text;
-        END LOOP;
-        IF cardinality(v_flats) > 0 THEN
-            INSERT INTO audit_logs (society_id, user_id, action, entity_type, entity_id, new_value)
-            VALUES (v_soc.id, auth.uid(), 'member.joined_by_link', 'society', v_soc.id::text, jsonb_build_object('flats', v_flats));
-            RETURN jsonb_build_object('status', 'joined', 'society_name', v_soc.name, 'flat', array_to_string(v_flats, ', '));
-        END IF;
+    -- Only the login's own confirmed mobile attaches anyone (a typed number never does)
+    SELECT array_agg(a.flat) INTO v_flats FROM attach_flats_by_phone(v_soc.id, auth.uid(), current_verified_phone()) a;
+    IF cardinality(v_flats) > 0 THEN
+        RETURN jsonb_build_object('status', 'joined', 'society_name', v_soc.name, 'flat', array_to_string(v_flats, ', '));
     END IF;
 
     IF (SELECT count(*) FROM join_requests WHERE society_id = v_soc.id AND created_at > timezone('utc'::text, now()) - interval '1 day') >= 30 THEN
@@ -14316,6 +14339,8 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 -- ============================================================================
 REVOKE ALL ON FUNCTION public.attach_flat_owner(UUID, UUID, UUID, UUID) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.upsert_flat_membership(UUID, UUID, UUID, TEXT) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.current_verified_phone() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.attach_flats_by_phone(UUID, UUID, TEXT) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.set_flat_owner_contacts(UUID, JSONB) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.society_join_code(UUID) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.new_join_code(UUID) FROM PUBLIC, anon;
