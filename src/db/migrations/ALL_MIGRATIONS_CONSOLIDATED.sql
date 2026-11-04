@@ -13386,7 +13386,98 @@ END;
 $$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public;
 
 -- ============================================================================
+-- 2. THE SECRETARY RECORDS AN OWNER CHANGE
+-- ============================================================================
+-- What the flat owes (unpaid bills) and holds in advance (unallocated payments + opening advance)
+CREATE OR REPLACE FUNCTION public.flat_balance(p_unit_id UUID)
+RETURNS JSONB AS $$
+DECLARE
+    v_society UUID;
+BEGIN
+    SELECT society_id INTO v_society FROM units WHERE id = p_unit_id;
+    IF v_society IS NULL OR NOT can_view_financials(v_society) THEN
+        RAISE EXCEPTION 'You do not have access to this society''s accounts';
+    END IF;
+    RETURN jsonb_build_object(
+        'dues', (SELECT coalesce(sum(b.balance_due), 0) FROM bills b
+                 WHERE b.unit_id = p_unit_id AND b.balance_due > 0 AND b.status IN ('issued', 'partially_paid', 'overdue')),
+        'advance', (SELECT coalesce(sum(p.amount - coalesce((SELECT sum(a.amount) FROM payment_allocations a WHERE a.payment_id = p.id), 0)), 0)
+                    FROM payments p WHERE p.unit_id = p_unit_id AND p.status = 'verified')
+                 + (SELECT coalesce(sum(o.remaining), 0) FROM opening_advances o WHERE o.unit_id = p_unit_id)
+    );
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public;
+
+CREATE OR REPLACE FUNCTION public.transfer_flat_owner(
+    p_unit_id UUID, p_new_owner_name TEXT, p_new_owner_email TEXT, p_new_owner_mobile TEXT, p_transfer_date DATE
+)
+RETURNS JSONB AS $$
+DECLARE
+    v_unit units%ROWTYPE;
+    v_open unit_ownerships%ROWTYPE;
+    v_name TEXT := trim(coalesce(p_new_owner_name, ''));
+    v_email TEXT := lower(trim(coalesce(p_new_owner_email, '')));
+    v_invite UUID;
+    v_period UUID;
+    v_balance JSONB;
+BEGIN
+    SELECT * INTO v_unit FROM units WHERE id = p_unit_id FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Flat not found';
+    END IF;
+    IF NOT (is_platform_admin() OR is_society_admin(v_unit.society_id)) THEN
+        RAISE EXCEPTION 'Only the society committee can record an owner change';
+    END IF;
+    IF length(v_name) < 2 THEN
+        RAISE EXCEPTION 'Enter the new owner''s name';
+    END IF;
+    IF position('@' IN v_email) < 2 THEN
+        RAISE EXCEPTION 'Enter the new owner''s email — they join with it';
+    END IF;
+    IF p_transfer_date IS NULL OR p_transfer_date > current_date THEN
+        RAISE EXCEPTION 'The transfer date cannot be in the future';
+    END IF;
+    SELECT * INTO v_open FROM unit_ownerships WHERE unit_id = p_unit_id AND to_date IS NULL FOR UPDATE;
+    IF FOUND AND v_open.owner_user_id IS NULL THEN
+        RAISE EXCEPTION 'This flat already has a new owner waiting to join';
+    END IF;
+    IF FOUND AND p_transfer_date <= v_open.from_date THEN
+        RAISE EXCEPTION 'The transfer date must be after % (when the current owner''s period began)', to_char(v_open.from_date, 'DD Mon YYYY');
+    END IF;
+
+    v_balance := flat_balance(p_unit_id);
+
+    -- The current owner's period ends the day before; they lose the flat
+    UPDATE unit_ownerships SET to_date = p_transfer_date - 1 WHERE unit_id = p_unit_id AND to_date IS NULL;
+    UPDATE society_memberships SET is_active = false, updated_at = timezone('utc'::text, now())
+    WHERE society_id = v_unit.society_id AND unit_id = p_unit_id AND role = 'resident_owner' AND is_active;
+
+    -- The new owner is invited; their period waits for them to join
+    UPDATE member_invites SET status = 'revoked'
+    WHERE society_id = v_unit.society_id AND unit_id = p_unit_id AND role = 'resident_owner' AND status = 'pending';
+    INSERT INTO member_invites (society_id, email, full_name, role, unit_id, invited_by)
+    VALUES (v_unit.society_id, v_email, v_name, 'resident_owner', p_unit_id, auth.uid())
+    RETURNING id INTO v_invite;
+    INSERT INTO unit_ownerships (society_id, unit_id, owner_name, owner_email, owner_mobile, from_date, invite_id, created_by)
+    VALUES (v_unit.society_id, p_unit_id, v_name, v_email, nullif(trim(coalesce(p_new_owner_mobile, '')), ''), p_transfer_date,
+            v_invite, auth.uid())
+    RETURNING id INTO v_period;
+
+    INSERT INTO audit_logs (society_id, user_id, action, entity_type, entity_id, new_value)
+    VALUES (v_unit.society_id, auth.uid(), 'unit.owner_changed', 'unit', p_unit_id::text,
+            jsonb_build_object('new_owner', v_name, 'email', v_email, 'transfer_date', p_transfer_date,
+                               'dues', v_balance -> 'dues', 'advance', v_balance -> 'advance'));
+    RETURN jsonb_build_object('ownership_id', v_period, 'invite_id', v_invite,
+                              'dues', v_balance -> 'dues', 'advance', v_balance -> 'advance');
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- ============================================================================
 -- PRIVILEGES
 -- ============================================================================
+REVOKE ALL ON FUNCTION public.flat_balance(UUID) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.transfer_flat_owner(UUID, TEXT, TEXT, TEXT, DATE) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.flat_balance(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.transfer_flat_owner(UUID, TEXT, TEXT, TEXT, DATE) TO authenticated;
 REVOKE ALL ON FUNCTION public.flat_owner_periods(UUID) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.flat_owner_periods(UUID) TO authenticated;
