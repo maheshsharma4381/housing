@@ -353,6 +353,48 @@ Nothing was pushed to GitHub. No migration was applied to the live database: run
 
 ---
 
+## Phase 7 — the installable app (the "mobile app")
+
+The spec decided **no native app**: "The app stays a web app / installable PWA" (section 2, non-goals). So the mobile app is Sahvaas installed from the browser. On Android, Chrome shows "Install app". On iPhone, Safari → Share → "Add to Home Screen". It then opens full-screen with its own icon, like any app.
+
+**Built**
+- Proper app icons for Android (192, 512 and maskable) and the iPhone Home Screen (180 PNG).
+- The installed app opens on login, which sends a signed-in person straight to their screen. It is not locked to portrait, so wide ledgers can be turned sideways.
+- **"Install app" button** inside the resident and secretary screens (icon-only on phones). Android's one-time install prompt is caught as soon as the app starts. iPhone users get a short guide, including "open in Safari first" when they came from WhatsApp.
+- **Offline:** a page load with no internet shows a friendly offline page. **Nothing else is cached**, so bills and payments are never shown stale.
+- On iPhone the app starts below the status bar (clock and notch).
+
+**Rulings I made (cost if wrong)**
+1. No native app and no Play Store listing, per the spec. A Play Store listing (a "Trusted Web Activity" wrapper) needs your Google Play Console account and a decision. Cost: no app-store presence until then.
+2. Only the offline page is cached. Cost: no reading of old data offline (deliberate).
+
+**Deferred minors**
+- The notification badge on Android shows as a white square.
+- Icon artwork polish (maskable full-bleed, transparent corners).
+- The service-worker test checks a mirror of the rule, not `sw.js` itself.
+- No install button in the desktop sidebar.
+
+---
+
+## Phase 8 — fixes people would notice
+
+- **Tenants:** no payment history and no Bills screen, even from a notification. Switching to a rented flat leaves the owner-only tabs.
+- **Latest bill card:** skips cancelled bills.
+- **Phone "More" sheet:** shows only what the bottom bar does not, under Money / Society / Settings headings.
+- **Home:** the heading now says "Home". Flats & residents from the menu opens on Flats.
+- **Home lists:**
+  - show a spinner while loading, and errors;
+  - the reminder button reports "already reminded today";
+  - singular and plural wording is right.
+- **My account:** shows "Balance today" for a period running past today.
+- **Bill page:** "Less: advance" only on bills that still ask for payment.
+- **Log out of all devices:** also stops pushes to the lost phone.
+- **Platform:**
+  - the funnel time reads in minutes, hours or days, with steps in order;
+  - Society health lists stuck, then quiet societies first.
+
+---
+
 ## What you need to do next
 
 1. **Apply the database migrations** 027 to 037 (none were applied by me):
@@ -362,7 +404,7 @@ Nothing was pushed to GitHub. No migration was applied to the live database: run
 3. **Environment and Supabase settings:**
    - **3A push:** `SUPABASE_SERVICE_ROLE_KEY`, the VAPID keys, `CRON_SECRET`, and the two database settings.
    - **3C mobile login, when WhatsApp is approved:** the Phone provider with "Confirm phone" on, the Send SMS hook, `SEND_SMS_HOOK_SECRET`, the WhatsApp/MSG91 keys, the SMS rate limit, then `NEXT_PUBLIC_PHONE_LOGIN=1`.
-4. **Check by hand on a phone:**
+4. **Install the app on your own phone and check it there:**
    - register a society through the wizard;
    - send the first bills;
    - open the joining link as an owner;
