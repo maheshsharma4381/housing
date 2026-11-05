@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useRouter, Link } from '../router/RouterContext';
 import { useAuth } from '../context/AuthContext';
+import { contactText } from '../lib/mobile';
 import { PWAInstallButton } from './PWAInstallButton';
 import {
   Menu,
@@ -156,7 +157,7 @@ export const PublicHeader: React.FC = () => {
                   }}
                   className="w-full py-2 rounded-xl text-center text-xs text-rose-400 hover:bg-slate-800 cursor-pointer"
                 >
-                  Sign Out ({profile?.email})
+                  Sign Out{contactText(profile) ? ` (${contactText(profile)})` : ''}
                 </button>
               </>
             ) : (

@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase/client';
+import { contactText } from '../../lib/mobile';
 import { formatINR } from '../../lib/inr';
 import { permissionLabel, roleLabel } from '../../lib/professional-permissions';
 import { WorkspaceSelector } from '../../components/WorkspaceSelector';
@@ -132,7 +133,7 @@ export const ProfessionalDashboardPage: React.FC = () => {
         </div>
 
         <div className="pt-4 border-t border-slate-800 space-y-2 text-xs">
-          <div className="truncate text-slate-400 font-mono text-[11px]">{profile?.email}</div>
+          <div className="truncate text-slate-400 font-mono text-[11px]">{contactText(profile)}</div>
           <button onClick={() => logout()} className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-rose-400 font-medium cursor-pointer transition">
             <LogOut className="w-3.5 h-3.5" /> <span>Sign Out</span>
           </button>

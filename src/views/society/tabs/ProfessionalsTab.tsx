@@ -10,7 +10,7 @@ import { EmptyState } from '../../../components/EmptyState';
 import { RemarksPanel } from '../../../components/RemarksPanel';
 import { ProfessionalRole } from '../../../types/database';
 import { describeNotify, notify } from '../../../lib/notify';
-import { normalizeMobile, formatMobile } from '../../../lib/mobile';
+import { normalizeMobile, formatMobile, contactText } from '../../../lib/mobile';
 import { Briefcase, UserPlus, Loader2, XCircle, Eye, Save } from 'lucide-react';
 import { PHONE_LOGIN_ON } from '../../../lib/phone-login';
 
@@ -18,7 +18,7 @@ interface InviteRow { id: string; invited_email: string | null; invited_mobile: 
 interface GrantRow {
   id: string; professional_user_id: string; role: string; status: string; permissions: string[];
   granted_at: string; expires_at: string | null; revoked_at: string | null;
-  profiles: { full_name: string; email: string } | null;
+  profiles: { full_name: string; email: string | null; phone?: string | null } | null;
 }
 interface LogRow { id: string; professional_user_id: string; module_accessed: string; action_performed: string; created_at: string }
 
@@ -50,7 +50,7 @@ export const ProfessionalsTab: React.FC<ProfessionalsTabProps> = ({ societyId, c
     const [iRes, gRes, lRes] = await Promise.all([
       supabase.from('professional_invites').select('*').eq('society_id', societyId).eq('status', 'pending').order('created_at', { ascending: false }),
       supabase.from('society_professional_access')
-        .select('id, professional_user_id, role, status, permissions, granted_at, expires_at, revoked_at, profiles:professional_user_id (full_name, email)')
+        .select('id, professional_user_id, role, status, permissions, granted_at, expires_at, revoked_at, profiles:professional_user_id (full_name, email, phone)')
         .eq('society_id', societyId).order('granted_at', { ascending: false }),
       supabase.from('access_logs').select('*').eq('society_id', societyId).order('created_at', { ascending: false }).limit(30),
     ]);
@@ -201,7 +201,7 @@ export const ProfessionalsTab: React.FC<ProfessionalsTabProps> = ({ societyId, c
             <div key={g.id} className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="font-bold text-white">{g.profiles?.full_name ?? 'Professional'} <span className="text-slate-500 font-normal">• {g.profiles?.email}</span></div>
+                  <div className="font-bold text-white">{g.profiles?.full_name ?? 'Professional'} {contactText(g.profiles) && <span className="text-slate-500 font-normal">• {contactText(g.profiles)}</span>}</div>
                   <div className="text-slate-400">
                     {roleLabel(g.role)} • since {new Date(g.granted_at).toLocaleDateString('en-IN')}
                     {g.expires_at && ` • until ${new Date(g.expires_at).toLocaleDateString('en-IN')}`}

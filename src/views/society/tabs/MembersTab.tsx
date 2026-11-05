@@ -7,7 +7,7 @@ import { MemberInvite, SocietyRole, Unit } from '../../../types/database';
 import { inviteText, whatsappLink } from '../../../lib/messages';
 import { describeNotify, notify } from '../../../lib/notify';
 import { JoinLinkCard } from '../../../components/JoinLinkCard';
-import { normalizeMobile, formatMobile } from '../../../lib/mobile';
+import { normalizeMobile, formatMobile, contactLine } from '../../../lib/mobile';
 import { Users, UserPlus, Mail, AlertCircle, CheckCircle2, Loader2, XCircle, MessageCircle } from 'lucide-react';
 import { PHONE_LOGIN_ON } from '../../../lib/phone-login';
 
@@ -300,7 +300,7 @@ export const MembersTab: React.FC<MembersTabProps> = ({ societyId, societyName, 
               <div key={m.id} className="p-3 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="font-semibold text-white truncate">{m.profiles?.full_name ?? 'Unknown'}</div>
-                  <div className="text-slate-400 truncate">{m.profiles?.email} {m.profiles?.phone ? `• ${m.profiles.phone}` : ''}</div>
+                  <div className="text-slate-400 truncate">{contactLine(m.profiles)}</div>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-sky-500/10 text-sky-300">{roleLabel(m.role)}</span>

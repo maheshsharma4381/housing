@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth, COMMITTEE_ROLES } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase/client';
+import { contactText } from '../../lib/mobile';
 import { WorkspaceSelector } from '../../components/WorkspaceSelector';
 import { EmptyState } from '../../components/EmptyState';
 import { UnitsTab } from './tabs/UnitsTab';
@@ -316,7 +317,7 @@ export const SocietyDashboardPage: React.FC = () => {
         </div>
 
         <div className="pt-4 border-t border-slate-800 space-y-2 text-xs">
-          <div className="truncate text-slate-400 font-mono text-[11px]">{profile?.email}</div>
+          <div className="truncate text-slate-400 font-mono text-[11px]">{contactText(profile)}</div>
           <button
             onClick={() => logout()}
             className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-rose-400 font-medium cursor-pointer transition"

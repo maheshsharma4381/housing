@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../../../lib/supabase/client';
 import { formatINR } from '../../../lib/inr';
+import { contactLine } from '../../../lib/mobile';
 import { Link } from '../../../router/RouterContext';
 import { EmptyState } from '../../../components/EmptyState';
 import { Payment, Unit } from '../../../types/database';
@@ -137,7 +138,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ societyId, societyName
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="font-bold text-white text-sm">{formatINR(p.amount)} • Flat {unitNumber(p.unit_id)}</div>
-                  <div className="text-slate-400 truncate">{p.profiles?.full_name} ({p.profiles?.email})</div>
+                  <div className="text-slate-400 truncate">{[p.profiles?.full_name, contactLine(p.profiles)].filter(Boolean).join(' · ')}</div>
                   <div className="text-slate-400">
                     UTR <span className="font-mono text-white">{p.transaction_reference_utr}</span> • {p.payment_method.toUpperCase()} • {p.payment_date}
                   </div>

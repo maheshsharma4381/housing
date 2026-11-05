@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase/client';
+import { contactText } from '../../lib/mobile';
 import { formatINR } from '../../lib/inr';
 import { Banner } from '../../components/Banner';
 import { EmptyState } from '../../components/EmptyState';
@@ -147,7 +148,7 @@ export const PlatformDashboardPage: React.FC = () => {
         <div className="mt-8 pt-4 border-t border-slate-800 px-2 space-y-3 text-xs">
           <div>
             <div className="font-semibold text-white truncate">{profile?.full_name || 'Platform Admin'}</div>
-            <div className="text-[11px] text-slate-400 truncate">{profile?.email}</div>
+            <div className="text-[11px] text-slate-400 truncate">{contactText(profile)}</div>
           </div>
           <button onClick={() => logout()} className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-rose-400 text-xs font-medium cursor-pointer">
             <LogOut className="w-3.5 h-3.5" /> <span>Sign Out</span>
@@ -275,12 +276,12 @@ export const PlatformDashboardPage: React.FC = () => {
         {activeTab === 'users' && (
           <div className="bg-slate-950 border border-slate-800 rounded-2xl overflow-x-auto">
             <table className="w-full text-left">
-              <thead className="bg-slate-900 text-slate-400 uppercase text-[10px]"><tr><th className="py-3 px-4">Name</th><th className="py-3 px-4">Email</th><th className="py-3 px-4">Joined</th></tr></thead>
+              <thead className="bg-slate-900 text-slate-400 uppercase text-[10px]"><tr><th className="py-3 px-4">Name</th><th className="py-3 px-4">Email or mobile</th><th className="py-3 px-4">Joined</th></tr></thead>
               <tbody className="divide-y divide-slate-800/60 text-slate-300">
                 {usersList.map(u => (
                   <tr key={u.id}>
                     <td className="py-3 px-4 font-medium text-white">{u.full_name}{u.is_platform_admin && <span className="ml-2 text-purple-400">owner</span>}</td>
-                    <td className="py-3 px-4 font-mono text-slate-400">{u.email}</td>
+                    <td className="py-3 px-4 font-mono text-slate-400">{contactText(u)}</td>
                     <td className="py-3 px-4 text-slate-400">{new Date(u.created_at).toLocaleDateString('en-IN')}</td>
                   </tr>
                 ))}

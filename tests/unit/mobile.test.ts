@@ -37,3 +37,17 @@ test('trunk zero after +91 is dropped', () => {
   }
   assert.equal(normalizeMobile('+44 7700 900123'), '447700900123');
 });
+
+test('a person is shown by email, else by mobile', async () => {
+  const { contactText, contactLine } = await import('../../src/lib/mobile.ts');
+  assert.equal(contactText({ email: 'asha@x.in', phone: null }), 'asha@x.in');
+  assert.equal(contactText({ email: null, phone: '919876543210' }), '+91 98765 43210');
+  assert.equal(contactText({ email: '', phone: '9876543210' }), '+91 98765 43210');
+  assert.equal(contactText({ phone: '+6591234567' }), '+6591234567', 'a stored international number keeps its country');
+  assert.equal(contactText({ email: null, phone: null }), '');
+  assert.equal(contactText(null), '');
+  assert.equal(contactLine({ email: 'asha@x.in', phone: '919876543210' }), 'asha@x.in · +91 98765 43210');
+  assert.equal(contactLine({ email: null, phone: '919876543210' }), '+91 98765 43210');
+  assert.equal(contactLine({ email: 'asha@x.in' }), 'asha@x.in');
+  assert.equal(contactLine(undefined), '');
+});

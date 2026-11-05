@@ -26,6 +26,31 @@ export function formatMobile(stored: string | null | undefined): string {
   return `+${stored}`;
 }
 
+/**
+ * A profile's phone for display. Supabase stores a login's phone as international digits (919876543210,
+ * 6591234567), so more than 10 digits, or a leading +, already carries the country; 10 digits are Indian.
+ */
+function phoneText(phone: string | null | undefined): string {
+  const raw = (phone ?? '').trim();
+  if (!raw) return '';
+  const digits = raw.replace(/\D/g, '');
+  if (raw.startsWith('+') || digits.length > 10) return formatMobile(digits);
+  const n = normalizeMobile(raw);
+  return n ? formatMobile(n) : raw;
+}
+
+type Contact = { email?: string | null; phone?: string | null } | null | undefined;
+
+/** How to reach a person, in one piece: the email, else the mobile (accounts made by mobile have no email). */
+export function contactText(p: Contact): string {
+  return p?.email?.trim() || phoneText(p?.phone);
+}
+
+/** Email and mobile together ("asha@x.in · +91 98765 43210"), whichever exist. */
+export function contactLine(p: Contact): string {
+  return [p?.email?.trim(), phoneText(p?.phone)].filter(Boolean).join(' · ');
+}
+
 /** A key that is left out is not changed (a paste with no mobile column keeps the saved mobiles). */
 export interface OwnerContactRow { unit_id: string; name?: string; mobile?: string }
 
