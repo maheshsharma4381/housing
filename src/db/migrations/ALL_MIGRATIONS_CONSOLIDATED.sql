@@ -16174,11 +16174,17 @@ BEGIN
             FROM per WHERE NOT 'first_bill' = ANY (per.steps)
         ),
         firsts AS (
-            SELECT extract(epoch FROM (fb.created_at - p.created_at)) / 60 AS minutes
-            FROM setup_events fb
-            JOIN society_memberships m ON m.society_id = fb.society_id AND m.is_primary_contact
+            -- the society's first bill, from the wizard or the Billing page, against its first login
+            SELECT DISTINCT ON (f.society_id) extract(epoch FROM (f.at - p.created_at)) / 60 AS minutes
+            FROM (
+                SELECT x.society_id, min(x.at) AS at FROM (
+                    SELECT society_id, created_at AS at FROM setup_events WHERE step = 'first_bill'
+                    UNION ALL SELECT society_id, min(created_at) FROM bills WHERE status <> 'cancelled' GROUP BY society_id
+                ) x GROUP BY x.society_id
+            ) f
+            JOIN society_memberships m ON m.society_id = f.society_id AND m.is_primary_contact
             JOIN profiles p ON p.id = m.user_id
-            WHERE fb.step = 'first_bill'
+            ORDER BY f.society_id, m.created_at
         )
         SELECT jsonb_build_object(
             'steps', (SELECT jsonb_agg(jsonb_build_object('step', st, 'reached', (SELECT count(*) FROM per WHERE st = ANY (per.steps))) ORDER BY n)
@@ -16229,7 +16235,8 @@ BEGIN
               OR EXISTS (SELECT 1 FROM society_professional_access a WHERE a.society_id = s.id) AS ca,
             EXISTS (SELECT 1 FROM opening_balances o WHERE o.society_id = s.id AND o.status = 'approved') AS ob,
             greatest(s.created_at,
-                     (SELECT max(l."timestamp") FROM audit_logs l WHERE l.society_id = s.id),
+                     (SELECT max(l."timestamp") FROM audit_logs l WHERE l.society_id = s.id
+                        AND l.action NOT LIKE 'support.%' AND l.action NOT LIKE 'platform.%'),
                      (SELECT max(p.created_at) FROM payments p WHERE p.society_id = s.id)) AS active
     ) x
     WHERE s.is_active
@@ -16250,14 +16257,17 @@ BEGIN
         RAISE EXCEPTION 'Only the platform owner can see this';
     END IF;
     RETURN (
-        WITH b AS (SELECT * FROM platform_billing_overview())
+        -- active societies only; a complimentary plan (no paid invoice for today) is not revenue
+        WITH b AS (SELECT o.* FROM platform_billing_overview() o JOIN societies s ON s.id = o.society_id AND s.is_active)
         SELECT jsonb_build_object(
             'plans', coalesce((SELECT jsonb_object_agg(k, c) FROM (
                 SELECT CASE WHEN in_trial THEN 'trial' ELSE coalesce(plan_code, 'free') END AS k, count(*) c FROM b GROUP BY 1) p), '{}'::jsonb),
-            'mrr', (SELECT coalesce(sum(monthly_value), 0) FROM b WHERE NOT in_trial AND coalesce(plan_code, 'free') <> 'free'),
+            'mrr', (SELECT coalesce(sum(monthly_value), 0) FROM b WHERE NOT in_trial AND coalesce(plan_code, 'free') <> 'free'
+                      AND EXISTS (SELECT 1 FROM platform_invoices i WHERE i.society_id = b.society_id AND i.status = 'paid'
+                                    AND i.period_start <= current_date AND i.period_end >= current_date)),
             'trials_ending_this_week', (SELECT count(*) FROM b WHERE in_trial AND trial_ends_on BETWEEN current_date AND current_date + 7),
             'unpaid_invoices', (SELECT jsonb_build_object('count', count(*), 'total', coalesce(sum(total), 0))
-                                FROM platform_invoices WHERE status = 'issued'),
+                                FROM platform_invoices i JOIN societies s ON s.id = i.society_id AND s.is_active WHERE i.status = 'issued'),
             -- free-plan economics: what sponsors pay this month against what login codes cost
             'ads_this_month', (SELECT coalesce(sum(monthly_price), 0) FROM ad_campaigns
                                WHERE status = 'live' AND starts_on <= v_month_end AND ends_on >= v_month_start),
@@ -16286,6 +16296,8 @@ CREATE OR REPLACE FUNCTION public.start_support_view(p_society_id UUID, p_reason
 RETURNS JSONB AS $$
 DECLARE
     v_id UUID;
+    v_name TEXT;
+    v_live TIMESTAMPTZ;
     v_expires TIMESTAMPTZ := timezone('utc'::text, now()) + interval '1 hour';
 BEGIN
     IF NOT is_platform_admin() THEN
@@ -16294,8 +16306,16 @@ BEGIN
     IF length(trim(coalesce(p_reason, ''))) < 3 THEN
         RAISE EXCEPTION 'Say why you are opening this society';
     END IF;
-    IF NOT EXISTS (SELECT 1 FROM societies WHERE id = p_society_id) THEN
+    SELECT name INTO v_name FROM societies WHERE id = p_society_id;
+    IF NOT FOUND THEN
         RAISE EXCEPTION 'Society not found';
+    END IF;
+    -- an hour already open is reused: no second notice to the committee
+    SELECT id, expires_at INTO v_id, v_live FROM support_sessions
+    WHERE society_id = p_society_id AND admin_id = auth.uid() AND expires_at > timezone('utc'::text, now())
+    ORDER BY expires_at DESC LIMIT 1;
+    IF FOUND THEN
+        RETURN jsonb_build_object('session_id', v_id, 'expires_at', v_live, 'reused', true);
     END IF;
     INSERT INTO support_sessions (society_id, admin_id, reason, expires_at)
     VALUES (p_society_id, auth.uid(), trim(p_reason), v_expires) RETURNING id INTO v_id;
@@ -16303,7 +16323,7 @@ BEGIN
     VALUES (p_society_id, auth.uid(), 'support.view_started', 'support_session', v_id::text, jsonb_build_object('reason', trim(p_reason)));
     PERFORM notify_users(p_society_id, committee_admin_ids(p_society_id), 'support_view',
         'Sahvaas support viewed your society on ' || to_char(timezone('Asia/Kolkata', now()), 'DD Mon YYYY'),
-        'Read-only, for one hour. Reason: ' || trim(p_reason), NULL, v_id);
+        v_name || ' · read-only, for one hour. Reason: ' || trim(p_reason), NULL, v_id);
     RETURN jsonb_build_object('session_id', v_id, 'expires_at', v_expires);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;

@@ -99,6 +99,26 @@ const SupportView: React.FC<{ society: HealthRow; onClose: () => void }> = ({ so
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // An hour already open needs no new reason (and the committee is not told again)
+  const load = async () => {
+    if (!supabase) return false;
+    const { data, error: err } = await supabase.rpc('support_snapshot', { p_society_id: society.society_id });
+    if (err) {
+      setSnap(null);
+      return false;
+    }
+    setSnap(data as Snapshot);
+    return true;
+  };
+  useEffect(() => { load(); }, [society.society_id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // the hour ends: the data leaves the screen
+  useEffect(() => {
+    if (!snap) return;
+    const ms = new Date(snap.expires_at).getTime() - Date.now();
+    const t = setTimeout(() => setSnap(null), Math.max(ms, 0));
+    return () => clearTimeout(t);
+  }, [snap]);
+
   const open = async () => {
     if (!supabase) return;
     setBusy(true);
@@ -108,10 +128,8 @@ const SupportView: React.FC<{ society: HealthRow; onClose: () => void }> = ({ so
       setBusy(false);
       return setError(start.error.message);
     }
-    const { data, error: err } = await supabase.rpc('support_snapshot', { p_society_id: society.society_id });
+    await load();
     setBusy(false);
-    if (err) return setError(err.message);
-    setSnap(data as Snapshot);
   };
 
   return (
@@ -123,7 +141,7 @@ const SupportView: React.FC<{ society: HealthRow; onClose: () => void }> = ({ so
       <Banner tone="error">{error}</Banner>
       {!snap ? (
         <div className={`${card} space-y-3`}>
-          <p className="text-slate-300">Read-only for one hour. The society&apos;s committee is told, and every view is in their audit log.</p>
+          <p className="text-slate-300">Read-only for one hour. The society&apos;s committee is told (with your reason), and every view is recorded in the society&apos;s audit log.</p>
           <input className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white" placeholder="Why are you opening this society? (e.g. secretary called about bills)" value={reason} onChange={e => setReason(e.target.value)} />
           <button onClick={open} disabled={busy} className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold cursor-pointer disabled:opacity-50 flex items-center gap-1.5">
             {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Open read-only
@@ -131,7 +149,10 @@ const SupportView: React.FC<{ society: HealthRow; onClose: () => void }> = ({ so
         </div>
       ) : (
         <div className="space-y-3">
-          <p className="text-slate-400">Open until {new Date(snap.expires_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}.</p>
+          <p className="text-slate-400 flex items-center gap-3">
+            Open until {new Date(snap.expires_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}.
+            <button onClick={() => load()} className="text-purple-300 hover:underline cursor-pointer">Refresh</button>
+          </p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className={card}><div className="text-slate-400">To receive</div><div className="text-white font-bold">{formatINR(Number(snap.cards.to_receive.amount))}</div></div>
             <div className={card}><div className="text-slate-400">Overdue flats</div><div className="text-white font-bold">{snap.cards.to_receive.overdue_flats}</div></div>

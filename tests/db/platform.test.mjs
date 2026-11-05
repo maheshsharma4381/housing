@@ -97,3 +97,32 @@ test('announcements reach the secretaries, filtered by state', async () => {
   assert.equal((await q(ids.a.sec, `SELECT count(*)::int n FROM notifications WHERE kind='announcement'`))[0].n, 0);
   assert.equal(await val(ids.owner, `SELECT public.platform_announce('Maintenance window','Sunday 2 am',NULL,NULL)`), 3);
 });
+
+test('opening the support view does not make a quiet society look active, and is not announced twice', async () => {
+  // Alpha has been quiet for 40 days
+  await db.query(`UPDATE audit_logs SET "timestamp" = now() - interval '40 days' WHERE society_id = $1`, [ids.a.id]);
+  await db.query(`UPDATE societies SET created_at = now() - interval '60 days' WHERE id = $1`, [ids.a.id]);
+  const flag = async () => (await q(ids.owner, 'SELECT name, flag FROM public.platform_society_health()')).find((r) => r.name === 'Alpha Heights').flag;
+  assert.equal(await flag(), 'quiet');
+  const s1 = await val(ids.owner, `SELECT public.start_support_view($1,'Checking on a quiet society')`, [ids.a.id]);
+  const s2 = await val(ids.owner, `SELECT public.start_support_view($1,'Opened again')`, [ids.a.id]);
+  assert.equal(s2.session_id, s1.session_id, 'the live hour is reused');
+  await val(ids.owner, 'SELECT public.support_snapshot($1)', [ids.a.id]);
+  assert.equal(await flag(), 'quiet', "support's own visit is not the society's activity");
+  const n = await q(ids.a.sec, `SELECT body FROM notifications WHERE kind='support_view' ORDER BY created_at`);
+  assert.equal(n.length, 2, 'one for the earlier (expired) hour, one for this hour — not one per open');
+  assert.match(n[1].body, /Alpha Heights/);
+});
+
+test('a first bill from the Billing page counts in the funnel; revenue counts only paying, active societies', async () => {
+  await q(ids.g.sec, `INSERT INTO billing_rules (society_id, name, calculation_type, rate) VALUES ($1,'Maintenance','flat_per_unit',500)`, [ids.g.id]);
+  await q(ids.g.sec, `SELECT public.generate_bills($1,'2026-11-01','2026-11-30','2026-11-25')`, [ids.g.id]);
+  const f = await val(ids.owner, 'SELECT public.platform_setup_funnel()');
+  assert.equal(f.first_bill.societies, 2);
+  // a complimentary year is not revenue, and a cancelled society is not counted
+  await q(ids.owner, `SELECT public.platform_assign_plan($1,'pro','annual')`, [ids.g.id]);
+  assert.equal(Number((await val(ids.owner, 'SELECT public.platform_revenue()')).mrr), 0);
+  await db.query('UPDATE societies SET is_active = false WHERE id = $1', [ids.b.id]);
+  const r = await val(ids.owner, 'SELECT public.platform_revenue()');
+  assert.equal(Object.values(r.plans).reduce((x, y) => x + y, 0), 2);
+});
