@@ -69,6 +69,7 @@ import {
 } from 'lucide-react';
 import { SignOutMenu, LogoutEverywhereButton } from '../../components/SignOutMenu';
 import { nextSetupStep, type SetupStatus } from '../../lib/setup';
+import { PWAInstallButton } from '../../components/PWAInstallButton';
 
 type Tab = SocietyTab;
 
@@ -237,6 +238,8 @@ export const SocietyDashboardPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* the installable app (spec: the PWA is the mobile app) */}
+          <PWAInstallButton />
           <NotificationBell onOpen={openFromNotification} />
           <WorkspaceSelector />
           <SignOutMenu />

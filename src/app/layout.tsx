@@ -5,6 +5,7 @@ import { RouterProvider } from '../router/RouterContext';
 import { OfflineIndicator } from '../components/OfflineIndicator';
 import { NamePrompt } from '../components/NamePrompt';
 import { AddMobilePrompt } from '../components/AddMobilePrompt';
+import { ServiceWorkerRegister } from '../components/ServiceWorkerRegister';
 
 export const viewport: Viewport = {
   themeColor: '#0284c7',
@@ -22,12 +23,13 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    statusBarStyle: 'default',
+    statusBarStyle: 'black-translucent',
     title: 'Sahvaas',
   },
   icons: {
-    icon: '/icon.svg',
-    apple: '/icon.svg',
+    icon: [{ url: '/icon.svg', type: 'image/svg+xml' }, { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' }],
+    // the iPhone Home Screen ignores SVG
+    apple: [{ url: '/icons/apple-touch-icon.png', sizes: '180x180' }],
   },
 };
 
@@ -47,6 +49,7 @@ export default function RootLayout({
             <OfflineIndicator />
             <NamePrompt />
             <AddMobilePrompt />
+            <ServiceWorkerRegister />
           </AuthProvider>
         </RouterProvider>
       </body>

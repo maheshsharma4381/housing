@@ -1,20 +1,25 @@
 import type { MetadataRoute } from 'next';
 
+// The installable app (spec: no native app — this PWA is the mobile app). Android needs 192 and 512 PNG icons
+// and a maskable one; the iPhone Home Screen uses apple-touch-icon (layout.tsx).
 export default function manifest(): MetadataRoute.Manifest {
   return {
+    id: '/',
     name: 'Sahvaas - Housing Society Management',
     short_name: 'Sahvaas',
-    description: 'Multi-tenant housing society management and operations platform',
+    description: 'Maintenance bills, payments, notices and complaints for your housing society',
     start_url: '/',
+    scope: '/',
     display: 'standalone',
+    orientation: 'portrait',
     background_color: '#020617',
     theme_color: '#0284c7',
+    categories: ['finance', 'productivity'],
     icons: [
-      {
-        src: '/icon.svg',
-        sizes: 'any',
-        type: 'image/svg+xml',
-      },
+      { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+      { src: '/icons/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      { src: '/icon.svg', sizes: 'any', type: 'image/svg+xml' },
     ],
   };
 }

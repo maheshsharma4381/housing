@@ -69,6 +69,6 @@ export const config = {
      * - favicon.ico, icon.svg, manifest.json
      * - the service worker, and server-to-server routes that never carry a login cookie
      */
-    '/((?!_next/static|_next/image|favicon.ico|icon.svg|manifest.json|sw.js|api/auth/sms-hook|api/push/send-pending).*)',
+    '/((?!_next/static|_next/image|favicon.ico|icon.svg|icons/|offline.html|manifest.webmanifest|manifest.json|sw.js|api/auth/sms-hook|api/push/send-pending).*)',
   ],
 };

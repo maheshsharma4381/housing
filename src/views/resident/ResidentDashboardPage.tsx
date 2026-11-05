@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { SignOutMenu } from '../../components/SignOutMenu';
 import { FlatStatement } from '../../components/FlatStatement';
+import { PWAInstallButton } from '../../components/PWAInstallButton';
 
 const OUTSTANDING_STATUSES: Bill['status'][] = ['issued', 'partially_paid', 'overdue'];
 const UTR_PATTERN = /^\d{12}$/;
@@ -221,6 +222,8 @@ export const ResidentDashboardPage: React.FC = () => {
             )}
           </div>
 
+          {/* the installable app (spec: the PWA is the mobile app) */}
+          <PWAInstallButton />
           <NotificationBell onOpen={(link) => {
             if (link === 'bills' || link === 'payments') setActiveTab('bills');
             else if (link === 'notices' || link === 'complaints') setActiveTab(link);
