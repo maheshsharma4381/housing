@@ -181,3 +181,41 @@ Nothing was pushed to GitHub. No migration was applied to the live database: run
 - A rotated hook secret (`a|b`) is not supported.
 - A few screens show a blank email for phone-only users.
 - OTP settings accept negative costs.
+
+---
+
+## Phase 4A — bills belong to flats, the bill page, per-flat charges (migration 033)
+
+**Built**
+- **Bills belong to the flat.**
+  - Bills are issued for every flat, even before anyone has joined.
+  - A sold flat with a waiting owner change bills nobody. Before, it billed the seller.
+  - When the owner joins (by invite, the joining link, or mobile login), they take the flat's bills and any money recorded for it, with one "Bills for Flat …" notification.
+  - Money received for a flat nobody has joined can be recorded from the bank statement.
+  - Opening dues for such a flat wait for the owner like any bill.
+- **Printable bill, `/bill/<id>`.**
+  - It shows: society name, registration number and address; member, flat and area; bill number, date and period; the charges breakup; the late fee as its own line; previous dues; less advance; total payable and due date; a UPI QR for the exact amount; bank details; the late-fee rule.
+  - "Print / Save PDF". A cancelled or paid bill says so and asks for nothing.
+  - Linked from the resident's bills and from Maintenance bills.
+- **Charges for chosen flats (parking).** Each charge shows "Charged to: all flats / chosen flats" with a flat picker. A chosen-flats charge bills nobody until flats are chosen.
+- **Member dues report.** One row per flat, named by the owner, the expected owner, or "Not joined yet".
+- **A society with one committee member** approves its own vendor bills; they are marked self-approved in the audit log. One approval is then enough even with two-step approval on. When a second admin joins, the normal rule returns.
+
+**What you need to set:** nothing.
+
+**Rulings I made (cost if wrong)**
+1. Existing tests that assumed "flats without an owner are skipped" were updated to the new rule. Cost: none.
+2. Bill arrears are the flat's other open bills due earlier. Advance is verified money not yet set against bills, plus opening advances. Cost: none.
+3. "All flats" on a charge is a direct rule update. Cost: none.
+4. The bill notification opens the Bills list, which is one tap from the bill page. Cost: one extra tap.
+
+**Deferred minors**
+- The buyer of a sold flat gets no "Bills for Flat" notification.
+- The bill shows the primary bank, not the CA's default receiving bank.
+- "Less: advance" shows even when nothing is due.
+- Late-fee wording: the percentage is on the unpaid balance; opening bills show the rule; a ₹0 fee prints.
+- Read-only members see the chosen-flats buttons, and the server refuses them. "All flats" is not audited.
+- A charge added in Maintenance bills starts as "all flats".
+- The self-approval note is also shown to read-only viewers.
+- "No bills to generate" does not name the charge that needs flats.
+- Nits: the middleware prefix `/bill` also matches `/billing…`; `inr_text` duplicates `money_text`.
