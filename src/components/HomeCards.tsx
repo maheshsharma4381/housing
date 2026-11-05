@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase/client';
 import { formatINR } from '../lib/inr';
 import { Banner } from './Banner';
 import { CreditCard, Receipt, ListChecks, QrCode, Loader2, BellRing } from 'lucide-react';
 import type { SocietyTab } from '../lib/society-nav';
+import { flatKey, flatLabels } from '../lib/flat-label';
 
 interface Cards {
   to_receive: { amount: number; flats: number; overdue_flats: number };
@@ -13,7 +14,7 @@ interface Cards {
   approvals: { vendor_bills: number; adjustments: number; opening_balance: number; join_requests: number; total: number };
   payments_to_verify: number;
 }
-interface DueRow { unit_number: string; owner_name: string; outstanding: number; oldest_due_date: string; days_overdue: number }
+interface DueRow { unit_number: string; wing: string | null; owner_name: string; outstanding: number; oldest_due_date: string; days_overdue: number }
 interface VendorRow { who: string; bills: number; cash: number; tds: number; due: string }
 interface ExpenseRow {
   payee_name: string | null; title: string; subtotal: number; gst_amount: number; tds_amount: number; tds_deducted: number;
@@ -34,6 +35,8 @@ export const HomeCards: React.FC<{ societyId: string; canManage: boolean; onOpen
   const [cards, setCards] = useState<Cards | null>(null);
   const [open, setOpen] = useState<'receive' | 'pay' | null>(null);
   const [dues, setDues] = useState<DueRow[]>([]);
+  // "101" in two wings reads "A-101" and "B-101"
+  const duesLabels = useMemo(() => flatLabels(dues), [dues]);
   const [vendors, setVendors] = useState<VendorRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [listLoading, setListLoading] = useState(false);
@@ -153,9 +156,9 @@ export const HomeCards: React.FC<{ societyId: string; canManage: boolean; onOpen
             )}
           </div>
           <div className="divide-y divide-slate-800">
-            {dues.map(d => (
-              <div key={d.unit_number} className="py-2 flex items-center justify-between gap-3">
-                <span className="text-white">Flat {d.unit_number} <span className="text-slate-400">· {d.owner_name}</span></span>
+            {dues.map((d, i) => (
+              <div key={flatKey(d)} className="py-2 flex items-center justify-between gap-3">
+                <span className="text-white">Flat {duesLabels[i]} <span className="text-slate-400">· {d.owner_name}</span></span>
                 <span className="text-right">
                   <strong className="text-white">{formatINR(Number(d.outstanding))}</strong>
                   <span className={`block ${d.days_overdue > 0 ? 'text-rose-300' : 'text-slate-500'}`}>{d.days_overdue > 0 ? `${d.days_overdue} days overdue` : `due ${fmt(d.oldest_due_date)}`}</span>
