@@ -16074,12 +16074,20 @@ BEGIN
         RAISE EXCEPTION 'Choose a date range';
     END IF;
 
-    -- This owner's period: what happened before belongs to the previous owner's statement
-    SELECT o.from_date INTO v_start FROM unit_ownerships o
-    WHERE o.unit_id = p_unit_id AND o.owner_user_id = auth.uid() AND o.to_date IS NULL
+    -- The flat's current ownership period, shared by all its owners (a second owner has no period of their own):
+    -- what happened before an owner change belongs to the previous owner's statement.
+    -- It was an owner change when transfer_flat_owner made the period (created_by), or an earlier period exists
+    -- (a seller who never joined has no closed period).
+    SELECT o.from_date,
+           o.created_by IS NOT NULL OR EXISTS (SELECT 1 FROM unit_ownerships p WHERE p.unit_id = p_unit_id AND p.to_date IS NOT NULL)
+    INTO v_start, v_had_previous
+    FROM unit_ownerships o
+    WHERE o.unit_id = p_unit_id AND o.to_date IS NULL
     ORDER BY o.from_date DESC LIMIT 1;
-    v_had_previous := v_start IS NOT NULL AND EXISTS (
-        SELECT 1 FROM unit_ownerships o WHERE o.unit_id = p_unit_id AND o.to_date IS NOT NULL AND o.to_date < v_start);
+    v_had_previous := coalesce(v_had_previous, false);
+    IF v_had_previous AND p_to < v_start THEN
+        RAISE EXCEPTION 'You became the owner on %; choose dates from then', to_char(v_start, 'DD Mon YYYY');
+    END IF;
     v_from := CASE WHEN v_had_previous THEN greatest(p_from, v_start) ELSE p_from END;
 
     SELECT coalesce(sum(amount), 0) INTO v_opening
@@ -16091,8 +16099,14 @@ BEGIN
                'debit', CASE WHEN x.amount > 0 THEN x.amount END,
                'credit', CASE WHEN x.amount < 0 THEN -x.amount END,
                'balance', v_opening + x.running,
-               -- what the line came from: a bill (bill.*) or a receipt (payment.*), for the links
-               'ref_type', j.reference_event_type, 'ref_id', j.reference_event_id
+               -- what the line came from: a bill (bill.*) or a receipt (payment.*) — linked only when this owner can open it
+               'ref_type', j.reference_event_type,
+               'ref_id', CASE
+                   WHEN j.reference_event_type LIKE 'bill.%'
+                        AND EXISTS (SELECT 1 FROM bills b WHERE b.id = j.reference_event_id AND b.user_id = auth.uid()) THEN j.reference_event_id
+                   WHEN j.reference_event_type LIKE 'payment.%'
+                        AND EXISTS (SELECT 1 FROM payments p WHERE p.id = j.reference_event_id AND p.user_id = auth.uid()) THEN j.reference_event_id
+               END
            ) ORDER BY x.entry_date, x.entry_number, x.ledger_entry_id),
            v_opening + coalesce(sum(x.amount), 0)
     INTO v_lines, v_closing

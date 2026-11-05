@@ -82,3 +82,35 @@ test('tenants and other flats see nothing', async () => {
   await assert.rejects(q(ids.c102, 'SELECT public.my_flat_statement($1,$2,$3)', [ids.u101, ...range]), /Only the flat's owner can see its account/);
   await assert.rejects(q(ids.c102, `SELECT public.my_flat_statement($1,'2026-12-01','2026-01-01')`, [ids.u102]), /Choose a date range/);
 });
+
+test('a second owner of a sold flat starts at the transfer date too, and links only what they can open', async () => {
+  // the buyer's spouse joins flat 101 as a second owner (Members invite)
+  const spouse = await invite('spouse@account.test', ids.u101);
+  // a bill after the transfer belongs to the buyer (the first owner) — the spouse sees the line but cannot open the bill
+  await q(ids.secretary, `SELECT public.generate_bills($1,'2099-01-01','2099-01-31','2099-01-10')`, [ids.societyId]);
+  const s = await val(spouse, 'SELECT public.my_flat_statement($1,$2,$3)', [ids.u101, ...range]);
+  assert.equal(s.opening_label, 'Brought forward from previous owner');
+  assert.ok(s.lines.every((l) => !/RCPT|seller/i.test(l.narration)), 'no line from before the transfer');
+  assert.equal(s.lines.length, 1);
+  assert.equal(s.lines[0].ref_id, null, "the bill is the buyer's to open");
+  const buyerSt = await val(await (await db.query(`SELECT id FROM profiles WHERE email='buyer@account.test'`)).rows[0].id, 'SELECT public.my_flat_statement($1,$2,$3)', [ids.u101, ...range]);
+  assert.ok(buyerSt.lines[0].ref_id, 'the buyer opens their own bill');
+});
+
+test('a sale whose seller never joined is still an owner change', async () => {
+  const u103 = (await db.query(`SELECT id FROM units WHERE society_id=$1 AND unit_number='103'`, [ids.societyId])).rows[0]?.id
+    ?? (await asUser(db, ids.secretary, async (tx) => {
+      await tx.query('SELECT public.bulk_upsert_units($1,$2)', [ids.societyId, JSON.stringify([{ unit_number: '103' }])]);
+      return (await tx.query(`SELECT id FROM units WHERE society_id=$1 AND unit_number='103'`, [ids.societyId])).rows[0].id;
+    }));
+  await q(ids.secretary, `SELECT public.generate_bills($1,'2026-09-01','2026-09-30','2026-09-10')`, [ids.societyId]);
+  await backdate(u103, 60);
+  await q(ids.secretary, `SELECT public.transfer_flat_owner($1,'Buyer D','buyerd@account.test',NULL,current_date - 5)`, [u103]);
+  const buyerD = await createUser(db, 'buyerd@account.test');
+  await asUser(db, buyerD, (tx) => tx.query('SELECT public.claim_my_invites()'));
+  const s = await val(buyerD, 'SELECT public.my_flat_statement($1,$2,$3)', [u103, ...range]);
+  assert.equal(s.opening_label, 'Brought forward from previous owner');
+  assert.equal(Number(s.opening), 1000, 'the unpaid bill from before the sale is brought forward');
+  // a period that ends before they bought the flat is refused, not printed back to front
+  await assert.rejects(q(buyerD, `SELECT public.my_flat_statement($1,'2025-01-01', current_date - 30)`, [u103]), /You became the owner on/);
+});
