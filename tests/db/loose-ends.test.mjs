@@ -138,3 +138,15 @@ test('the bill names the bank the CA receives into', async () => {
   await q(owner, 'SELECT public.set_default_banks($1,$2,$3)', [ids.societyId, icici, b1000]);
   assert.equal(await bankNo(), '222', 'the account on the ledger the CA receives into');
 });
+
+// ---------------------------------------------------------------- 4. a closed society is quiet
+test('a deactivated society sends no notifications', async () => {
+  const sec2 = (await one(`SELECT user_id FROM society_memberships WHERE society_id=$1 LIMIT 1`, [ids.society2])).user_id;
+  const send = async (society, title) => (await one(
+    `SELECT public.notify_users($1, ARRAY[$2]::uuid[], 'notice', $3, 'Body', NULL) AS n`, [society, sec2, title])).n;
+  assert.equal(await send(ids.society2, 'While open'), 1);
+  await db.query('UPDATE societies SET is_active = false WHERE id = $1', [ids.society2]);
+  assert.equal(await send(ids.society2, 'After closing'), 0);
+  assert.equal(await send(null, 'Not about a society'), 1, 'join results and other personal notices still arrive');
+  await db.query('UPDATE societies SET is_active = true WHERE id = $1', [ids.society2]);
+});

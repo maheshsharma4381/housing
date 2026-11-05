@@ -24,3 +24,11 @@ test('push headers, audience and dead subscriptions', () => {
   assert.equal(deadSubscription(404), true);
   assert.equal(deadSubscription(201), false);
 });
+
+test('403 means the subscription is dead (made with another server key)', () => {
+  assert.equal(deadSubscription(403), true);
+  assert.equal(deadSubscription(404), true);
+  assert.equal(deadSubscription(410), true);
+  assert.equal(deadSubscription(500), false);
+  assert.equal(deadSubscription(429), false);
+});

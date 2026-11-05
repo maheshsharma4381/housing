@@ -18,5 +18,9 @@ export function pushHeaders(jwt: string, publicKeyB64url: string): Record<string
 
 export const endpointAudience = (endpoint: string) => new URL(endpoint).origin;
 
-/** The browser has dropped this subscription: delete it */
-export const deadSubscription = (status: number) => status === 404 || status === 410;
+/**
+ * The subscription will never work again: delete it. 404/410: the browser dropped it.
+ * 403: it was made with another server key (after a VAPID key change). The browser saves a fresh one
+ * with the current key the next time the app opens (enablePush), so deleting is safe even if every push 403s.
+ */
+export const deadSubscription = (status: number) => status === 403 || status === 404 || status === 410;

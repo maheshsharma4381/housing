@@ -16689,3 +16689,29 @@ BEGIN
     );
 END;
 $$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public;
+
+-- ============================================================================
+-- 4. A DEACTIVATED SOCIETY SENDS NO NOTIFICATIONS
+-- ============================================================================
+-- from 030_notifications.sql; + only an active society notifies its members (038)
+CREATE OR REPLACE FUNCTION public.notify_users(
+    p_society_id UUID, p_user_ids UUID[], p_kind TEXT, p_title TEXT, p_body TEXT, p_link TEXT, p_ref_id UUID DEFAULT NULL,
+    p_ref_date DATE DEFAULT NULL
+)
+RETURNS INT AS $$
+DECLARE
+    v_count INT;
+BEGIN
+    INSERT INTO notifications (user_id, society_id, kind, title, body, link, ref_id, ref_date)
+    SELECT DISTINCT u, p_society_id, p_kind, p_title, p_body, p_link, p_ref_id, p_ref_date
+    FROM unnest(coalesce(p_user_ids, '{}'::uuid[])) AS u
+    WHERE u IS NOT NULL
+      -- a deactivated society sends nothing: no reminders, no bills, no notices (038)
+      AND (p_society_id IS NULL OR EXISTS (SELECT 1 FROM societies s WHERE s.id = p_society_id AND s.is_active))
+      AND (p_society_id IS NULL OR EXISTS (
+          SELECT 1 FROM society_memberships m WHERE m.society_id = p_society_id AND m.user_id = u AND m.is_active))
+    ON CONFLICT DO NOTHING;
+    GET DIAGNOSTICS v_count = ROW_COUNT;
+    RETURN v_count;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
