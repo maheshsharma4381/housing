@@ -219,3 +219,46 @@ Nothing was pushed to GitHub. No migration was applied to the live database: run
 - The self-approval note is also shown to read-only viewers.
 - "No bills to generate" does not name the charge that needs flats.
 - Nits: the middleware prefix `/bill` also matches `/billing…`; `inr_text` duplicates `money_text`.
+
+---
+
+## Phase 4B — setup in six short steps (migration 034)
+
+**Built**
+- **`/onboarding` is the setup wizard** (and `/setup` resumes it).
+  - **Society:** name, pincode (city and state filled in automatically), and your role.
+  - **Flats:** wings ("No wings" allowed) × floors × flats per floor, with a preview such as "56 flats will be created: A-101 … A-704, B-101 … B-704". Or upload from Excel.
+  - **Maintenance:**
+    - "Same for all" or "Per sq.ft", with the area asked per flat position;
+    - Sinking fund, Repair fund and Parking. Parking bills only the flats you pick later.
+    - The due day, and "Remind 3 days after the due date, then every 7 days".
+    - These charges post to the default ledgers (4000, 3000, 3100, 4200) until the CA re-maps them.
+  - **UPI:** the ID and payee, with a QR preview. "Later" is allowed.
+  - **Owners:** a table of flats with name and mobile, or paste from Excel. "Skip" is allowed.
+  - **Done:** this month's bills (count, total, due date, and any flats not billed); **Send bills**; the joining link to share; "Invite your CA"; "Add your treasurer or chairman".
+- **Resume.** The wizard resumes at the first unfinished step, counting work done elsewhere (Excel import, Settings, Billing). The dashboard shows "Finish setting up your society" until the first bills are out.
+- **Society profile** in Society settings: address, registration number and contact details, printed on bills and receipts.
+- **Setup events** are recorded for the platform's setup funnel (Phase 6).
+
+**Rulings I made (cost if wrong)**
+1. Running Maintenance again updates the setup charges and never duplicates them. A toggle switched off makes its charge inactive, never deleted. Cost: none.
+2. The first bills cover the current month. They fall due on the society's due day, but never in less than a week, so no bill is overdue (with a late fee) the night it is sent. Cost: a society starting late in a month bills the whole month.
+3. The UI-only fixes have no automated UI test, because the project has no React test harness. The decisions behind them (resume, due date, UPI check) are tested functions. Cost: a rendering slip shows only by hand.
+
+**Reviewer findings fixed:**
+- per-sq.ft areas no longer overwrite the flats' building, floor, type and occupancy, or duplicate Excel flats;
+- first bills are no longer overdue the same night;
+- the wizard sets up the society that is open;
+- buildings without wings work;
+- owners have a table;
+- the society profile screen now exists;
+- unbilled flats are shown;
+- the dashboard card disappears once bills are out;
+- one UPI ID check is shared by the wizard and Settings.
+
+**Deferred minors**
+- State is free text; the platform's GST invoice compares state names.
+- A raw database error is possible if two Maintenance saves race.
+- The pincode lookup route has no sign-in or rate limit.
+- More than 2,000 generated flats get a raw limit message.
+- The wizard has no Back button.
