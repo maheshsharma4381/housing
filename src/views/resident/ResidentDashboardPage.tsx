@@ -14,6 +14,7 @@ import { SponsoredCard } from '../../components/SponsoredCard';
 import {
   Home,
   Receipt,
+  BookOpen,
   FileText,
   MessageSquare,
   CheckCircle2,
@@ -21,6 +22,7 @@ import {
   FolderLock,
 } from 'lucide-react';
 import { SignOutMenu } from '../../components/SignOutMenu';
+import { FlatStatement } from '../../components/FlatStatement';
 
 const OUTSTANDING_STATUSES: Bill['status'][] = ['issued', 'partially_paid', 'overdue'];
 const UTR_PATTERN = /^\d{12}$/;
@@ -53,7 +55,9 @@ export const ResidentDashboardPage: React.FC = () => {
     : flatMemberships[0]?.unit_id ?? null;
   const [flatNumbers, setFlatNumbers] = useState<Record<string, string>>({});
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'bills' | 'notices' | 'complaints' | 'documents' | 'profile'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'bills' | 'account' | 'notices' | 'complaints' | 'documents' | 'profile'>('overview');
+  // Tenants see no bills, dues or ledger (spec 10.2): owners pay
+  const isOwner = flatMemberships.find(m => m.unit_id === unitId)?.role === 'resident_owner';
   const [myBills, setMyBills] = useState<Bill[]>([]);
   const [myPayments, setMyPayments] = useState<Payment[]>([]);
   const [societyNotices, setSocietyNotices] = useState<Notice[]>([]);
@@ -227,7 +231,8 @@ export const ResidentDashboardPage: React.FC = () => {
 
       {/* Main Resident Container */}
       <div className="max-w-md mx-auto px-4 mt-6 space-y-6">
-        {/* Outstanding Banner */}
+        {/* Outstanding Banner (owners only) */}
+        {isOwner && (
         <div className="p-5 rounded-3xl bg-gradient-to-br from-sky-600 to-sky-800 text-white shadow-xl shadow-sky-900/30 flex items-center justify-between">
           <div>
             <div className="text-xs font-medium text-sky-200">Current Outstanding Due</div>
@@ -252,6 +257,7 @@ export const ResidentDashboardPage: React.FC = () => {
             </span>
           )}
         </div>
+        )}
 
         {submittedUtrSuccess && (
           <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-300 flex items-start gap-2.5">
@@ -266,7 +272,7 @@ export const ResidentDashboardPage: React.FC = () => {
         )}
 
         {/* Navigation Tabs */}
-        <div className="grid grid-cols-5 gap-2 text-center text-xs">
+        <div className={`grid ${isOwner ? 'grid-cols-3 sm:grid-cols-6' : 'grid-cols-4'} gap-2 text-center text-xs`}>
           <button
             onClick={() => setActiveTab('overview')}
             className={`p-2.5 rounded-xl border transition cursor-pointer ${
@@ -279,6 +285,7 @@ export const ResidentDashboardPage: React.FC = () => {
             <span>Home</span>
           </button>
 
+          {isOwner && (
           <button
             onClick={() => setActiveTab('bills')}
             className={`p-2.5 rounded-xl border transition cursor-pointer ${
@@ -290,6 +297,20 @@ export const ResidentDashboardPage: React.FC = () => {
             <Receipt className="w-4 h-4 mx-auto mb-1" />
             <span>Bills</span>
           </button>
+          )}
+          {isOwner && (
+          <button
+            onClick={() => setActiveTab('account')}
+            className={`p-2.5 rounded-xl border transition cursor-pointer ${
+              activeTab === 'account' 
+                ? 'bg-sky-600/20 border-sky-500 text-sky-400 font-bold' 
+                : 'bg-slate-900 border-slate-800 text-slate-400'
+            }`}
+          >
+            <BookOpen className="w-4 h-4 mx-auto mb-1" />
+            <span>My account</span>
+          </button>
+          )}
 
           <button
             onClick={() => setActiveTab('notices')}
@@ -329,8 +350,21 @@ export const ResidentDashboardPage: React.FC = () => {
         </div>
 
         {/* TAB 1: OVERVIEW */}
+        {activeTab === 'account' && isOwner && unitId && activeSociety && (
+          <FlatStatement unitId={unitId} societyName={activeSociety.name} />
+        )}
+
         {activeTab === 'overview' && (
           <div className="space-y-4">
+            {isOwner && myBills[0] && (
+              <Link href={`/bill/${myBills[0].id}`} className="block p-4 rounded-2xl bg-slate-900 border border-slate-800 text-xs hover:border-sky-500">
+                <div className="text-slate-400">Latest bill · {myBills[0].bill_number}</div>
+                <div className="flex items-baseline justify-between">
+                  <strong className="text-white text-sm">₹{Number(myBills[0].total_amount).toLocaleString('en-IN')}</strong>
+                  <span className="text-sky-400">View bill →</span>
+                </div>
+              </Link>
+            )}
             {/* Account History / Payments */}
             <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-3 text-xs">
               <h3 className="font-bold text-white text-sm">Account Payment History</h3>
