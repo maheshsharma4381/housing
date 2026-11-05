@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from '../router/RouterContext';
-import { ShieldCheck, Lock, Building2 } from 'lucide-react';
+import { ShieldCheck } from 'lucide-react';
 
 export const PublicFooter: React.FC = () => {
   return (

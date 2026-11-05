@@ -1,15 +1,7 @@
 import React from 'react';
 import { Link } from '../../router/RouterContext';
-import { 
-  Building2, 
-  Smartphone, 
-  CheckCircle2, 
-  ArrowRight, 
-  Receipt, 
-  Users, 
-  FileText, 
-  ShieldCheck,
-  QrCode
+import {
+  ArrowRight,
 } from 'lucide-react';
 
 export const SocietiesPage: React.FC = () => {

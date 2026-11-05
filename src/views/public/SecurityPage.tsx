@@ -1,14 +1,12 @@
 import React from 'react';
 import { Link } from '../../router/RouterContext';
-import { 
-  ShieldCheck, 
-  Lock, 
-  Database, 
-  FileKey, 
-  EyeOff, 
-  Server, 
-  CheckCircle2, 
-  ArrowRight 
+import {
+  ShieldCheck,
+  Lock,
+  Database,
+  FileKey,
+  EyeOff,
+  ArrowRight,
 } from 'lucide-react';
 
 export const SecurityPage: React.FC = () => {

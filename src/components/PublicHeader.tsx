@@ -4,15 +4,12 @@ import React, { useState } from 'react';
 import { useRouter, Link } from '../router/RouterContext';
 import { useAuth } from '../context/AuthContext';
 import { PWAInstallButton } from './PWAInstallButton';
-import { 
-  Building2, 
-  Menu, 
-  X, 
-  ArrowRight, 
-  ShieldCheck, 
-  User, 
+import {
+  Menu,
+  X,
+  ArrowRight,
   LogOut,
-  LayoutDashboard
+  LayoutDashboard,
 } from 'lucide-react';
 
 export const PublicHeader: React.FC = () => {

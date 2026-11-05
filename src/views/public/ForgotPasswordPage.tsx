@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useRouter, Link } from '../../router/RouterContext';
+import { Link } from '../../router/RouterContext';
 import { useAuth } from '../../context/AuthContext';
 import { Mail, ArrowLeft, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 

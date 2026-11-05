@@ -1,15 +1,11 @@
 import React from 'react';
 import { Link } from '../../router/RouterContext';
-import { 
-  Briefcase, 
-  FileSpreadsheet, 
-  ShieldCheck, 
-  Lock, 
-  CheckCircle2, 
-  ArrowRight, 
-  Landmark, 
-  FileCheck2,
-  FolderLock
+import {
+  FileSpreadsheet,
+  ShieldCheck,
+  Lock,
+  ArrowRight,
+  Landmark,
 } from 'lucide-react';
 
 export const AccountantsPage: React.FC = () => {

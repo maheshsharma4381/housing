@@ -1,20 +1,13 @@
 import React from 'react';
 import { Link } from '../../router/RouterContext';
-import { 
-  Smartphone, 
-  Building2, 
-  ShieldCheck, 
-  Briefcase, 
-  CheckCircle2, 
-  ArrowRight, 
-  Receipt, 
-  FileSpreadsheet, 
-  QrCode, 
-  Lock,
-  Layers,
-  Users,
-  Clock,
-  Sparkles
+import {
+  Smartphone,
+  Building2,
+  ShieldCheck,
+  Briefcase,
+  CheckCircle2,
+  ArrowRight,
+  Sparkles,
 } from 'lucide-react';
 
 export const HomePage: React.FC = () => {

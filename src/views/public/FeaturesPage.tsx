@@ -1,18 +1,15 @@
 import React from 'react';
 import { Link } from '../../router/RouterContext';
-import { 
-  CreditCard, 
-  Receipt, 
-  FileSpreadsheet, 
-  Smartphone, 
-  ShieldCheck, 
-  Users, 
-  Landmark, 
+import {
+  CreditCard,
+  Receipt,
+  FileSpreadsheet,
+  Smartphone,
+  ShieldCheck,
+  Landmark,
   MessageSquare,
   QrCode,
-  FileCheck2,
-  CheckCircle2,
-  ArrowRight
+  ArrowRight,
 } from 'lucide-react';
 
 export const FeaturesPage: React.FC = () => {
