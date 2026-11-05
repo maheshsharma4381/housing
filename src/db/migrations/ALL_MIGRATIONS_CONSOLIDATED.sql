@@ -16153,8 +16153,16 @@ BEGIN
     END IF;
     RETURN (
         WITH ev AS (
-            -- "Skip" on the owners step counts as passing it
-            SELECT society_id, CASE WHEN step = 'owners_skipped' THEN 'owners' ELSE step END AS step, created_at FROM setup_events
+            -- "Skip" on the owners or UPI step counts as passing it
+            SELECT society_id, CASE WHEN step = 'owners_skipped' THEN 'owners' WHEN step = 'upi_skipped' THEN 'upi' ELSE step END AS step
+            FROM setup_events
+            -- a step done outside the wizard (Excel import, Settings, Billing) counts too: read it from the data
+            UNION SELECT id, 'society' FROM societies WHERE is_active
+            UNION SELECT DISTINCT society_id, 'flats' FROM units
+            UNION SELECT DISTINCT society_id, 'maintenance' FROM billing_rules WHERE is_active
+            UNION SELECT society_id, 'upi' FROM society_settings WHERE length(trim(coalesce(upi_id, ''))) > 0
+            UNION SELECT DISTINCT society_id, 'owners' FROM unit_owner_contacts WHERE owner_mobile IS NOT NULL
+            UNION SELECT DISTINCT society_id, 'first_bill' FROM bills WHERE status <> 'cancelled'
         ),
         per AS (
             SELECT s.id, array_agg(DISTINCT ev.step) AS steps

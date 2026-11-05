@@ -30,7 +30,9 @@ before(async () => {
   await q(a.sec, `INSERT INTO billing_rules (society_id, name, calculation_type, rate) VALUES ($1,'Maintenance','flat_per_unit',1000)`, [a.id]);
   await q(a.sec, `SELECT public.generate_bills($1,'2026-11-01','2026-11-30','2026-11-10')`, [a.id]);
   await q(a.sec, `SELECT public.record_setup_step($1,'first_bill')`, [a.id]);
-  ids = { owner, a, b };
+  // Gamma imported its flats from Excel: no wizard step was recorded, but its data says it got there
+  const g = await society('g@plat.test', 'Gamma Court', 'Maharashtra', ['1', '2', '3']);
+  ids = { owner, a, b, g };
 });
 
 test('only the platform owner sees the platform numbers', async () => {
@@ -43,8 +45,8 @@ test('only the platform owner sees the platform numbers', async () => {
 test('the setup funnel: how many reached each step, and where the rest stopped', async () => {
   const f = await val(ids.owner, 'SELECT public.platform_setup_funnel()');
   const reached = Object.fromEntries(f.steps.map((s) => [s.step, s.reached]));
-  assert.deepEqual(reached, { society: 2, flats: 1, maintenance: 1, upi: 1, owners: 1, first_bill: 1 });
-  assert.deepEqual(f.stopped_at, { flats: 1 });
+  assert.deepEqual(reached, { society: 3, flats: 2, maintenance: 1, upi: 1, owners: 1, first_bill: 1 });
+  assert.deepEqual(f.stopped_at, { flats: 1, maintenance: 1 });
   assert.equal(f.first_bill.societies, 1);
   assert.ok(f.first_bill.median_minutes >= 0);
 });
@@ -67,7 +69,7 @@ test('society health: flats, owners joined, collection, CA, opening balance, act
 test('revenue in one place', async () => {
   const r = await val(ids.owner, 'SELECT public.platform_revenue()');
   for (const k of ['plans', 'mrr', 'trials_ending_this_week', 'unpaid_invoices', 'ads_this_month', 'otp_cost_this_month']) assert.ok(k in r, k);
-  assert.equal(Object.values(r.plans).reduce((x, y) => x + y, 0), 2);
+  assert.equal(Object.values(r.plans).reduce((x, y) => x + y, 0), 3);
 });
 
 test('support sees a society read-only for one hour, and the committee is told', async () => {
@@ -93,5 +95,5 @@ test('announcements reach the secretaries, filtered by state', async () => {
   assert.equal(await val(ids.owner, `SELECT public.platform_announce('New feature','Bills as PDF',NULL,'Karnataka')`), 1);
   assert.equal((await q(ids.b.sec, `SELECT count(*)::int n FROM notifications WHERE kind='announcement'`))[0].n, 1);
   assert.equal((await q(ids.a.sec, `SELECT count(*)::int n FROM notifications WHERE kind='announcement'`))[0].n, 0);
-  assert.equal(await val(ids.owner, `SELECT public.platform_announce('Maintenance window','Sunday 2 am',NULL,NULL)`), 2);
+  assert.equal(await val(ids.owner, `SELECT public.platform_announce('Maintenance window','Sunday 2 am',NULL,NULL)`), 3);
 });
