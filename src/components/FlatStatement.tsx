@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase/client';
 import { formatINR } from '../lib/inr';
-import { fyRange } from '../lib/fy';
+import { fyRange, localIso } from '../lib/fy';
 import { statementHtml } from '../lib/statement-html';
 import { whatsappLink } from '../lib/messages';
 import { Link } from '../router/RouterContext';
@@ -101,7 +101,7 @@ export const FlatStatement: React.FC<{ unitId: string; societyName: string }> = 
           {st.lines.length === 0 && <p className="p-3 text-slate-500">No entries in this period.</p>}
           {/* a period that runs past today shows today's balance, not a forecast for its last day */}
           <div className="p-3 flex justify-between font-bold text-white">
-            <span>{st.to > new Date().toISOString().slice(0, 10) ? 'Balance today' : `Closing balance · ${fmt(st.to)}`}</span>
+            <span>{st.to >= localIso(new Date()) ? 'Balance today' : `Closing balance · ${fmt(st.to)}`}</span>
             <span>{balanceText(Number(st.closing))}</span>
           </div>
         </div>
