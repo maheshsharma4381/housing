@@ -578,6 +578,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (isSupabaseConfigured && supabase) {
       try {
         await forgetPush();
+        // a lost phone stops getting pushes too: every subscription of this account goes
+        if (user) await supabase.from('push_subscriptions').delete().eq('user_id', user.id);
         await supabase.auth.signOut({ scope: 'global' });
       } catch (err) {
         console.warn('Supabase global sign out error:', err);

@@ -59,6 +59,10 @@ export const ResidentDashboardPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'overview' | 'bills' | 'account' | 'notices' | 'complaints' | 'documents' | 'profile'>('overview');
   // Tenants see no bills, dues or ledger (spec 10.2): owners pay
   const isOwner = flatMemberships.find(m => m.unit_id === unitId)?.role === 'resident_owner';
+  // a flat switched to one they rent: leave the owner-only tabs
+  useEffect(() => {
+    if (!isOwner && (activeTab === 'bills' || activeTab === 'account')) setActiveTab('overview');
+  }, [isOwner, activeTab]);
   const [myBills, setMyBills] = useState<Bill[]>([]);
   const [myPayments, setMyPayments] = useState<Payment[]>([]);
   const [societyNotices, setSocietyNotices] = useState<Notice[]>([]);
@@ -102,7 +106,7 @@ export const ResidentDashboardPage: React.FC = () => {
         paymentsQuery = paymentsQuery.eq('unit_id', unitId);
       }
       const [bRes, pRes, nRes, cRes, sRes] = await Promise.all([
-        billsQuery.order('bill_date', { ascending: false }),
+        billsQuery.order('bill_date', { ascending: false }).order('created_at', { ascending: false }),
         paymentsQuery.order('payment_date', { ascending: false }),
         supabase.from('notices').select('*').eq('society_id', activeSociety.id).order('published_at', { ascending: false }),
         supabase.from('complaints').select('*').eq('society_id', activeSociety.id).eq('user_id', user.id).order('created_at', { ascending: false }),
@@ -128,6 +132,8 @@ export const ResidentDashboardPage: React.FC = () => {
   }, [loadResidentData]);
 
   const outstandingBills = myBills.filter(b => OUTSTANDING_STATUSES.includes(b.status));
+  // the newest bill that still counts (not a cancelled one)
+  const latestBill = myBills.find(b => b.status !== 'cancelled');
   const outstandingTotal = outstandingBills.reduce((sum, b) => sum + (Number(b.balance_due) || 0), 0);
   // Link the payment to a bill only when it settles exactly one outstanding bill
   const payingBill = outstandingBills.length === 1 ? outstandingBills[0] : null;
@@ -359,17 +365,17 @@ export const ResidentDashboardPage: React.FC = () => {
 
         {activeTab === 'overview' && (
           <div className="space-y-4">
-            {isOwner && myBills[0] && (
-              <Link href={`/bill/${myBills[0].id}`} className="block p-4 rounded-2xl bg-slate-900 border border-slate-800 text-xs hover:border-sky-500">
-                <div className="text-slate-400">Latest bill · {myBills[0].bill_number}</div>
+            {isOwner && latestBill && (
+              <Link href={`/bill/${latestBill.id}`} className="block p-4 rounded-2xl bg-slate-900 border border-slate-800 text-xs hover:border-sky-500">
+                <div className="text-slate-400">Latest bill · {latestBill.bill_number}</div>
                 <div className="flex items-baseline justify-between">
-                  <strong className="text-white text-sm">₹{Number(myBills[0].total_amount).toLocaleString('en-IN')}</strong>
+                  <strong className="text-white text-sm">₹{Number(latestBill.total_amount).toLocaleString('en-IN')}</strong>
                   <span className="text-sky-400">View bill →</span>
                 </div>
               </Link>
             )}
-            {/* Account History / Payments */}
-            <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-3 text-xs">
+            {/* Account History / Payments (owners only: tenants see no money, spec 10.2) */}
+            <div className={`${isOwner ? '' : 'hidden '}p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-3 text-xs`}>
               <h3 className="font-bold text-white text-sm">Account Payment History</h3>
               {myPayments.length === 0 && !loading ? (
                 <p className="text-slate-400 text-xs">No payment records found.</p>
@@ -425,7 +431,7 @@ export const ResidentDashboardPage: React.FC = () => {
         )}
 
         {/* TAB 2: BILLS */}
-        {activeTab === 'bills' && (
+        {activeTab === 'bills' && isOwner && (
           <div className="space-y-3 text-xs">
             <h2 className="text-base font-bold text-white">My Maintenance Bills</h2>
             {myBills.length === 0 && !loading ? (

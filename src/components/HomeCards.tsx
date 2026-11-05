@@ -26,6 +26,7 @@ const plusDays = (iso: string, days: number) => {
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 };
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const fmt = (iso: string) => new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 
 /** Spec 9.4: To receive, To pay, Approvals, Payments to verify — each opens a list you can act on. */
@@ -35,6 +36,7 @@ export const HomeCards: React.FC<{ societyId: string; canManage: boolean; onOpen
   const [dues, setDues] = useState<DueRow[]>([]);
   const [vendors, setVendors] = useState<VendorRow[]>([]);
   const [busy, setBusy] = useState(false);
+  const [listLoading, setListLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -47,18 +49,26 @@ export const HomeCards: React.FC<{ societyId: string; canManage: boolean; onOpen
   useEffect(() => { load(); }, [load]);
 
   const openReceive = async () => {
-    setOpen(o => (o === 'receive' ? null : 'receive'));
+    if (open === 'receive') return setOpen(null);
+    setOpen('receive');
     if (!supabase) return;
-    const { data } = await supabase.rpc('member_dues', { p_society_id: societyId });
+    setListLoading(true);
+    const { data, error: err } = await supabase.rpc('member_dues', { p_society_id: societyId });
+    setListLoading(false);
+    if (err) return setError(err.message);
     setDues(((data ?? []) as DueRow[]).sort((a, b) => a.oldest_due_date.localeCompare(b.oldest_due_date)));
   };
 
   const openPay = async () => {
-    setOpen(o => (o === 'pay' ? null : 'pay'));
+    if (open === 'pay') return setOpen(null);
+    setOpen('pay');
     if (!supabase) return;
-    const { data } = await supabase.from('expenses')
+    setListLoading(true);
+    const { data, error: err } = await supabase.from('expenses')
       .select('payee_name, title, subtotal, gst_amount, tds_amount, tds_deducted, amount_settled, invoice_date, created_at, vendors:vendor_id (name)')
       .eq('society_id', societyId).eq('status', 'approved');
+    setListLoading(false);
+    if (err) return setError(err.message);
     const byVendor = new Map<string, VendorRow>();
     for (const e of (data ?? []) as ExpenseRow[]) {
       const tds = Math.max(Number(e.tds_amount) - Number(e.tds_deducted), 0);
@@ -85,11 +95,12 @@ export const HomeCards: React.FC<{ societyId: string; canManage: boolean; onOpen
     const { data, error: err } = await supabase.rpc('remind_overdue_flats', { p_society_id: societyId });
     setBusy(false);
     if (err) return setError(err.message);
-    const r = data as { reminded: number; payment_waiting: number; not_joined: number };
+    const r = data as { reminded: number; payment_waiting: number; not_joined: number; already_today?: number };
     setNotice([
-      `Reminded ${r.reminded} flat${r.reminded === 1 ? '' : 's'}.`,
-      r.payment_waiting ? `${r.payment_waiting} have a payment waiting for you to verify.` : '',
-      r.not_joined ? `${r.not_joined} have nobody joined yet — share your joining link.` : '',
+      `Reminded ${plural(r.reminded, 'flat')}.`,
+      r.already_today ? `${plural(r.already_today, 'flat')} already reminded today.` : '',
+      r.payment_waiting ? `${plural(r.payment_waiting, 'flat')} with a payment waiting for you to verify.` : '',
+      r.not_joined ? `${plural(r.not_joined, 'flat')} with nobody joined yet — share your joining link.` : '',
     ].filter(Boolean).join(' '));
   };
 
@@ -104,13 +115,13 @@ export const HomeCards: React.FC<{ societyId: string; canManage: boolean; onOpen
           <CreditCard className="w-5 h-5 mb-2 opacity-90" />
           <div className="font-medium opacity-80">To receive</div>
           <div className="text-lg font-bold">{formatINR(Number(cards.to_receive.amount))}</div>
-          <div className="opacity-80">{cards.to_receive.flats} flats · {cards.to_receive.overdue_flats} overdue</div>
+          <div className="opacity-80">{plural(cards.to_receive.flats, 'flat')} · {cards.to_receive.overdue_flats} overdue</div>
         </button>
         <button onClick={openPay} className={`${card} bg-slate-900 border border-slate-800`}>
           <Receipt className="w-5 h-5 mb-2 text-amber-400" />
           <div className="text-slate-400">To pay</div>
           <div className="text-lg font-bold text-white">{formatINR(Number(cards.to_pay.amount))}</div>
-          <div className="text-slate-400">{cards.to_pay.vendors} vendors · {cards.to_pay.due_this_week} due this week</div>
+          <div className="text-slate-400">{plural(cards.to_pay.vendors, 'vendor')} · {plural(cards.to_pay.due_this_week, 'bill')} due this week</div>
         </button>
         <button onClick={() => onOpen('approvals')} className={`${card} bg-slate-900 border border-slate-800`}>
           <ListChecks className="w-5 h-5 mb-2 text-violet-400" />
@@ -151,7 +162,8 @@ export const HomeCards: React.FC<{ societyId: string; canManage: boolean; onOpen
                 </span>
               </div>
             ))}
-            {dues.length === 0 && <p className="py-2 text-slate-500">Nothing is due.</p>}
+            {listLoading && <Loader2 className="w-4 h-4 animate-spin text-sky-400 my-2" />}
+            {!listLoading && dues.length === 0 && <p className="py-2 text-slate-500">Nothing is due.</p>}
           </div>
         </div>
       )}
@@ -172,7 +184,8 @@ export const HomeCards: React.FC<{ societyId: string; canManage: boolean; onOpen
                 </span>
               </div>
             ))}
-            {vendors.length === 0 && <p className="py-2 text-slate-500">Nothing to pay.</p>}
+            {listLoading && <Loader2 className="w-4 h-4 animate-spin text-sky-400 my-2" />}
+            {!listLoading && vendors.length === 0 && <p className="py-2 text-slate-500">Nothing to pay.</p>}
           </div>
         </div>
       )}

@@ -41,7 +41,7 @@ export async function middleware(request: NextRequest) {
   });
 
   // Verify active user session on protected routes
-  const protectedPrefixes = ['/platform', '/society', '/professional', '/resident', '/onboarding', '/receipt', '/bill', '/setup'];
+  const protectedPrefixes = ['/platform', '/society', '/professional', '/resident', '/onboarding', '/receipt', '/bill/', '/setup'];
   const isProtectedRoute = protectedPrefixes.some(prefix => 
     request.nextUrl.pathname.startsWith(prefix)
   );

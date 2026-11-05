@@ -181,7 +181,9 @@ export const SocietyDashboardPage: React.FC = () => {
 
   const goTo = (tab: Tab) => {
     // "members" is a part of Flats & residents now
+    // the menu's Flats & residents opens on Flats; a members link opens Members
     if (tab === 'members') setFlatsView('members');
+    else if (tab === 'flats') setFlatsView('flats');
     setActiveTab(tab === 'members' ? 'flats' : tab);
     setShowMore(false);
   };
@@ -344,9 +346,9 @@ export const SocietyDashboardPage: React.FC = () => {
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <div>
-                <h1 className="text-xl font-bold text-white tracking-tight">Daily Operations Feed</h1>
+                <h1 className="text-xl font-bold text-white tracking-tight">Home</h1>
                 <p className="text-xs text-slate-400">
-                  {activeSociety?.name} • All events auto-posted to ledger
+                  {activeSociety?.name}
                 </p>
               </div>
 
@@ -565,12 +567,14 @@ export const SocietyDashboardPage: React.FC = () => {
             className="absolute bottom-14 left-0 right-0 max-h-[70vh] overflow-y-auto rounded-t-3xl bg-slate-900 border-t border-slate-800 p-4 grid grid-cols-3 gap-2"
             onClick={e => e.stopPropagation()}
           >
-            {NAV_ITEMS.map(item => {
+            {NAV_ITEMS.filter(item => !PHONE_BAR.includes(item.id)).map((item, index, list) => {
               const Icon = item.icon;
+              const heading = item.group !== 'top' && list[index - 1]?.group !== item.group ? GROUP_LABELS[item.group] : null;
               const badge = item.id === 'payments' ? pendingPayments : item.id === 'expenses' ? pendingApprovalCount : item.id === 'approvals' ? approvalsCount + pendingApprovalCount : 0;
               return (
+                <React.Fragment key={item.id}>
+                {heading && <div className="col-span-3 pt-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">{heading}</div>}
                 <button
-                  key={item.id}
                   onClick={() => goTo(item.id)}
                   className={`relative flex flex-col items-center gap-1.5 p-3 rounded-2xl text-[11px] text-center cursor-pointer ${
                     activeTab === item.id ? 'bg-sky-600 text-white' : 'bg-slate-950 text-slate-300'
@@ -582,6 +586,7 @@ export const SocietyDashboardPage: React.FC = () => {
                     <span className="absolute top-1.5 right-1.5 min-w-4 h-4 px-1 rounded-full bg-amber-500 text-slate-950 font-bold text-[9px] flex items-center justify-center">{badge}</span>
                   )}
                 </button>
+                </React.Fragment>
               );
             })}
           </div>

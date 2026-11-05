@@ -114,7 +114,7 @@ export const BillPage: React.FC<{ billId: string }> = ({ billId }) => {
               <tr className="font-semibold"><td className="py-2">This bill</td><td className="py-2 text-right">{formatINR(b.total)}</td></tr>
               {Number(b.paid) > 0 && <tr><td className="py-2">Less: paid against this bill</td><td className="py-2 text-right">− {formatINR(b.paid)}</td></tr>}
               {Number(doc.arrears) > 0 && <tr><td className="py-2">Add: previous dues</td><td className="py-2 text-right">{formatINR(doc.arrears)}</td></tr>}
-              {Number(doc.advance) > 0 && <tr><td className="py-2">Less: advance with the society</td><td className="py-2 text-right">− {formatINR(doc.advance)}</td></tr>}
+              {view.asksForPayment && Number(doc.advance) > 0 && <tr><td className="py-2">Less: advance with the society</td><td className="py-2 text-right">− {formatINR(doc.advance)}</td></tr>}
             </tbody>
             {view.asksForPayment && (
               <tfoot>

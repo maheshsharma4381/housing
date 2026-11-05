@@ -8,6 +8,8 @@ import { Loader2, Eye, Megaphone } from 'lucide-react';
 
 // Spec 11 items 2–5: setup funnel, society health (with the support view), revenue, announcements.
 
+const STEP_ORDER = ['society', 'flats', 'maintenance', 'upi', 'owners', 'first_bill'];
+const humanMinutes = (m: number) => (m < 120 ? `${Math.round(m)} minutes` : m < 2880 ? `${Math.round(m / 60)} hours` : `${Math.round(m / 1440)} days`);
 const STEP_LABELS: Record<string, string> = { society: 'Registered', flats: 'Flats', maintenance: 'Maintenance', upi: 'UPI', owners: 'Owners', first_bill: 'First bill' };
 const card = 'p-4 rounded-2xl bg-slate-900 border border-slate-800';
 
@@ -32,10 +34,11 @@ export const SetupFunnel: React.FC = () => {
         ))}
       </div>
       <p className="text-slate-300">
-        Stopped at: {Object.entries(f.stopped_at).map(([k, v]) => `${v} at ${STEP_LABELS[k] ?? k}`).join(', ') || 'nobody'}.
+        Stopped at: {Object.entries(f.stopped_at).sort(([a], [b]) => STEP_ORDER.indexOf(a) - STEP_ORDER.indexOf(b))
+          .map(([k, v]) => `${v} at ${STEP_LABELS[k] ?? k}`).join(', ') || 'nobody'}.
       </p>
       <p className="text-slate-300">
-        {f.first_bill.societies} issued their first bill{f.first_bill.median_minutes != null ? `; typical time from first login: ${Math.round(Number(f.first_bill.median_minutes))} minutes` : ''}.
+        {f.first_bill.societies} issued their first bill{f.first_bill.median_minutes != null ? `; typical time from first login: ${humanMinutes(Number(f.first_bill.median_minutes))}` : ''}.
       </p>
     </div>
   );
@@ -48,7 +51,10 @@ export const SocietyHealth: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [support, setSupport] = useState<HealthRow | null>(null);
   useEffect(() => {
-    supabase?.rpc('platform_society_health').then(({ data, error: err }) => (err ? setError(err.message) : setRows(data as HealthRow[])));
+    // societies that need a call first: stuck, then going quiet, then the rest by name
+    const rank = (r: HealthRow) => (r.flag === 'stuck' ? 0 : r.flag === 'quiet' ? 1 : 2);
+    supabase?.rpc('platform_society_health').then(({ data, error: err }) => (err ? setError(err.message)
+      : setRows([...(data as HealthRow[])].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name)))));
   }, []);
   if (support) return <SupportView society={support} onClose={() => setSupport(null)} />;
   if (!rows) return error ? <Banner tone="error">{error}</Banner> : <Loader2 className="w-5 h-5 animate-spin text-purple-400" />;
