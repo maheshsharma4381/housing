@@ -30,3 +30,10 @@ test('owners pasted from Excel match flats by number', async () => {
   assert.deepEqual(r.unknownFlats, ['999']);
   assert.deepEqual(r.badMobiles, ['A-101: 123']);
 });
+
+test('trunk zero after +91 is dropped', () => {
+  for (const m of ['+91 0 98765 43210', '0091 098765 43210', '+91 (0) 98765-43210', '0091 98765 43210']) {
+    assert.equal(normalizeMobile(m), '919876543210', m);
+  }
+  assert.equal(normalizeMobile('+44 7700 900123'), '447700900123');
+});

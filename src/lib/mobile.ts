@@ -8,6 +8,8 @@ export function normalizeMobile(input: string | null | undefined): string | null
   const raw = (input ?? '').trimStart();
   if (/^(\+|00)/.test(raw)) {
     const intl = raw.replace(/^00/, '').replace(/\D/g, '');
+    // "+91 0 98765 43210": the trunk 0 many people type after the country code
+    if (/^910\d{10}$/.test(intl)) return `91${intl.slice(3)}`;
     return intl.length >= 8 && intl.length <= 15 ? intl : null;
   }
   const d = raw.replace(/\D/g, '');
