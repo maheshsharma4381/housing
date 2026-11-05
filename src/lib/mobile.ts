@@ -13,6 +13,8 @@ export function normalizeMobile(input: string | null | undefined): string | null
     return intl.length >= 8 && intl.length <= 15 ? intl : null;
   }
   const d = raw.replace(/\D/g, '');
+  // "91 0 98765 43210" pasted without the +: the same trunk 0 after the country code
+  if (/^910\d{10}$/.test(d)) return `91${d.slice(3)}`;
   if (d.length < 10) return null;
   if (d.length === 10) return `91${d}`;
   if (d.length === 11 && d.startsWith('0')) return `91${d.slice(1)}`;
@@ -27,16 +29,12 @@ export function formatMobile(stored: string | null | undefined): string {
 }
 
 /**
- * A profile's phone for display. Supabase stores a login's phone as international digits (919876543210,
- * 6591234567), so more than 10 digits, or a leading +, already carries the country; 10 digits are Indian.
+ * A profile's phone for display. It only ever comes from the login (auth.users.phone), which Supabase keeps
+ * as international digits: 919876543210, or 6591234567 for Singapore. So it is never re-guessed as Indian.
  */
 function phoneText(phone: string | null | undefined): string {
-  const raw = (phone ?? '').trim();
-  if (!raw) return '';
-  const digits = raw.replace(/\D/g, '');
-  if (raw.startsWith('+') || digits.length > 10) return formatMobile(digits);
-  const n = normalizeMobile(raw);
-  return n ? formatMobile(n) : raw;
+  const digits = (phone ?? '').replace(/\D/g, '');
+  return digits ? formatMobile(digits) : '';
 }
 
 type Contact = { email?: string | null; phone?: string | null } | null | undefined;

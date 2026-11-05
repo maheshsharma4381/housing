@@ -42,7 +42,7 @@ test('a person is shown by email, else by mobile', async () => {
   const { contactText, contactLine } = await import('../../src/lib/mobile.ts');
   assert.equal(contactText({ email: 'asha@x.in', phone: null }), 'asha@x.in');
   assert.equal(contactText({ email: null, phone: '919876543210' }), '+91 98765 43210');
-  assert.equal(contactText({ email: '', phone: '9876543210' }), '+91 98765 43210');
+  assert.equal(contactText({ email: '', phone: '+919876543210' }), '+91 98765 43210');
   assert.equal(contactText({ phone: '+6591234567' }), '+6591234567', 'a stored international number keeps its country');
   assert.equal(contactText({ email: null, phone: null }), '');
   assert.equal(contactText(null), '');
@@ -50,4 +50,16 @@ test('a person is shown by email, else by mobile', async () => {
   assert.equal(contactLine({ email: null, phone: '919876543210' }), '+91 98765 43210');
   assert.equal(contactLine({ email: 'asha@x.in' }), 'asha@x.in');
   assert.equal(contactLine(undefined), '');
+});
+
+test('a number pasted with 91 and a 0 but no + is the same mobile', () => {
+  assert.equal(normalizeMobile('91 0 98765 43210'), '919876543210');
+  assert.equal(normalizeMobile('9109876543210'), '919876543210');
+});
+
+test("a login's phone is shown with its own country code", async () => {
+  const { contactText } = await import('../../src/lib/mobile.ts');
+  // Supabase keeps a Singapore login as 6591234567: ten digits, not an Indian number
+  assert.equal(contactText({ phone: '6591234567' }), '+6591234567');
+  assert.equal(contactText({ phone: '6421123456' }), '+6421123456');
 });

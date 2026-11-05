@@ -6,7 +6,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useRouter } from '../../router/RouterContext';
 import { supabase } from '../../lib/supabase/client';
 import { generateFlats } from '../../lib/flat-generator';
-import { nextSetupStep, previousSetupStep, firstBillDates, isValidUpiId, type SetupStatus, type SetupStep } from '../../lib/setup';
+import { nextSetupStep, previousSetupStep, canGenerateFlats, firstBillDates, isValidUpiId, type SetupStatus, type SetupStep } from '../../lib/setup';
 import { normalizeMobile } from '../../lib/mobile';
 import { INDIAN_STATES, canonicalState } from '../../lib/india-states';
 import { formatINR } from '../../lib/inr';
@@ -208,7 +208,6 @@ const FlatsStep: React.FC<{ busy: boolean; existing: number; onCreate: (rows: un
   const [newWing, setNewWing] = useState('');
   const [floors, setFloors] = useState(7);
   const [perFloor, setPerFloor] = useState(4);
-  const [more, setMore] = useState(false);
   const plan = useMemo(() => generateFlats({ wings, floors, perFloor }), [wings, floors, perFloor]);
   const noWings = wings.length === 1 && wings[0] === '';
   const addWing = () => {
@@ -219,15 +218,11 @@ const FlatsStep: React.FC<{ busy: boolean; existing: number; onCreate: (rows: un
   return (
     <div className="space-y-4">
       <h2 className="text-base font-bold text-white">Flats</h2>
-      {existing > 0 && (
-        <div className="p-3 rounded-xl bg-emerald-500/10 text-emerald-300 flex items-center justify-between gap-2">
-          <span>{existing} flats are already added.</span>
-          <button onClick={onContinue} disabled={busy} className="text-white font-semibold underline cursor-pointer">Continue</button>
-        </div>
-      )}
-      {existing > 0 && !more ? (
-        <button onClick={() => setMore(true)} className="flex items-center gap-1 text-sky-400 cursor-pointer"><Plus className="w-3.5 h-3.5" /> Add more flats</button>
-      ) : (<>
+      {!canGenerateFlats(existing) ? (<>
+        <div className="p-3 rounded-xl bg-emerald-500/10 text-emerald-300">{existing} flats are already added.</div>
+        <button onClick={onContinue} disabled={busy} className={`${primary} w-full`}>{busy && <Loader2 className="w-4 h-4 animate-spin" />} Continue</button>
+        <p className="text-slate-500">To add, rename or remove flats, use Flats &amp; residents (<a href="/society?tab=flats" className="text-sky-400 hover:underline">open</a>), then come back here.</p>
+      </>) : (<>
       <div className="space-y-1.5">
         <span className="text-slate-400">Wings</span>
         <div className="flex flex-wrap items-center gap-2">
@@ -254,8 +249,8 @@ const FlatsStep: React.FC<{ busy: boolean; existing: number; onCreate: (rows: un
       <button disabled={busy || !!plan.error} onClick={() => onCreate(plan.rows)} className={`${primary} w-full`}>
         {busy && <Loader2 className="w-4 h-4 animate-spin" />} Create {plan.rows.length} flats
       </button>
-      </>)}
       <p className="text-slate-500">Or upload from Excel in Flats &amp; residents (<a href="/society?tab=flats" className="text-sky-400 hover:underline">open</a>), then come back here. You can edit any flat afterwards.</p>
+      </>)}
     </div>
   );
 };

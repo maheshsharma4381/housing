@@ -17,6 +17,13 @@ export function nextSetupStep(s: SetupStatus): SetupStep {
 }
 
 /**
+ * Setup generates the flats once. After that, flats are added or changed in Flats & residents, which knows
+ * the existing layout: generating again from the default A × 7 × 4 could add the same flats under a second
+ * name ("A-101" next to "101") or reset their areas.
+ */
+export const canGenerateFlats = (existingFlats: number) => existingFlats === 0;
+
+/**
  * The step "Back" returns to. The society cannot be registered again once it exists, so neither Society nor
  * Flats has a step before it; going back to Flats shows the flats already made, with Continue.
  */

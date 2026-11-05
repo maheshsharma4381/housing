@@ -16428,12 +16428,12 @@ GRANT EXECUTE ON FUNCTION public.platform_announce(TEXT, TEXT, TEXT, TEXT) TO au
 -- ============================================================================
 -- 1. MOBILES WITH A 0 AFTER +91
 -- ============================================================================
--- from 032_mobile_login.sql; + "+91 0 98765 43210" / "0091 098765 43210": the trunk 0 after 91 is dropped
+-- from 032_mobile_login.sql; + "+91 0 98765 43210", "0091 098765 43210", "91 0 98765 43210": the trunk 0 after 91 is dropped
 CREATE OR REPLACE FUNCTION public.normalize_mobile(p TEXT)
 RETURNS TEXT AS $$
     SELECT CASE
         WHEN d IS NULL THEN NULL
-        WHEN intl AND d ~ '^910[0-9]{10}$' THEN '91' || substr(d, 4)
+        WHEN d ~ '^910[0-9]{10}$' THEN '91' || substr(d, 4)
         WHEN intl THEN CASE WHEN length(d) BETWEEN 8 AND 15 THEN d END
         WHEN length(d) < 10 THEN NULL
         WHEN length(d) = 10 THEN '91' || d
@@ -16491,6 +16491,8 @@ DECLARE
     v_claimed INT;
     v_due NUMERIC;
     v_change_invite UUID;
+    v_change_email TEXT;
+    v_change_mobile TEXT;
     v_email TEXT;
     v_phone TEXT;
 BEGIN
@@ -16499,8 +16501,9 @@ BEGIN
     FROM unit_owner_contacts c
     WHERE p.id = p_uid AND p.full_name = 'Member' AND c.unit_id = p_unit_id AND nullif(trim(c.owner_name), '') IS NOT NULL;
     UPDATE units SET current_owner_id = p_uid, updated_at = timezone('utc'::text, now()) WHERE id = p_unit_id;
-    -- the invite of an owner change still waiting on this flat (038)
-    SELECT invite_id INTO v_change_invite FROM unit_ownerships
+    -- the invite, and the buyer the committee named, of an owner change still waiting on this flat (038)
+    SELECT invite_id, lower(owner_email), normalize_mobile(owner_mobile) INTO v_change_invite, v_change_email, v_change_mobile
+    FROM unit_ownerships
     WHERE unit_id = p_unit_id AND to_date IS NULL AND owner_user_id IS NULL;
     -- An owner change waiting on this flat is completed by whoever joins as its owner
     UPDATE unit_ownerships o
@@ -16545,9 +16548,11 @@ BEGIN
     WHERE society_id = p_society_id AND unit_id = p_unit_id AND role = 'resident_owner' AND status = 'pending'
       AND id IS DISTINCT FROM p_invite_id
       AND ((v_email IS NOT NULL AND lower(email) = v_email) OR (v_phone IS NOT NULL AND normalize_mobile(mobile) = v_phone));
-    -- the owner change is complete with whoever joined: its invite to another person is not needed any more
+    -- The named buyer joined under another login (the committee saved their mobile later): the owner change's
+    -- invite is not needed any more. Anyone else joining first (a joint owner) leaves it open for the buyer.
     UPDATE member_invites SET status = 'revoked'
-    WHERE id = v_change_invite AND status = 'pending' AND id IS DISTINCT FROM p_invite_id;
+    WHERE id = v_change_invite AND status = 'pending' AND id IS DISTINCT FROM p_invite_id
+      AND ((v_email IS NOT NULL AND v_email = v_change_email) OR (v_phone IS NOT NULL AND v_phone = v_change_mobile));
     IF v_claimed > 0 THEN
         PERFORM notify_users(p_society_id, ARRAY[p_uid], 'bill',
             'Bills for Flat ' || (SELECT unit_number FROM units WHERE id = p_unit_id),

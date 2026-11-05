@@ -150,3 +150,21 @@ test('a deactivated society sends no notifications', async () => {
   assert.equal(await send(null, 'Not about a society'), 1, 'join results and other personal notices still arrive');
   await db.query('UPDATE societies SET is_active = true WHERE id = $1', [ids.society2]);
 });
+
+// ---------------------------------------------------------------- review fixes
+test("a joint owner joining first leaves the named buyer's invite open", async () => {
+  const old = await createUser(db, 'old104@loose.test');
+  await q(old, `SELECT public.respond_to_invite('member', $1, true)`, [await invite({ email: 'old104@loose.test', unit: ids.u104 })]);
+  await db.query(`UPDATE unit_ownerships SET from_date = current_date - 30 WHERE unit_id = $1`, [ids.u104]);
+  // sold to Amit (by email); his wife Bina is invited for the same flat and accepts first
+  const t = await val(ids.secretary, `SELECT public.transfer_flat_owner($1,'Amit','amit@loose.test',NULL,current_date)`, [ids.u104]);
+  const bina = await createUser(db, 'bina@loose.test');
+  await q(bina, `SELECT public.respond_to_invite('member', $1, true)`, [await invite({ email: 'bina@loose.test', unit: ids.u104 })]);
+  assert.equal((await inviteStatus(t.invite_id)).status, 'pending', 'Amit can still join');
+});
+
+test('a number pasted with 91 and a 0 but no + is the same mobile', async () => {
+  const n = async (m) => (await db.query('SELECT public.normalize_mobile($1) AS v', [m])).rows[0].v;
+  assert.equal(await n('91 0 98765 43210'), '919876543210');
+  assert.equal(await n('9109876543210'), '919876543210', 'the 13-digit shape the old rule stored');
+});

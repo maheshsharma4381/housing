@@ -38,3 +38,9 @@ test('Back goes one step, never to redo the society or the flats', async () => {
   assert.equal(previousSetupStep('owners'), 'upi');
   assert.equal(previousSetupStep('done'), 'owners');
 });
+
+test('once flats exist, setup does not generate more (Flats & residents adds or changes them)', async () => {
+  const { canGenerateFlats } = await import('../../src/lib/setup.ts');
+  assert.equal(canGenerateFlats(0), true);
+  assert.equal(canGenerateFlats(28), false);
+});
