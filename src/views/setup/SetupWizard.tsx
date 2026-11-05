@@ -6,14 +6,14 @@ import { useAuth } from '../../context/AuthContext';
 import { useRouter } from '../../router/RouterContext';
 import { supabase } from '../../lib/supabase/client';
 import { generateFlats } from '../../lib/flat-generator';
-import { nextSetupStep, firstBillDates, isValidUpiId, type SetupStatus, type SetupStep } from '../../lib/setup';
+import { nextSetupStep, previousSetupStep, firstBillDates, isValidUpiId, type SetupStatus, type SetupStep } from '../../lib/setup';
 import { normalizeMobile } from '../../lib/mobile';
 import { INDIAN_STATES, canonicalState } from '../../lib/india-states';
 import { formatINR } from '../../lib/inr';
 import { Banner } from '../../components/Banner';
 import { OwnerPaste } from '../../components/OwnerContacts';
 import { JoinLinkCard } from '../../components/JoinLinkCard';
-import { Loader2, Plus, X, CheckCircle2 } from 'lucide-react';
+import { Loader2, Plus, X, CheckCircle2, ArrowLeft } from 'lucide-react';
 
 // Spec 9.1: Society → Flats → Maintenance → UPI → Owners → Done (the login is step 1).
 const STEPS: { id: SetupStep; label: string }[] = [
@@ -76,6 +76,7 @@ export const SetupWizard: React.FC<{ startNew?: boolean }> = ({ startNew = false
   };
 
   const current = STEPS.findIndex(s => s.id === step);
+  const back = societyId ? previousSetupStep(step) : null;
 
   return (
     <div className="space-y-5 text-xs">
@@ -87,6 +88,12 @@ export const SetupWizard: React.FC<{ startNew?: boolean }> = ({ startNew = false
         ))}
       </ol>
       <Banner tone="error">{error}</Banner>
+      {back && (
+        <button onClick={() => { setError(null); setStep(back); }} disabled={busy}
+          className="flex items-center gap-1 text-slate-400 hover:text-white cursor-pointer disabled:opacity-50">
+          <ArrowLeft className="w-3.5 h-3.5" /> Back
+        </button>
+      )}
       <div className="p-5 sm:p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-4">
         {step === 'society' && !societyId && (
           <SocietyStep busy={busy} onCreate={(f) => run(async () => {
@@ -113,7 +120,7 @@ export const SetupWizard: React.FC<{ startNew?: boolean }> = ({ startNew = false
             onContinue={() => run(async () => { await record('flats'); return null; }, 'maintenance')} />
         )}
         {step === 'maintenance' && societyId && (
-          <MaintenanceStep busy={busy} societyId={societyId} onSave={(m) => run(async () => {
+          <MaintenanceStep busy={busy} societyId={societyId} saved={(status?.rules ?? 0) > 0} onKeep={() => setStep('upi')} onSave={(m) => run(async () => {
             const { error: err } = await supabase!.rpc('setup_maintenance', {
               p_society_id: societyId, p_mode: m.mode, p_rate: m.rate, p_extras: m.extras, p_due_day: m.dueDay, p_first: m.first, p_every: m.every,
             });
@@ -127,7 +134,7 @@ export const SetupWizard: React.FC<{ startNew?: boolean }> = ({ startNew = false
           }, 'upi')} />
         )}
         {step === 'upi' && societyId && (
-          <UpiStep busy={busy} societyName={membership?.society?.name ?? ''} onSave={(u) => run(async () => {
+          <UpiStep busy={busy} societyId={societyId} societyName={membership?.society?.name ?? ''} onSave={(u) => run(async () => {
             const { error: err } = await supabase!.from('society_settings').update({ upi_id: u.upi, upi_payee_name: u.payee }).eq('society_id', societyId);
             if (err) return err.message;
             await record('upi');
@@ -201,6 +208,7 @@ const FlatsStep: React.FC<{ busy: boolean; existing: number; onCreate: (rows: un
   const [newWing, setNewWing] = useState('');
   const [floors, setFloors] = useState(7);
   const [perFloor, setPerFloor] = useState(4);
+  const [more, setMore] = useState(false);
   const plan = useMemo(() => generateFlats({ wings, floors, perFloor }), [wings, floors, perFloor]);
   const noWings = wings.length === 1 && wings[0] === '';
   const addWing = () => {
@@ -214,9 +222,12 @@ const FlatsStep: React.FC<{ busy: boolean; existing: number; onCreate: (rows: un
       {existing > 0 && (
         <div className="p-3 rounded-xl bg-emerald-500/10 text-emerald-300 flex items-center justify-between gap-2">
           <span>{existing} flats are already added.</span>
-          <button onClick={onContinue} className="text-white font-semibold underline cursor-pointer">Continue</button>
+          <button onClick={onContinue} disabled={busy} className="text-white font-semibold underline cursor-pointer">Continue</button>
         </div>
       )}
+      {existing > 0 && !more ? (
+        <button onClick={() => setMore(true)} className="flex items-center gap-1 text-sky-400 cursor-pointer"><Plus className="w-3.5 h-3.5" /> Add more flats</button>
+      ) : (<>
       <div className="space-y-1.5">
         <span className="text-slate-400">Wings</span>
         <div className="flex flex-wrap items-center gap-2">
@@ -243,6 +254,7 @@ const FlatsStep: React.FC<{ busy: boolean; existing: number; onCreate: (rows: un
       <button disabled={busy || !!plan.error} onClick={() => onCreate(plan.rows)} className={`${primary} w-full`}>
         {busy && <Loader2 className="w-4 h-4 animate-spin" />} Create {plan.rows.length} flats
       </button>
+      </>)}
       <p className="text-slate-500">Or upload from Excel in Flats &amp; residents (<a href="/society?tab=flats" className="text-sky-400 hover:underline">open</a>), then come back here. You can edit any flat afterwards.</p>
     </div>
   );
@@ -251,7 +263,7 @@ const FlatsStep: React.FC<{ busy: boolean; existing: number; onCreate: (rows: un
 type MaintenanceForm = { mode: 'flat' | 'sqft'; rate: number; extras: { key: string; amount: number }[]; dueDay: number; first: number; every: number; areas: { unit_id: string; carpet_area_sqft: number }[] };
 const EXTRAS = [{ key: 'sinking', label: 'Sinking fund' }, { key: 'repair', label: 'Repair fund' }, { key: 'parking', label: 'Parking (you choose the flats later)' }];
 
-const MaintenanceStep: React.FC<{ busy: boolean; societyId: string; onSave: (m: MaintenanceForm) => void }> = ({ busy, societyId, onSave }) => {
+const MaintenanceStep: React.FC<{ busy: boolean; societyId: string; saved: boolean; onKeep: () => void; onSave: (m: MaintenanceForm) => void }> = ({ busy, societyId, saved, onKeep, onSave }) => {
   const [mode, setMode] = useState<'flat' | 'sqft'>('flat');
   const [rate, setRate] = useState('');
   const [extras, setExtras] = useState<Record<string, string>>({});
@@ -317,14 +329,26 @@ const MaintenanceStep: React.FC<{ busy: boolean; societyId: string; onSave: (m: 
         Remind <input className="w-14 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-white" type="number" min={1} value={first} onChange={e => setFirst(Number(e.target.value))} />
         days after the due date, then every <input className="w-14 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-white" type="number" min={1} value={every} onChange={e => setEvery(Number(e.target.value))} /> days
       </p>
-      <button disabled={busy || !(Number(rate) > 0) || (mode === 'sqft' && missing.length > 0)} onClick={save} className={`${primary} w-full`}>{busy && <Loader2 className="w-4 h-4 animate-spin" />} Continue</button>
+      {saved && <p className="text-slate-400">Your charges are saved. Enter them again only to change them.</p>}
+      <div className="flex gap-2">
+        <button disabled={busy || !(Number(rate) > 0) || (mode === 'sqft' && missing.length > 0)} onClick={save} className={`${primary} flex-1`}>{busy && <Loader2 className="w-4 h-4 animate-spin" />} {saved ? 'Save and continue' : 'Continue'}</button>
+        {saved && <button disabled={busy} onClick={onKeep} className={secondary}>Keep saved charges</button>}
+      </div>
     </div>
   );
 };
 
-const UpiStep: React.FC<{ busy: boolean; societyName: string; onSave: (u: { upi: string; payee: string }) => void; onSkip: () => void }> = ({ busy, societyName, onSave, onSkip }) => {
+const UpiStep: React.FC<{ busy: boolean; societyId: string; societyName: string; onSave: (u: { upi: string; payee: string }) => void; onSkip: () => void }> = ({ busy, societyId, societyName, onSave, onSkip }) => {
   const [upi, setUpi] = useState('');
   const [payee, setPayee] = useState(societyName);
+  // coming Back to this step: show the UPI ID already saved
+  useEffect(() => {
+    supabase?.from('society_settings').select('upi_id, upi_payee_name').eq('society_id', societyId).maybeSingle()
+      .then(({ data }) => {
+        if (data?.upi_id) setUpi(v => v || data.upi_id);
+        if (data?.upi_payee_name) setPayee(data.upi_payee_name);
+      });
+  }, [societyId]);
   const valid = isValidUpiId(upi);
   return (
     <div className="space-y-4">

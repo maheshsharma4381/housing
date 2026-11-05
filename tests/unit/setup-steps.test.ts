@@ -28,3 +28,13 @@ test('a UPI ID is handle@bank, not an email address', () => {
   assert.equal(isValidUpiId('soc@gmail.com'), false);
   assert.equal(isValidUpiId('x'), false);
 });
+
+test('Back goes one step, never to redo the society or the flats', async () => {
+  const { previousSetupStep } = await import('../../src/lib/setup.ts');
+  assert.equal(previousSetupStep('society'), null);
+  assert.equal(previousSetupStep('flats'), null);
+  assert.equal(previousSetupStep('maintenance'), 'flats');
+  assert.equal(previousSetupStep('upi'), 'maintenance');
+  assert.equal(previousSetupStep('owners'), 'upi');
+  assert.equal(previousSetupStep('done'), 'owners');
+});

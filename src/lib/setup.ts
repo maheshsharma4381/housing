@@ -16,6 +16,15 @@ export function nextSetupStep(s: SetupStatus): SetupStep {
   return 'done';
 }
 
+/**
+ * The step "Back" returns to. The society cannot be registered again once it exists, so neither Society nor
+ * Flats has a step before it; going back to Flats shows the flats already made, with Continue.
+ */
+export function previousSetupStep(step: SetupStep): SetupStep | null {
+  const back: Partial<Record<SetupStep, SetupStep>> = { maintenance: 'flats', upi: 'maintenance', owners: 'upi', done: 'owners' };
+  return back[step] ?? null;
+}
+
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 /**
