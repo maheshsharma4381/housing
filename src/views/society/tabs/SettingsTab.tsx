@@ -5,8 +5,8 @@ import { supabase } from '../../../lib/supabase/client';
 import { SocietySetting } from '../../../types/database';
 import { Settings, QrCode, AlertCircle, CheckCircle2, Loader2, Save } from 'lucide-react';
 
-// UPI VPA format: handle@psp (e.g. palmheights@icici)
-const UPI_ID_PATTERN = /^[a-zA-Z0-9._-]{2,256}@[a-zA-Z]{2,64}$/;
+import { isValidUpiId } from '../../../lib/setup';
+import { SocietyProfile } from '../../../components/SocietyProfile';
 
 interface SettingsTabProps {
   societyId: string;
@@ -55,7 +55,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ societyId }) => {
     setError(null);
 
     const upi = settings.upi_id?.trim() ?? '';
-    if (upi && !UPI_ID_PATTERN.test(upi)) {
+    if (upi && !isValidUpiId(upi)) {
       setError('UPI ID looks invalid. It should look like name@bank (e.g. palmheights@icici).');
       return;
     }
@@ -174,6 +174,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ societyId }) => {
       </button>
     </form>
     <ReminderSchedule societyId={societyId} />
+    <SocietyProfile societyId={societyId} />
     </div>
   );
 };

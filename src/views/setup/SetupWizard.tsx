@@ -6,6 +6,8 @@ import { useAuth } from '../../context/AuthContext';
 import { useRouter } from '../../router/RouterContext';
 import { supabase } from '../../lib/supabase/client';
 import { generateFlats } from '../../lib/flat-generator';
+import { nextSetupStep, firstBillDates, isValidUpiId, type SetupStatus, type SetupStep } from '../../lib/setup';
+import { normalizeMobile } from '../../lib/mobile';
 import { formatINR } from '../../lib/inr';
 import { Banner } from '../../components/Banner';
 import { OwnerPaste } from '../../components/OwnerContacts';
@@ -13,8 +15,7 @@ import { JoinLinkCard } from '../../components/JoinLinkCard';
 import { Loader2, Plus, X, CheckCircle2 } from 'lucide-react';
 
 // Spec 9.1: Society → Flats → Maintenance → UPI → Owners → Done (the login is step 1).
-type Step = 'society' | 'flats' | 'maintenance' | 'upi' | 'owners' | 'done';
-const STEPS: { id: Step; label: string }[] = [
+const STEPS: { id: SetupStep; label: string }[] = [
   { id: 'society', label: 'Society' }, { id: 'flats', label: 'Flats' }, { id: 'maintenance', label: 'Maintenance' },
   { id: 'upi', label: 'UPI' }, { id: 'owners', label: 'Owners' }, { id: 'done', label: 'Done' },
 ];
@@ -23,56 +24,47 @@ const ROLES = [
   { value: 'secretary', label: 'Secretary' }, { value: 'chairman', label: 'Chairman' },
   { value: 'treasurer', label: 'Treasurer' }, { value: 'society_admin', label: 'Manager' },
 ];
-interface Status { steps: string[]; flats: number; rules: number; upi: boolean; owners_entered: number; bills: number }
 
 const input = 'w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-white outline-none focus:border-sky-500';
 const primary = 'px-4 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2';
 const secondary = 'px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold cursor-pointer';
+const fmt = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
-const monthBounds = (dueDay: number) => {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = d.getMonth();
-  const iso = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
-  return { start: iso(new Date(y, m, 1)), end: iso(new Date(y, m + 1, 0)), due: iso(new Date(y, m, Math.min(dueDay, 28))) };
-};
-
-export const SetupWizard: React.FC = () => {
-  const { profile, user, societyMemberships, refreshUserData } = useAuth();
+/** `startNew`: register another society even though this login already runs one. */
+export const SetupWizard: React.FC<{ startNew?: boolean }> = ({ startNew = false }) => {
+  const { profile, user, societyMemberships, activeSociety, refreshUserData } = useAuth();
   const { navigate } = useRouter();
-  const membership = societyMemberships.find(m => ADMIN_ROLES.includes(m.role));
+  const [creating, setCreating] = useState(startNew);
+  // The society being set up: the one open in the app, else any the user runs
+  const membership = creating ? undefined
+    : societyMemberships.find(m => m.society_id === activeSociety?.id && ADMIN_ROLES.includes(m.role))
+      ?? societyMemberships.find(m => ADMIN_ROLES.includes(m.role));
   const societyId = membership?.society_id ?? null;
-  const [status, setStatus] = useState<Status | null>(null);
-  const [step, setStep] = useState<Step>('society');
+  const [status, setStatus] = useState<SetupStatus | null>(null);
+  const [step, setStep] = useState<SetupStep>('society');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => setCreating(startNew), [startNew]);
 
   const loadStatus = useCallback(async (pickStep: boolean) => {
     if (!supabase || !societyId) return;
     const { data, error: err } = await supabase.rpc('setup_status', { p_society_id: societyId });
     if (err) return setError(err.message);
-    const s = data as Status;
+    const s = data as SetupStatus;
     setStatus(s);
-    if (pickStep) {
-      // Resume at the first unfinished step
-      const done = new Set(s.steps);
-      const next = !done.has('flats') && s.flats === 0 ? 'flats'
-        : !done.has('maintenance') && s.rules === 0 ? 'maintenance'
-        : !done.has('upi') && !s.upi ? 'upi'
-        : !done.has('owners') && !done.has('owners_skipped') ? 'owners'
-        : 'done';
-      setStep(next);
-    }
+    if (pickStep) setStep(nextSetupStep(s));
   }, [societyId]);
 
   useEffect(() => {
-    loadStatus(true);
-  }, [loadStatus]);
+    if (societyId) loadStatus(true);
+    else setStep('society');
+  }, [loadStatus, societyId]);
 
   const record = async (s: string) => {
     if (supabase && societyId) await supabase.rpc('record_setup_step', { p_society_id: societyId, p_step: s });
   };
-  const run = async (fn: () => Promise<string | null>, next: Step) => {
+  const run = async (fn: () => Promise<string | null>, next: SetupStep) => {
     setBusy(true);
     setError(null);
     const problem = await fn();
@@ -103,11 +95,12 @@ export const SetupWizard: React.FC = () => {
               p_registration_number: null, p_address_line2: null, p_creator_role: f.role,
             });
             if (err) return err.message;
+            // the new society becomes the open one, so the wizard carries on with it
             await refreshUserData(data as string);
+            setCreating(false);
             return null;
           }, 'flats')} />
         )}
-        {step === 'society' && societyId && <p className="text-slate-300">Your society is registered. <button className="text-sky-400 hover:underline cursor-pointer" onClick={() => loadStatus(true)}>Continue</button></p>}
         {step === 'flats' && societyId && (
           <FlatsStep busy={busy} existing={status?.flats ?? 0}
             onCreate={(rows) => run(async () => {
@@ -120,14 +113,16 @@ export const SetupWizard: React.FC = () => {
         )}
         {step === 'maintenance' && societyId && (
           <MaintenanceStep busy={busy} societyId={societyId} onSave={(m) => run(async () => {
-            if (m.areas) {
-              const { error: aErr } = await supabase!.rpc('bulk_upsert_units', { p_society_id: societyId, p_units: m.areas });
-              if (aErr) return aErr.message;
-            }
             const { error: err } = await supabase!.rpc('setup_maintenance', {
               p_society_id: societyId, p_mode: m.mode, p_rate: m.rate, p_extras: m.extras, p_due_day: m.dueDay, p_first: m.first, p_every: m.every,
             });
-            return err?.message ?? null;
+            if (err) return err.message;
+            // areas only once the charges are saved, and only the area changes (set_unit_areas)
+            if (m.areas.length) {
+              const { error: aErr } = await supabase!.rpc('set_unit_areas', { p_society_id: societyId, p_rows: m.areas });
+              if (aErr) return aErr.message;
+            }
+            return null;
           }, 'upi')} />
         )}
         {step === 'upi' && societyId && (
@@ -136,10 +131,10 @@ export const SetupWizard: React.FC = () => {
             if (err) return err.message;
             await record('upi');
             return null;
-          }, 'owners')} onSkip={() => setStep('owners')} />
+          }, 'owners')} onSkip={() => run(async () => { await record('upi_skipped'); return null; }, 'owners')} />
         )}
         {step === 'owners' && societyId && (
-          <OwnersStep societyId={societyId} entered={status?.owners_entered ?? 0}
+          <OwnersStep societyId={societyId}
             onNext={(skipped) => run(async () => { await record(skipped ? 'owners_skipped' : 'owners'); return null; }, 'done')} />
         )}
         {step === 'done' && societyId && (
@@ -162,7 +157,7 @@ const SocietyStep: React.FC<{ busy: boolean; onCreate: (f: { name: string; pinco
       const res = await fetch(`/api/pincode/${pin}`);
       if (res.ok) {
         const place = await res.json() as { city: string; state: string };
-        setF(v => ({ ...v, city: v.city || place.city, state: v.state || place.state }));
+        setF(v => (v.pincode === pin ? { ...v, city: place.city, state: place.state } : v));
       }
     } catch { /* manual entry */ }
     setLooking(false);
@@ -172,7 +167,7 @@ const SocietyStep: React.FC<{ busy: boolean; onCreate: (f: { name: string; pinco
       <h2 className="text-base font-bold text-white">Your society</h2>
       <label className="block space-y-1"><span className="text-slate-400">Society name</span>
         <input className={input} value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="Palm Heights CHS" required /></label>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <label className="block space-y-1"><span className="text-slate-400">Pincode</span>
           <input className={input} inputMode="numeric" maxLength={6} value={f.pincode} required
             onChange={e => { const pin = e.target.value.replace(/\D/g, ''); setF({ ...f, pincode: pin }); if (pin.length === 6) lookup(pin); }} /></label>
@@ -190,7 +185,7 @@ const SocietyStep: React.FC<{ busy: boolean; onCreate: (f: { name: string; pinco
           ))}
         </div>
       </div>
-      <p className="text-slate-500">Address, registration number and contact details can be added later in Society settings.</p>
+      <p className="text-slate-500">Address, registration number and contact details can be added later in Society settings → Society profile.</p>
       <button type="submit" disabled={busy} className={`${primary} w-full`}>{busy && <Loader2 className="w-4 h-4 animate-spin" />} Continue</button>
     </form>
   );
@@ -202,9 +197,10 @@ const FlatsStep: React.FC<{ busy: boolean; existing: number; onCreate: (rows: un
   const [floors, setFloors] = useState(7);
   const [perFloor, setPerFloor] = useState(4);
   const plan = useMemo(() => generateFlats({ wings, floors, perFloor }), [wings, floors, perFloor]);
+  const noWings = wings.length === 1 && wings[0] === '';
   const addWing = () => {
     const w = newWing.trim();
-    if (w && !wings.includes(w)) setWings([...wings, w]);
+    if (w && !wings.includes(w)) setWings(noWings ? [w] : [...wings, w]);
     setNewWing('');
   };
   return (
@@ -219,9 +215,13 @@ const FlatsStep: React.FC<{ busy: boolean; existing: number; onCreate: (rows: un
       <div className="space-y-1.5">
         <span className="text-slate-400">Wings</span>
         <div className="flex flex-wrap items-center gap-2">
-          {wings.map(w => (
+          <button type="button" onClick={() => setWings(noWings ? ['A'] : [''])}
+            className={`px-3 py-1.5 rounded-full border cursor-pointer ${noWings ? 'bg-sky-600 border-sky-500 text-white' : 'border-slate-700 text-slate-300'}`}>
+            No wings (101, 102…)
+          </button>
+          {!noWings && wings.map(w => (
             <span key={w} className="px-3 py-1.5 rounded-full bg-slate-800 text-white flex items-center gap-1.5">
-              {w || 'No wing'}{wings.length > 1 && <button onClick={() => setWings(wings.filter(x => x !== w))} aria-label={`Remove wing ${w}`} className="cursor-pointer"><X className="w-3 h-3" /></button>}
+              {w}{wings.length > 1 && <button onClick={() => setWings(wings.filter(x => x !== w))} aria-label={`Remove wing ${w}`} className="cursor-pointer"><X className="w-3 h-3" /></button>}
             </span>
           ))}
           <input className="w-20 bg-slate-950 border border-slate-700 rounded-xl px-2 py-1.5 text-white" value={newWing} onChange={e => setNewWing(e.target.value)} placeholder="B" />
@@ -238,12 +238,12 @@ const FlatsStep: React.FC<{ busy: boolean; existing: number; onCreate: (rows: un
       <button disabled={busy || !!plan.error} onClick={() => onCreate(plan.rows)} className={`${primary} w-full`}>
         {busy && <Loader2 className="w-4 h-4 animate-spin" />} Create {plan.rows.length} flats
       </button>
-      <p className="text-slate-500">Or upload from Excel later in Flats &amp; residents. You can edit any flat afterwards.</p>
+      <p className="text-slate-500">Or upload from Excel in Flats &amp; residents (<a href="/society?tab=flats" className="text-sky-400 hover:underline">open</a>), then come back here. You can edit any flat afterwards.</p>
     </div>
   );
 };
 
-type MaintenanceForm = { mode: 'flat' | 'sqft'; rate: number; extras: { key: string; amount: number }[]; dueDay: number; first: number; every: number; areas: unknown[] | null };
+type MaintenanceForm = { mode: 'flat' | 'sqft'; rate: number; extras: { key: string; amount: number }[]; dueDay: number; first: number; every: number; areas: { unit_id: string; carpet_area_sqft: number }[] };
 const EXTRAS = [{ key: 'sinking', label: 'Sinking fund' }, { key: 'repair', label: 'Repair fund' }, { key: 'parking', label: 'Parking (you choose the flats later)' }];
 
 const MaintenanceStep: React.FC<{ busy: boolean; societyId: string; onSave: (m: MaintenanceForm) => void }> = ({ busy, societyId, onSave }) => {
@@ -253,28 +253,24 @@ const MaintenanceStep: React.FC<{ busy: boolean; societyId: string; onSave: (m: 
   const [dueDay, setDueDay] = useState(10);
   const [first, setFirst] = useState(3);
   const [every, setEvery] = useState(7);
-  const [units, setUnits] = useState<{ unit_number: string; wing: string }[]>([]);
+  const [units, setUnits] = useState<{ id: string; unit_number: string; carpet_area_sqft: number }[]>([]);
   const [areas, setAreas] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    if (!supabase) return;
-    supabase.from('units').select('unit_number, wings:wing_id (name)').eq('society_id', societyId).then(({ data }) =>
-      setUnits((data ?? []).map((u: { unit_number: string; wings: { name: string } | { name: string }[] | null }) => ({
-        unit_number: u.unit_number, wing: (Array.isArray(u.wings) ? u.wings[0]?.name : u.wings?.name) ?? 'A',
-      }))));
+    supabase?.from('units').select('id, unit_number, carpet_area_sqft').eq('society_id', societyId)
+      .then(({ data }) => setUnits((data ?? []) as { id: string; unit_number: string; carpet_area_sqft: number }[]));
   }, [societyId]);
-  // "…01", "…02": the position of a flat on its floor
+  // "…01", "…02": the position of a flat on its floor; positions whose flats all have an area need nothing
   const positions = useMemo(() => [...new Set(units.map(u => u.unit_number.slice(-2)))].sort(), [units]);
+  const missing = positions.filter(p => !(Number(areas[p]) > 0) && units.some(u => u.unit_number.slice(-2) === p && !(Number(u.carpet_area_sqft) > 0)));
 
-  const save = () => {
-    const areaRows = mode === 'sqft'
-      ? units.filter(u => Number(areas[u.unit_number.slice(-2)]) > 0).map(u => ({ wing: u.wing, unit_number: u.unit_number, carpet_area_sqft: Number(areas[u.unit_number.slice(-2)]) }))
-      : null;
-    onSave({
-      mode, rate: Number(rate), dueDay, first, every, areas: areaRows && areaRows.length ? areaRows : null,
-      extras: Object.entries(extras).filter(([, v]) => Number(v) > 0).map(([key, v]) => ({ key, amount: Number(v) })),
-    });
-  };
+  const save = () => onSave({
+    mode, rate: Number(rate), dueDay, first, every,
+    areas: mode === 'sqft'
+      ? units.filter(u => Number(areas[u.unit_number.slice(-2)]) > 0).map(u => ({ unit_id: u.id, carpet_area_sqft: Number(areas[u.unit_number.slice(-2)]) }))
+      : [],
+    extras: Object.entries(extras).filter(([, v]) => Number(v) > 0).map(([key, v]) => ({ key, amount: Number(v) })),
+  });
 
   return (
     <div className="space-y-4">
@@ -297,6 +293,7 @@ const MaintenanceStep: React.FC<{ busy: boolean; societyId: string; onSave: (m: 
                 <input className={input} type="number" min={0} value={areas[p] ?? ''} onChange={e => setAreas({ ...areas, [p]: e.target.value })} /></label>
             ))}
           </div>
+          {missing.length > 0 && <p className="text-amber-300">Enter the area for …{missing.join(', …')} — those flats would not be billed.</p>}
         </div>
       )}
       <div className="space-y-2">
@@ -312,10 +309,10 @@ const MaintenanceStep: React.FC<{ busy: boolean; societyId: string; onSave: (m: 
       <label className="block space-y-1"><span className="text-slate-400">Due day of the month</span>
         <input className={input} type="number" min={1} max={28} value={dueDay} onChange={e => setDueDay(Number(e.target.value))} /></label>
       <p className="text-slate-300 flex flex-wrap items-center gap-1.5">
-        Remind <input className="w-14 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-white" type="number" min={0} value={first} onChange={e => setFirst(Number(e.target.value))} />
+        Remind <input className="w-14 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-white" type="number" min={1} value={first} onChange={e => setFirst(Number(e.target.value))} />
         days after the due date, then every <input className="w-14 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-white" type="number" min={1} value={every} onChange={e => setEvery(Number(e.target.value))} /> days
       </p>
-      <button disabled={busy || !(Number(rate) > 0)} onClick={save} className={`${primary} w-full`}>{busy && <Loader2 className="w-4 h-4 animate-spin" />} Continue</button>
+      <button disabled={busy || !(Number(rate) > 0) || (mode === 'sqft' && missing.length > 0)} onClick={save} className={`${primary} w-full`}>{busy && <Loader2 className="w-4 h-4 animate-spin" />} Continue</button>
     </div>
   );
 };
@@ -323,12 +320,13 @@ const MaintenanceStep: React.FC<{ busy: boolean; societyId: string; onSave: (m: 
 const UpiStep: React.FC<{ busy: boolean; societyName: string; onSave: (u: { upi: string; payee: string }) => void; onSkip: () => void }> = ({ busy, societyName, onSave, onSkip }) => {
   const [upi, setUpi] = useState('');
   const [payee, setPayee] = useState(societyName);
-  const valid = /^[\w.-]{2,}@[\w.-]{2,}$/.test(upi.trim());
+  const valid = isValidUpiId(upi);
   return (
     <div className="space-y-4">
       <h2 className="text-base font-bold text-white">UPI</h2>
       <label className="block space-y-1"><span className="text-slate-400">Society UPI ID</span>
         <input className={input} value={upi} onChange={e => setUpi(e.target.value)} placeholder="palmheights@okaxis" /></label>
+      {upi.trim() && !valid && <p className="text-amber-300">A UPI ID looks like name@bank (palmheights@icici), not an email address.</p>}
       <label className="block space-y-1"><span className="text-slate-400">Payee name</span>
         <input className={input} value={payee} onChange={e => setPayee(e.target.value)} /></label>
       {valid && (
@@ -345,30 +343,78 @@ const UpiStep: React.FC<{ busy: boolean; societyName: string; onSave: (u: { upi:
   );
 };
 
-const OwnersStep: React.FC<{ societyId: string; entered: number; onNext: (skipped: boolean) => void }> = ({ societyId, entered, onNext }) => {
+const OwnersStep: React.FC<{ societyId: string; onNext: (skipped: boolean) => void }> = ({ societyId, onNext }) => {
   const [units, setUnits] = useState<{ id: string; unit_number: string }[]>([]);
-  const [count, setCount] = useState(entered);
-  const loadUnits = useCallback(() => {
-    supabase?.from('units').select('id, unit_number').eq('society_id', societyId).then(({ data }) => setUnits(data ?? []));
-    supabase?.rpc('setup_status', { p_society_id: societyId }).then(({ data }) => setCount((data as Status | null)?.owners_entered ?? 0));
+  const [rows, setRows] = useState<Record<string, { name: string; mobile: string }>>({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (!supabase) return;
+    const [u, c] = await Promise.all([
+      supabase.from('units').select('id, unit_number').eq('society_id', societyId),
+      supabase.from('unit_owner_contacts').select('unit_id, owner_name, owner_mobile').eq('society_id', societyId),
+    ]);
+    const list = ((u.data ?? []) as { id: string; unit_number: string }[]).sort((a, b) => a.unit_number.localeCompare(b.unit_number, undefined, { numeric: true }));
+    setUnits(list);
+    const known = Object.fromEntries(((c.data ?? []) as { unit_id: string; owner_name: string | null; owner_mobile: string | null }[])
+      .map(x => [x.unit_id, { name: x.owner_name ?? '', mobile: x.owner_mobile ?? '' }]));
+    setRows(Object.fromEntries(list.map(f => [f.id, known[f.id] ?? { name: '', mobile: '' }])));
   }, [societyId]);
-  useEffect(() => { loadUnits(); }, [loadUnits]);
+  useEffect(() => { load(); }, [load]);
+
+  const entered = Object.values(rows).filter(r => r.mobile.trim()).length;
+
+  const saveTable = async () => {
+    if (!supabase) return;
+    const bad = units.find(f => rows[f.id]?.mobile.trim() && !normalizeMobile(rows[f.id].mobile));
+    if (bad) return setError(`Flat ${bad.unit_number}: mobile ${rows[bad.id].mobile} is not a valid number`);
+    setBusy(true);
+    setError(null);
+    const payload = units.filter(f => rows[f.id]?.name.trim() || rows[f.id]?.mobile.trim())
+      .map(f => ({ unit_id: f.id, name: rows[f.id].name, mobile: rows[f.id].mobile }));
+    const { data, error: err } = await supabase.rpc('set_flat_owner_contacts', { p_society_id: societyId, p_rows: payload });
+    setBusy(false);
+    if (err) return setError(err.message);
+    setNotice(`Saved owners for ${data} flats.`);
+  };
+
   return (
     <div className="space-y-4">
       <h2 className="text-base font-bold text-white">Owners</h2>
       <p className="text-slate-400">Owners whose mobile you enter join their flat straight away from your joining link.</p>
-      <OwnerPaste societyId={societyId} units={units} onDone={loadUnits} />
-      <p className="text-slate-300">{count} of {units.length} flats have an owner mobile.</p>
+      <Banner tone="error">{error}</Banner>
+      <Banner tone="success">{notice}</Banner>
+      <div className="max-h-80 overflow-y-auto rounded-xl border border-slate-800 divide-y divide-slate-800">
+        {units.map(f => (
+          <div key={f.id} className="p-2 grid grid-cols-[4rem_1fr_1fr] gap-2 items-center">
+            <span className="font-semibold text-white">{f.unit_number}</span>
+            <input className="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-white" placeholder="Owner name" value={rows[f.id]?.name ?? ''}
+              onChange={e => setRows({ ...rows, [f.id]: { ...rows[f.id], name: e.target.value } })} />
+            <input className="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-white" inputMode="tel" placeholder="Mobile" value={rows[f.id]?.mobile ?? ''}
+              onChange={e => setRows({ ...rows, [f.id]: { ...rows[f.id], mobile: e.target.value } })} />
+          </div>
+        ))}
+      </div>
+      <button onClick={saveTable} disabled={busy} className={`${secondary} w-full flex items-center justify-center gap-2`}>{busy && <Loader2 className="w-4 h-4 animate-spin" />} Save owners</button>
+      <details className="text-slate-300">
+        <summary className="cursor-pointer text-sky-400">Or paste from Excel</summary>
+        <div className="pt-2"><OwnerPaste societyId={societyId} units={units} onDone={load} /></div>
+      </details>
+      <p className="text-slate-300">{entered} of {units.length} flats have an owner mobile.</p>
       <div className="flex gap-2">
-        <button onClick={() => onNext(false)} disabled={count === 0} className={`${primary} flex-1`}>Continue</button>
+        <button onClick={() => onNext(false)} disabled={entered === 0} className={`${primary} flex-1`}>Continue</button>
         <button onClick={() => onNext(true)} className={secondary}>Skip — fill later</button>
       </div>
     </div>
   );
 };
 
+interface Preview { bills: number; total_amount: number; skipped_units: { unit_number: string; reason: string }[] }
+
 const DoneStep: React.FC<{ societyId: string; societyName: string; billsAlready: number; onSent: () => Promise<void>; onDashboard: () => void }> = ({ societyId, societyName, billsAlready, onSent, onDashboard }) => {
-  const [preview, setPreview] = useState<{ bills: number; total_amount: number } | null>(null);
+  const [preview, setPreview] = useState<Preview | null>(null);
   const [sent, setSent] = useState(billsAlready > 0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -377,21 +423,25 @@ const DoneStep: React.FC<{ societyId: string; societyName: string; billsAlready:
   useEffect(() => {
     if (!supabase || billsAlready > 0) return;
     supabase.from('society_settings').select('due_day_of_month').eq('society_id', societyId).maybeSingle().then(async ({ data }) => {
-      const p = monthBounds(Number(data?.due_day_of_month ?? 10));
+      // never due within a week: a bill overdue the night it is sent would get a late fee
+      const p = firstBillDates(new Date(), Number(data?.due_day_of_month ?? 10));
       setPeriod(p);
       const { data: r, error: err } = await supabase!.rpc('generate_bills', { p_society_id: societyId, p_period_start: p.start, p_period_end: p.end, p_due_date: p.due, p_dry_run: true });
       if (err) setError(err.message);
-      else setPreview(r as { bills: number; total_amount: number });
+      else setPreview(r as Preview);
     });
   }, [societyId, billsAlready]);
 
   const send = async () => {
-    if (!supabase || !period) return;
+    if (!supabase || !period || busy) return;
     setBusy(true);
     const { error: err } = await supabase.rpc('generate_bills', { p_society_id: societyId, p_period_start: period.start, p_period_end: period.end, p_due_date: period.due });
-    setBusy(false);
-    if (err) return setError(err.message);
+    if (err) {
+      setBusy(false);
+      return setError(err.message);
+    }
     await onSent();
+    setBusy(false);
     setSent(true);
   };
 
@@ -399,9 +449,15 @@ const DoneStep: React.FC<{ societyId: string; societyName: string; billsAlready:
     <div className="space-y-4">
       <h2 className="text-base font-bold text-white flex items-center gap-2"><CheckCircle2 className="w-5 h-5 text-emerald-400" /> Your society is ready</h2>
       <Banner tone="error">{error}</Banner>
-      {!sent && preview && (
+      {!sent && preview && period && (
         <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
-          <p className="text-white">This month: <strong>{preview.bills} bills</strong>, total <strong>{formatINR(Number(preview.total_amount))}</strong>.</p>
+          <p className="text-white">This month: <strong>{preview.bills} bills</strong>, total <strong>{formatINR(Number(preview.total_amount))}</strong>, due <strong>{fmt(period.due)}</strong>.</p>
+          {preview.skipped_units.length > 0 && (
+            <p className="text-amber-300">
+              {preview.skipped_units.length} flats not billed: {preview.skipped_units.slice(0, 8).map(s => s.unit_number).join(', ')}
+              {preview.skipped_units.length > 8 ? '…' : ''} ({preview.skipped_units[0].reason}).
+            </p>
+          )}
           <button onClick={send} disabled={busy || preview.bills === 0} className={`${primary} w-full`}>{busy && <Loader2 className="w-4 h-4 animate-spin" />} Send bills</button>
           <p className="text-slate-500">Owners see their bills as soon as they join through your link.</p>
         </div>

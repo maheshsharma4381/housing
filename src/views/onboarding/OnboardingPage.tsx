@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { SetupWizard } from '../setup/SetupWizard';
 import { LogOut, MailCheck } from 'lucide-react';
@@ -8,6 +8,9 @@ import { LogOut, MailCheck } from 'lucide-react';
 /** A login with no society yet (spec 9.1): register the society in a few short steps, or join one through its link. */
 export const OnboardingPage: React.FC = () => {
   const { societyMemberships, logout } = useAuth();
+  // Someone who already runs a society can still register another one here
+  const runsOne = societyMemberships.some(m => ['secretary', 'chairman', 'treasurer', 'society_admin'].includes(m.role));
+  const [another, setAnother] = useState(false);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 py-10 px-4">
@@ -39,7 +42,10 @@ export const OnboardingPage: React.FC = () => {
           </div>
         )}
 
-        <SetupWizard />
+        {runsOne && !another && (
+          <button onClick={() => setAnother(true)} className="text-xs text-sky-400 hover:underline cursor-pointer">Register another society instead</button>
+        )}
+        <SetupWizard startNew={another} />
       </div>
     </div>
   );

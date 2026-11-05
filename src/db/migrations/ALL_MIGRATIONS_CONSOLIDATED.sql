@@ -15709,7 +15709,7 @@ BEGIN
     IF NOT (is_platform_admin() OR is_society_admin(p_society_id)) THEN
         RAISE EXCEPTION 'Only the society committee can set up the society';
     END IF;
-    IF p_step NOT IN ('society', 'flats', 'maintenance', 'upi', 'owners', 'owners_skipped', 'first_bill') THEN
+    IF p_step NOT IN ('society', 'flats', 'maintenance', 'upi', 'upi_skipped', 'owners', 'owners_skipped', 'first_bill') THEN
         RAISE EXCEPTION 'Unknown setup step %', p_step;
     END IF;
     INSERT INTO setup_events (society_id, step, user_id) VALUES (p_society_id, p_step, auth.uid())
@@ -15891,6 +15891,23 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
+-- Per-sq.ft areas: only the area changes (bulk_upsert_units would reset building, floor, type and occupancy)
+CREATE OR REPLACE FUNCTION public.set_unit_areas(p_society_id UUID, p_rows JSONB)
+RETURNS INT AS $$
+DECLARE
+    v_count INT;
+BEGIN
+    IF NOT (is_platform_admin() OR is_society_admin(p_society_id)) THEN
+        RAISE EXCEPTION 'Only the society committee can change flats';
+    END IF;
+    UPDATE units u SET carpet_area_sqft = (r ->> 'carpet_area_sqft')::numeric, updated_at = timezone('utc'::text, now())
+    FROM jsonb_array_elements(coalesce(p_rows, '[]'::jsonb)) r
+    WHERE u.society_id = p_society_id AND u.id::text = r ->> 'unit_id' AND (r ->> 'carpet_area_sqft')::numeric > 0;
+    GET DIAGNOSTICS v_count = ROW_COUNT;
+    RETURN v_count;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
 -- ============================================================================
 -- WHERE THE SETUP STANDS
 -- ============================================================================
@@ -15921,5 +15938,7 @@ REVOKE ALL ON FUNCTION public.record_setup_step(UUID, TEXT) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.setup_maintenance(UUID, TEXT, NUMERIC, JSONB, INT, INT, INT) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.setup_status(UUID) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.record_setup_step(UUID, TEXT) TO authenticated;
+REVOKE ALL ON FUNCTION public.set_unit_areas(UUID, JSONB) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.set_unit_areas(UUID, JSONB) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.setup_maintenance(UUID, TEXT, NUMERIC, JSONB, INT, INT, INT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.setup_status(UUID) TO authenticated;

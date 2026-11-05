@@ -82,3 +82,25 @@ test('setup status counts what is done', async () => {
   const stranger = await createUser(db, 'nosy@setup.test');
   await assert.rejects(q(stranger, 'SELECT public.setup_status($1)', [ids.societyId]), /Only the society committee/);
 });
+
+test('areas for per-sq.ft change only the area — never the flat\'s building, floor, type or occupancy', async () => {
+  await q(ids.secretary, 'SELECT public.bulk_upsert_units($1,$2)', [ids.societyId, JSON.stringify([
+    { building: 'Tower A', wing: 'T', unit_number: 'T-101', floor: 1, unit_type: '3BHK', occupancy_status: 'tenant_occupied', carpet_area_sqft: 0 },
+  ])]);
+  const t = (await db.query(`SELECT id FROM units WHERE society_id=$1 AND unit_number='T-101'`, [ids.societyId])).rows[0].id;
+  const stranger = await createUser(db, 'area-stranger@setup.test');
+  await assert.rejects(q(stranger, 'SELECT public.set_unit_areas($1,$2)', [ids.societyId, JSON.stringify([{ unit_id: t, carpet_area_sqft: 750 }])]),
+    /Only the society committee/);
+  assert.equal(await val(ids.secretary, 'SELECT public.set_unit_areas($1,$2)', [ids.societyId, JSON.stringify([{ unit_id: t, carpet_area_sqft: 750 }])]), 1);
+  const rows = (await db.query(`SELECT u.carpet_area_sqft::float a, u.unit_type, u.occupancy_status, u.floor_id IS NOT NULL has_floor, b.name building
+                                FROM units u JOIN wings w ON w.id = u.wing_id JOIN buildings b ON b.id = w.building_id
+                                WHERE u.society_id=$1 AND u.unit_number='T-101'`, [ids.societyId])).rows;
+  assert.deepEqual(rows, [{ a: 750, unit_type: '3BHK', occupancy_status: 'tenant_occupied', has_floor: true, building: 'Tower A' }]);
+});
+
+test('only the committee\'s admins set up maintenance; "UPI later" is a known step', async () => {
+  const cm = await createUser(db, 'cm@setup.test');
+  await db.query(`INSERT INTO society_memberships (society_id, user_id, role) VALUES ($1,$2,'committee_member')`, [ids.societyId, cm]);
+  await assert.rejects(q(cm, `SELECT public.setup_maintenance($1,'flat',1500,'[]',10,3,7)`, [ids.societyId]), /Only the society committee can set up maintenance/);
+  await q(ids.secretary, `SELECT public.record_setup_step($1,'upi_skipped')`, [ids.societyId]);
+});

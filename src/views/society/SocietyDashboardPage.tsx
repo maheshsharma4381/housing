@@ -66,6 +66,7 @@ import {
   BookOpen,
 } from 'lucide-react';
 import { SignOutMenu, LogoutEverywhereButton } from '../../components/SignOutMenu';
+import { nextSetupStep, type SetupStatus } from '../../lib/setup';
 
 type Tab = SocietyTab;
 
@@ -197,21 +198,14 @@ export const SocietyDashboardPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // What the setup wizard still has to do (034): shown until the first bills are out
-  const [setupLeft, setSetupLeft] = useState<string[]>([]);
+  // What the setup wizard still has to do (034): the same rule the wizard resumes by
+  const [setupNext, setSetupNext] = useState<string | null>(null);
   useEffect(() => {
     if (!supabase || !activeSociety || readOnly) return;
     supabase.rpc('setup_status', { p_society_id: activeSociety.id }).then(({ data }) => {
-      const st = data as { steps: string[]; flats: number; rules: number; upi: boolean; bills: number } | null;
-      if (!st) return;
-      const done = new Set(st.steps);
-      setSetupLeft([
-        st.flats === 0 ? 'flats' : null,
-        st.rules === 0 ? 'maintenance' : null,
-        !st.upi ? 'UPI' : null,
-        !done.has('owners') && !done.has('owners_skipped') ? 'owners' : null,
-        st.bills === 0 ? 'first bills' : null,
-      ].filter((x): x is string => x !== null));
+      if (!data) return;
+      const next = nextSetupStep(data as SetupStatus);
+      setSetupNext(next === 'done' ? null : next);
     });
   }, [activeSociety, readOnly, units.length]);
 
@@ -358,11 +352,11 @@ export const SocietyDashboardPage: React.FC = () => {
             </div>
 
             {/* Getting started checklist */}
-            {!loading && setupLeft.length > 0 && (
+            {!loading && setupNext && (
               <a href="/setup" className="block p-4 rounded-2xl bg-sky-500/5 border border-sky-500/30 hover:border-sky-500 space-y-1">
                 <div className="text-xs font-bold text-sky-300 uppercase tracking-wider">Finish setting up your society</div>
                 <div className="text-xs text-slate-300 flex items-center gap-1">
-                  Still to do: {setupLeft.join(', ')} <ChevronRight className="w-3.5 h-3.5 text-sky-400" />
+                  Next: {setupNext === 'upi' ? 'UPI' : setupNext} <ChevronRight className="w-3.5 h-3.5 text-sky-400" />
                 </div>
               </a>
             )}
