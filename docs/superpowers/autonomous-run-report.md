@@ -262,3 +262,110 @@ Nothing was pushed to GitHub. No migration was applied to the live database: run
 - The pincode lookup route has no sign-in or rate limit.
 - More than 2,000 generated flats get a raw limit message.
 - The wizard has no Back button.
+
+---
+
+## Phase 4C — the secretary's menu, Home and Approvals (migration 035)
+
+**Built**
+- **Menu:**
+  - Home and Approvals at the top;
+  - **Money:** Maintenance bills, Payments received, Vendor bills, Reports;
+  - **Society:** Flats & residents (Flats | Members on one screen), Notices, Complaints, Documents;
+  - **Settings:** Society settings, CA & auditor, Plan & billing;
+  - **Accounts:** only for the committee's Accountant.
+  - Phone bar: Home · Bills · Payments · Complaints · More.
+- **Home cards:**
+  - **To receive** (amount, flats, overdue) opens the flat-wise dues, oldest first, with **"Send reminder to N overdue flats"**.
+  - **To pay** (cash still owed, vendors, due this week) opens the vendor-wise list with TDS worked out, and "Record a payment".
+  - **Approvals** (with a breakdown).
+  - **Payments to verify.**
+- **Reminder button:** at most one reminder per flat per day, counting the nightly one. It skips flats whose payment waits for verification, and says how many flats have nobody joined.
+- **Approvals** now also lists vendor bills to approve, with the vendor, invoice, TDS and net. The same rules as Vendor bills apply: maker-checker, two-step, and the sole-member exception.
+
+**Rulings I made (cost if wrong)**
+1. The spec's table has 13 menu items although the text says 12. The table wins. Cost: none.
+2. A vendor bill is due 30 days after its invoice date (or after it was recorded), because there is no payment-terms field. Cost: "due this week" is approximate for bills with other terms.
+3. The Approvals badge counts vendor bills too. Cost: the same bill shows on two badges.
+
+**Deferred minors**
+- Vendor grouping by name vs id.
+- "due this week" counts bills, not vendors; plurals.
+- The lists show "Nothing is due" while loading.
+- Home's Refresh does not reload the cards.
+- The phone More sheet repeats the bar items.
+- The Home heading is old.
+- The Flats | Members choice sticks.
+- The same flat number in two wings collides in the dues list.
+
+---
+
+## Phase 5 — the resident side: My account (migration 036)
+
+**Built**
+- **My account** (owners only): the flat's full ledger. It shows date, details, debit, credit and running balance, with links to the bill and the receipt.
+  - The period is this year, last year (April–March) or custom.
+  - Download PDF; Share on WhatsApp.
+  - The numbers match the CA's party ledger for the flat.
+- **After an owner change,** every owner of the flat starts at the transfer date with "Brought forward from previous owner", even when the seller never joined. A period before the purchase is refused.
+- **Tenants** see no dues banner, no Bills and no My account.
+- **Home** shows the latest bill.
+
+**Rulings I made (cost if wrong)**
+1. An owner with no earlier owner on the flat sees the whole history. Cost: none.
+2. The secretary's "send any flat's statement" is the existing period statement under Flats → Owners. Cost: none.
+3. A statement line links only to a bill or receipt the owner can open. A joint owner sees the line but not the document. Cost: a joint owner asks the first owner for the PDF.
+
+**Deferred minors**
+- A tenant still sees an empty "payment history" card.
+- The Latest bill card can show a cancelled bill.
+- "This year" shows a closing date of 31 March next year.
+- PDF and WhatsApp wording for NOC or loan use.
+- Custom dates can show stale results while typing.
+
+---
+
+## Phase 6 — the platform owner's dashboard (migration 037)
+
+**Built** (new Platform tabs)
+- **Setup funnel:** how many reached each step and where the rest stopped, counting steps done outside the wizard; how many issued a first bill; the typical time from first login.
+- **Society health:** flats, owners joined %, this month's collection %, CA invited, opening balance approved, and last active, with "Stuck in setup" and "Going quiet" flags. **View** opens a society **read-only for one hour**:
+  - you give a reason;
+  - every view is in the society's audit log;
+  - the committee is told once per hour: "Sahvaas support viewed your society on <date>".
+- **Revenue:** societies by plan, MRR (paying, active societies only), trials ending this week, unpaid Sahvaas invoices, and ad revenue this month against OTP cost.
+- **Announcements:** sent to committee admins, optionally filtered by plan or state, in-app and by push.
+
+**Rulings I made (cost if wrong)**
+1. "Stuck" means a week after registering with no bill. "Quiet" means 30 days with no activity. Cost: these thresholds are a guess and easy to change.
+2. **Read-only and time-limited holds only inside the support view.** Your platform-admin login can already read and write every society through the database rules. Enforcing it in the database is a larger follow-up. Cost: platform work done outside the support view leaves no "support viewed" notice.
+3. A complimentary plan is not revenue: MRR needs a paid invoice covering today. Cost: none.
+
+**Deferred minors**
+- Collection shows 0% when nothing was billed this month.
+- A manager of several societies gets duplicate announcements.
+- Trial counts include societies that already booked a paid plan.
+- Ad revenue counts only live campaigns.
+- Funnel display: raw minutes, and steps out of order.
+- Health is sorted by name.
+- Announcement state and plan are not validated.
+- The page Refresh does not reload the new tabs.
+
+---
+
+## What you need to do next
+
+1. **Apply the database migrations** 027 to 037 (none were applied by me):
+   - `bun run db:migrate` (dry run: check the list says 027 … 037);
+   - then `bun run db:migrate --apply`.
+2. **Push** when you are happy. Local `main` has every phase merged; nothing is on GitHub yet.
+3. **Environment and Supabase settings:**
+   - **3A push:** `SUPABASE_SERVICE_ROLE_KEY`, the VAPID keys, `CRON_SECRET`, and the two database settings.
+   - **3C mobile login, when WhatsApp is approved:** the Phone provider with "Confirm phone" on, the Send SMS hook, `SEND_SMS_HOOK_SECRET`, the WhatsApp/MSG91 keys, the SMS rate limit, then `NEXT_PUBLIC_PHONE_LOGIN=1`.
+4. **Check by hand on a phone:**
+   - register a society through the wizard;
+   - send the first bills;
+   - open the joining link as an owner;
+   - pay;
+   - verify;
+   - open My account.
