@@ -10,8 +10,9 @@ import { TaxRulesPanel } from '../../components/TaxRulesPanel';
 import { BillingConsole } from '../../components/BillingConsole';
 import { AdsConsole } from '../../components/AdsConsole';
 import { OtpCosts } from '../../components/platform/OtpCosts';
+import { SetupFunnel, SocietyHealth, RevenuePanel, Announcements } from '../../components/platform/PlatformInsights';
 import { AuditLog, Profile } from '../../types/database';
-import { Building2, Users, FileText, Cpu, LogOut, RefreshCw, Loader2, Search, Inbox, Percent, CreditCard, Megaphone, MessageCircle } from 'lucide-react';
+import { Building2, Users, FileText, Cpu, LogOut, RefreshCw, Loader2, Search, Inbox, Percent, CreditCard, Megaphone, MessageCircle, Filter, HeartPulse, IndianRupee, Send } from 'lucide-react';
 import { LogoutEverywhereButton } from '../../components/SignOutMenu';
 
 interface SocietyOverview {
@@ -21,7 +22,7 @@ interface SocietyOverview {
   plan_tier: string | null; plan_period_end: string | null;
 }
 
-type Tab = 'otp' | 'overview' | 'societies' | 'billing' | 'sponsors' | 'leads' | 'tax_rules' | 'users' | 'audit_logs';
+type Tab = 'funnel' | 'health' | 'revenue' | 'announce' | 'otp' | 'overview' | 'societies' | 'billing' | 'sponsors' | 'leads' | 'tax_rules' | 'users' | 'audit_logs';
 
 interface Lead {
   id: string; name: string; email: string; phone: string; society_name: string; city: string | null;
@@ -107,6 +108,10 @@ export const PlatformDashboardPage: React.FC = () => {
   const nav: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
     { id: 'overview', label: 'Overview', icon: Cpu },
     { id: 'societies', label: 'Societies', icon: Building2 },
+    { id: 'funnel', label: 'Setup funnel', icon: Filter },
+    { id: 'health', label: 'Society health', icon: HeartPulse },
+    { id: 'revenue', label: 'Revenue', icon: IndianRupee },
+    { id: 'announce', label: 'Announcements', icon: Send },
     { id: 'billing', label: 'Billing & Plans', icon: CreditCard },
     { id: 'sponsors', label: 'Sponsors', icon: Megaphone },
     { id: 'otp', label: 'OTP & cost', icon: MessageCircle },
@@ -262,6 +267,10 @@ export const PlatformDashboardPage: React.FC = () => {
         {activeTab === 'billing' && <BillingConsole />}
         {activeTab === 'sponsors' && <AdsConsole />}
         {activeTab === 'otp' && <OtpCosts />}
+        {activeTab === 'funnel' && <SetupFunnel />}
+        {activeTab === 'health' && <SocietyHealth />}
+        {activeTab === 'revenue' && <RevenuePanel />}
+        {activeTab === 'announce' && <Announcements />}
 
         {activeTab === 'users' && (
           <div className="bg-slate-950 border border-slate-800 rounded-2xl overflow-x-auto">
