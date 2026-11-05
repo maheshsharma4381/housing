@@ -1,4 +1,4 @@
-# Autonomous run report (Phases 3–6)
+# Autonomous run report (Phases 3–9)
 
 The product owner asked on 2026-11-05: "pura project complete kar do… dont wait for me, u decide the best" and "pure project ko proper test karna, bugs clear karna".
 
@@ -395,12 +395,54 @@ The spec decided **no native app**: "The app stays a web app / installable PWA" 
 
 ---
 
+## Phase 9 — loose ends (migration 038)
+
+You approved these on 2026-11-05 ("HAAN"), along with my three suggestions:
+- email login stays until WhatsApp is live;
+- no Play Store app for now;
+- no database lock on platform-admin writes for now.
+
+**Fixed**
+- **Mobiles with a 0 after the country code.** `+91 0 98765 43210`, `0091 098765…` and `91 0 98765…` are the same number as `98765 43210`. They now match the owner's flat, invites and the joining link. Numbers already saved in the wrong 13-digit shape are corrected.
+- **Old requests and invites close by themselves:**
+  - Once someone joins a society by any route, their waiting join request there is closed. Nobody approves it twice.
+  - A mobile the committee saves later still lets that person join through the link, even though they had already asked.
+  - Their own pending owner invite for the flat is marked accepted.
+  - After an owner change, the invite is closed once the named buyer joins under another login.
+  - A joint owner's invite stays open.
+- **The bank on the bill** is the account on the CA's default receiving ledger. With no choice made, it is the primary account.
+- **A deactivated society sends no notifications.** Phone notifications refused because of an old server key are cleaned up, and the phone saves a fresh subscription the next time the app opens.
+- **GST on Sahvaas's own invoices** compares states by GST state code: "MH" = "Maharashtra", and a GSTIN wins. New societies choose their state from a list.
+- **Home dues list:** `101` in wing A and `101` in wing B show as A-101 and B-101 instead of colliding.
+- **People who log in by mobile** are shown by their mobile, with its own country code, where an empty email used to show. This covers the sidebars, the member, payment and professional lists, the platform user list and Sign Out.
+- **Pincode lookup** needs a login and allows 20 lookups in 10 minutes.
+- **Setup wizard Back button:**
+  - Back works from Maintenance onwards.
+  - Flats only offers Continue once flats exist. Flats are added or changed in Flats & residents.
+  - Maintenance offers "Keep saved charges".
+  - UPI shows the saved ID.
+- **My account "This year"** runs from 1 April to today.
+
+**Rulings I made (cost if wrong)**
+1. A phone notification refused with 403 is deleted. Every phone saves a new one when the app next opens. Cost: if the server keys are ever wrong, phones get no notifications until the app is opened once.
+2. The pincode limit is counted per server, not shared. Cost: a signed-in person could do somewhat more than 20 lookups.
+3. Lint shows 4 warnings instead of 2. The two new ones are in config files this phase did not touch. Cost: none.
+
+**Deferred minors**
+- A deactivated society is not told when support views it.
+- Adding someone to the committee without a flat closes their waiting flat request. The committee can still invite them to the flat.
+- "This year" uses the phone's date, so an owner abroad can miss an entry made today in India.
+- Old Sahvaas invoices to a society that typed "MH" now show CGST+SGST where they showed IGST. Misspellings like "Maharastra" still compare by name.
+- Small phone-notification races after a server key change. They heal when the app is next opened.
+
+---
+
 ## What you need to do next
 
-1. **Apply the database migrations** 027 to 037 (none were applied by me):
-   - `bun run db:migrate` (dry run: check the list says 027 … 037);
+1. **Apply the database migrations** 027 to 038 (none were applied by me):
+   - `bun run db:migrate` (dry run: check the list says 027 … 038);
    - then `bun run db:migrate --apply`.
-2. **Push** when you are happy. Local `main` has every phase merged; nothing is on GitHub yet.
+2. **Push** Phase 9 when you are happy. GitHub has everything up to Phase 8 (pushed on 2026-11-05); Phase 9 is on local `main` only.
 3. **Environment and Supabase settings:**
    - **3A push:** `SUPABASE_SERVICE_ROLE_KEY`, the VAPID keys, `CRON_SECRET`, and the two database settings.
    - **3C mobile login, when WhatsApp is approved:** the Phone provider with "Confirm phone" on, the Send SMS hook, `SEND_SMS_HOOK_SECRET`, the WhatsApp/MSG91 keys, the SMS rate limit, then `NEXT_PUBLIC_PHONE_LOGIN=1`.
