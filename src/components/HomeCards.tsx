@@ -17,12 +17,13 @@ interface DueRow { unit_number: string; owner_name: string; outstanding: number;
 interface VendorRow { who: string; bills: number; cash: number; tds: number; due: string }
 interface ExpenseRow {
   payee_name: string | null; title: string; subtotal: number; gst_amount: number; tds_amount: number; tds_deducted: number;
-  amount_settled: number; invoice_date: string | null; invoice_due_by: string | null; created_at: string; vendors: { name: string } | { name: string }[] | null;
+  amount_settled: number; invoice_date: string | null; created_at: string; vendors: { name: string } | { name: string }[] | null;
 }
 
+// date maths in UTC: a local midnight read back with toISOString lands a day early in India
 const plusDays = (iso: string, days: number) => {
-  const d = new Date(`${iso.slice(0, 10)}T00:00:00`);
-  d.setDate(d.getDate() + days);
+  const d = new Date(`${iso.slice(0, 10)}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 };
 const fmt = (iso: string) => new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
@@ -56,7 +57,7 @@ export const HomeCards: React.FC<{ societyId: string; canManage: boolean; onOpen
     setOpen(o => (o === 'pay' ? null : 'pay'));
     if (!supabase) return;
     const { data } = await supabase.from('expenses')
-      .select('payee_name, title, subtotal, gst_amount, tds_amount, tds_deducted, amount_settled, invoice_date, invoice_due_by, created_at, vendors:vendor_id (name)')
+      .select('payee_name, title, subtotal, gst_amount, tds_amount, tds_deducted, amount_settled, invoice_date, created_at, vendors:vendor_id (name)')
       .eq('society_id', societyId).eq('status', 'approved');
     const byVendor = new Map<string, VendorRow>();
     for (const e of (data ?? []) as ExpenseRow[]) {
@@ -65,7 +66,8 @@ export const HomeCards: React.FC<{ societyId: string; canManage: boolean; onOpen
       if (cash <= 0.005) continue;
       const vendor = Array.isArray(e.vendors) ? e.vendors[0]?.name : e.vendors?.name;
       const who = vendor ?? e.payee_name ?? e.title;
-      const due = e.invoice_due_by ?? plusDays(e.invoice_date ?? e.created_at, 30);
+      // invoice_due_by is the deadline to attach a missing invoice, not a payment due date (same rule as home_cards)
+      const due = plusDays(e.invoice_date ?? e.created_at, 30);
       const row = byVendor.get(who) ?? { who, bills: 0, cash: 0, tds: 0, due };
       row.bills += 1;
       row.cash += cash;
