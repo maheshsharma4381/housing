@@ -228,13 +228,15 @@ export const ResidentDashboardPage: React.FC = () => {
             )}
           </div>
 
-          {/* the installable app (spec: the PWA is the mobile app) */}
-          <PWAInstallButton />
-          <NotificationBell onOpen={(link) => {
-            if (link === 'bills' || link === 'payments') setActiveTab('bills');
-            else if (link === 'notices' || link === 'complaints') setActiveTab(link);
-          }} />
-          <SignOutMenu />
+          <div className="flex items-center gap-2 shrink-0">
+            {/* the installable app (spec: the PWA is the mobile app) */}
+            <PWAInstallButton />
+            <NotificationBell onOpen={(link) => {
+              if (link === 'bills' || link === 'payments') setActiveTab('bills');
+              else if (link === 'notices' || link === 'complaints') setActiveTab(link);
+            }} />
+            <SignOutMenu />
+          </div>
         </div>
       </div>
 

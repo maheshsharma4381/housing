@@ -8,7 +8,9 @@ import manifest from '../../src/app/manifest.ts';
 test('the manifest makes the app installable on Android', () => {
   const m = manifest();
   assert.equal(m.display, 'standalone');
-  assert.equal(m.start_url, '/');
+  // the installed app opens where the person works, not on the marketing page (login sends a signed-in user on)
+  assert.equal(m.start_url, '/login');
+  assert.equal(m.orientation, undefined, 'wide ledgers can be read sideways');
   assert.equal(m.id, '/');
   assert.equal(m.scope, '/');
   const png = (m.icons ?? []).filter((i) => i.type === 'image/png');

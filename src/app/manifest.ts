@@ -8,10 +8,10 @@ export default function manifest(): MetadataRoute.Manifest {
     name: 'Sahvaas - Housing Society Management',
     short_name: 'Sahvaas',
     description: 'Maintenance bills, payments, notices and complaints for your housing society',
-    start_url: '/',
+    // the installed app opens on login, which sends a signed-in person straight to their screen
+    start_url: '/login',
     scope: '/',
     display: 'standalone',
-    orientation: 'portrait',
     background_color: '#020617',
     theme_color: '#0284c7',
     categories: ['finance', 'productivity'],

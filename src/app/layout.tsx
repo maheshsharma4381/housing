@@ -23,7 +23,8 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    statusBarStyle: 'black-translucent',
+    // 'black': the page starts below the status bar (translucent would put the header under the clock and notch)
+    statusBarStyle: 'black',
     title: 'Sahvaas',
   },
   icons: {

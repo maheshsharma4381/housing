@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 import { Download, Smartphone, X } from 'lucide-react';
 
@@ -22,7 +23,7 @@ export const PWAInstallButton: React.FC = () => {
         title="Install Sahvaas PWA to Home Screen"
       >
         <Download className="w-3.5 h-3.5" />
-        <span>Install App</span>
+        <span className="sr-only sm:not-sr-only">Install app</span>
       </button>
     );
   }
@@ -36,10 +37,11 @@ export const PWAInstallButton: React.FC = () => {
           className="flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 transition cursor-pointer"
         >
           <Smartphone className="w-3.5 h-3.5" />
-          <span>Install PWA</span>
+          <span className="sr-only sm:not-sr-only">Install app</span>
         </button>
 
-        {showIOSGuide && (
+        {/* portalled: a blurred sticky header would otherwise trap a fixed overlay inside it (WebKit) */}
+        {showIOSGuide && typeof document !== 'undefined' && createPortal(
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
             <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in duration-150">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
@@ -64,6 +66,7 @@ export const PWAInstallButton: React.FC = () => {
                 <div className="flex items-start gap-2.5">
                   <span className="w-5 h-5 rounded-full bg-sky-100 text-sky-700 font-bold flex items-center justify-center shrink-0">2</span>
                   <p>Scroll down and tap <strong>Add to Home Screen</strong>.</p>
+                <p className="text-xs text-slate-500">Opened the link inside WhatsApp? Open it in Safari first (⋯ → Open in Safari).</p>
                 </div>
                 <div className="flex items-start gap-2.5">
                   <span className="w-5 h-5 rounded-full bg-sky-100 text-sky-700 font-bold flex items-center justify-center shrink-0">3</span>
@@ -77,8 +80,7 @@ export const PWAInstallButton: React.FC = () => {
                 Got it
               </button>
             </div>
-          </div>
-        )}
+          </div>, document.body)}
       </>
     );
   }

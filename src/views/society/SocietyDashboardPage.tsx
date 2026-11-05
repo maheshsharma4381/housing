@@ -94,9 +94,12 @@ export const SocietyDashboardPage: React.FC = () => {
     profile,
     activeSociety,
     societyMemberships,
+    professionalGrants,
     logout,
     refreshUserData,
   } = useAuth();
+  // more than one society or CA workspace: the phone bar keeps the switcher
+  const manyWorkspaces = new Set(societyMemberships.map(m => m.society_id)).size + professionalGrants.length > 1;
 
   // A secretary who also owns a flat has two memberships: show the committee one here
   const committeeMembership = societyMemberships.find(m => activeSociety && m.society_id === activeSociety.id && COMMITTEE_ROLES.includes(m.role));
@@ -243,7 +246,8 @@ export const SocietyDashboardPage: React.FC = () => {
           {/* the installable app (spec: the PWA is the mobile app) */}
           <PWAInstallButton />
           <NotificationBell onOpen={openFromNotification} />
-          <WorkspaceSelector />
+          {/* the society name is already on the left: with one workspace the chip only shows from tablet width */}
+          <div className={manyWorkspaces ? '' : 'hidden sm:block'}><WorkspaceSelector /></div>
           <SignOutMenu />
         </div>
       </div>

@@ -6,12 +6,13 @@ const OFFLINE = '/offline.html';
 const CACHE = 'sahvaas-offline-v1';
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((c) => c.add(OFFLINE)).then(() => self.skipWaiting()));
+  // the offline page is a nice-to-have: failing to cache it must not stop the worker (push needs it)
+  event.waitUntil(caches.open(CACHE).then((c) => c.add(OFFLINE)).catch(() => {}).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
-    for (const key of await caches.keys()) if (key !== CACHE) await caches.delete(key);
+    for (const key of await caches.keys()) if (key.startsWith('sahvaas-') && key !== CACHE) await caches.delete(key);
     await self.clients.claim();
   })());
 });
@@ -39,6 +40,6 @@ self.addEventListener('notificationclick', (event) => {
     const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     const open = all.find((c) => 'focus' in c);
     if (open) return open.focus();
-    return self.clients.openWindow('/');
+    return self.clients.openWindow('/login');
   })());
 });
