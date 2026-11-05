@@ -8,6 +8,7 @@ import { supabase } from '../../lib/supabase/client';
 import { generateFlats } from '../../lib/flat-generator';
 import { nextSetupStep, firstBillDates, isValidUpiId, type SetupStatus, type SetupStep } from '../../lib/setup';
 import { normalizeMobile } from '../../lib/mobile';
+import { INDIAN_STATES, canonicalState } from '../../lib/india-states';
 import { formatINR } from '../../lib/inr';
 import { Banner } from '../../components/Banner';
 import { OwnerPaste } from '../../components/OwnerContacts';
@@ -157,7 +158,8 @@ const SocietyStep: React.FC<{ busy: boolean; onCreate: (f: { name: string; pinco
       const res = await fetch(`/api/pincode/${pin}`);
       if (res.ok) {
         const place = await res.json() as { city: string; state: string };
-        setF(v => (v.pincode === pin ? { ...v, city: place.city, state: place.state } : v));
+        // the state as the list spells it, so Sahvaas's GST invoice can tell the same state from another
+        setF(v => (v.pincode === pin ? { ...v, city: place.city, state: canonicalState(place.state) ?? v.state } : v));
       }
     } catch { /* manual entry */ }
     setLooking(false);
@@ -174,7 +176,10 @@ const SocietyStep: React.FC<{ busy: boolean; onCreate: (f: { name: string; pinco
         <label className="block space-y-1"><span className="text-slate-400">City {looking && <Loader2 className="inline w-3 h-3 animate-spin" />}</span>
           <input className={input} value={f.city} onChange={e => setF({ ...f, city: e.target.value })} required /></label>
         <label className="block space-y-1"><span className="text-slate-400">State</span>
-          <input className={input} value={f.state} onChange={e => setF({ ...f, state: e.target.value })} required /></label>
+          <select className={input} value={f.state} onChange={e => setF({ ...f, state: e.target.value })} required>
+            <option value="">Choose…</option>
+            {INDIAN_STATES.map(s => <option key={s.code} value={s.name}>{s.name}</option>)}
+          </select></label>
       </div>
       <div className="space-y-1.5">
         <span className="text-slate-400">Your role</span>

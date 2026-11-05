@@ -1,4 +1,5 @@
 import type { PlanFeature, PlatformInvoice } from '../types/database';
+import { stateCode } from './india-states.ts';
 
 export const FEATURES: { key: PlanFeature; label: string; plan: 'every plan' | 'Pro' }[] = [
   { key: 'ca_portal', label: 'CA & auditor portal', plan: 'every plan' },
@@ -12,9 +13,17 @@ export const FEATURES: { key: PlanFeature; label: string; plan: 'every plan' | '
 export const featureLabel = (key: string) => FEATURES.find(f => f.key === key)?.label ?? key;
 export const featurePlan = (key: string) => FEATURES.find(f => f.key === key)?.plan ?? 'Pro';
 
-/** Intra-state supply: CGST + SGST halves; otherwise IGST. */
+/** The state of a party on an invoice: its GSTIN first, else the state it typed. */
+const partyState = (p: { state?: string; gstin?: string | null }) => stateCode(p.gstin) ?? stateCode(p.state);
+
+/** Intra-state supply: CGST + SGST halves; otherwise IGST. States are compared by GST state code ("MH" = "Maharashtra"). */
 export function gstSplit(inv: Pick<PlatformInvoice, 'gst_amount' | 'gst_rate' | 'seller' | 'bill_to'>) {
-  const same = !!inv.seller.state && !!inv.bill_to.state && inv.seller.state.trim().toLowerCase() === inv.bill_to.state.trim().toLowerCase();
+  const seller = partyState(inv.seller);
+  const buyer = partyState(inv.bill_to);
+  const same = seller && buyer
+    ? seller === buyer
+    // text that names no state: compare it as typed
+    : !!inv.seller.state?.trim() && !!inv.bill_to.state?.trim() && inv.seller.state.trim().toLowerCase() === inv.bill_to.state.trim().toLowerCase();
   const gst = Number(inv.gst_amount);
   if (!same) return [{ label: `IGST ${inv.gst_rate}%`, amount: gst }];
   const half = Math.round((gst / 2) * 100) / 100;
