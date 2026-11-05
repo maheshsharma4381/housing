@@ -194,3 +194,79 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 REVOKE ALL ON FUNCTION public.attach_flat_owner(UUID, UUID, UUID, UUID) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.join_society(TEXT, TEXT, TEXT, TEXT) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.join_society(TEXT, TEXT, TEXT, TEXT) TO authenticated;
+
+-- ============================================================================
+-- 3. BILLS NAME THE BANK THE CA RECEIVES INTO
+-- ============================================================================
+-- from 033_flat_bills.sql; + the bank account on the default receiving ledger comes first (038)
+CREATE OR REPLACE FUNCTION public.bill_document(p_bill_id UUID)
+RETURNS JSONB AS $$
+DECLARE
+    v_b bills%ROWTYPE;
+    v_soc societies%ROWTYPE;
+    v_set society_settings%ROWTYPE;
+    v_unit RECORD;
+    v_cycle billing_cycles%ROWTYPE;
+    v_bank RECORD;
+    v_name TEXT;
+    v_arrears NUMERIC;
+    v_advance NUMERIC;
+BEGIN
+    SELECT * INTO v_b FROM bills WHERE id = p_bill_id;
+    IF NOT FOUND OR NOT (is_platform_admin() OR is_committee_viewer(v_b.society_id) OR v_b.user_id = auth.uid()
+                         OR has_professional_permission(v_b.society_id, 'view_bills')) THEN
+        RAISE EXCEPTION 'Bill not found';
+    END IF;
+    SELECT * INTO v_soc FROM societies WHERE id = v_b.society_id;
+    SELECT * INTO v_set FROM society_settings WHERE society_id = v_b.society_id;
+    SELECT u.unit_number, u.carpet_area_sqft, w.name AS wing INTO v_unit FROM units u LEFT JOIN wings w ON w.id = u.wing_id WHERE u.id = v_b.unit_id;
+    SELECT * INTO v_cycle FROM billing_cycles WHERE id = v_b.cycle_id;
+    -- the account on the ledger the CA chose to receive into (spec 7.1), else the primary one (038)
+    SELECT bank_name, account_number, ifsc_code, branch_name INTO v_bank FROM bank_accounts
+    WHERE society_id = v_b.society_id
+    ORDER BY (ledger_id = default_bank_ledger(v_b.society_id, 'receipt')) DESC, is_primary DESC, created_at LIMIT 1;
+    SELECT coalesce(
+        (SELECT full_name FROM profiles WHERE id = v_b.user_id),
+        (SELECT p.full_name FROM society_memberships m JOIN profiles p ON p.id = m.user_id
+         WHERE m.unit_id = v_b.unit_id AND m.role = 'resident_owner' AND m.is_active ORDER BY m.created_at LIMIT 1),
+        (SELECT owner_name FROM unit_owner_contacts WHERE unit_id = v_b.unit_id)) INTO v_name;
+    -- Earlier bills of the flat still unpaid
+    SELECT coalesce(sum(balance_due), 0) INTO v_arrears FROM bills
+    WHERE unit_id = v_b.unit_id AND id <> v_b.id AND balance_due > 0 AND status IN ('issued', 'partially_paid', 'overdue')
+      AND (due_date < v_b.due_date OR (due_date = v_b.due_date AND created_at < v_b.created_at));
+    -- Money received for the flat and not yet set against a bill (as flat_balance)
+    v_advance := (SELECT coalesce(sum(p.amount - coalesce((SELECT sum(a.amount) FROM payment_allocations a WHERE a.payment_id = p.id), 0)), 0)
+                  FROM payments p WHERE p.unit_id = v_b.unit_id AND p.status = 'verified')
+               + (SELECT coalesce(sum(o.remaining), 0) FROM opening_advances o WHERE o.unit_id = v_b.unit_id);
+
+    RETURN jsonb_build_object(
+        'society', jsonb_build_object(
+            'name', v_soc.name, 'registration_number', v_soc.registration_number,
+            'address', concat_ws(', ', nullif(v_soc.address_line1, ''), nullif(v_soc.address_line2, ''), v_soc.city, v_soc.state, v_soc.pincode),
+            'upi_id', v_set.upi_id, 'payee_name', coalesce(v_set.upi_payee_name, v_soc.name),
+            'bank', CASE WHEN v_bank.bank_name IS NULL THEN NULL ELSE jsonb_build_object(
+                'bank_name', v_bank.bank_name, 'account_number', v_bank.account_number, 'ifsc', v_bank.ifsc_code, 'branch', v_bank.branch_name) END),
+        'flat', jsonb_build_object('number', v_unit.unit_number, 'wing', v_unit.wing, 'area', v_unit.carpet_area_sqft),
+        'member_name', v_name,
+        'bill', jsonb_build_object(
+            'id', v_b.id, 'number', v_b.bill_number, 'bill_date', v_b.bill_date, 'due_date', v_b.due_date,
+            'period', v_cycle.cycle_name, 'period_start', v_cycle.period_start, 'period_end', v_cycle.period_end,
+            'status', v_b.status,
+            -- the late fee is shown once, as its own line (run_late_fees also adds it as an item)
+            'items', coalesce((SELECT jsonb_agg(jsonb_build_object('description', i.description, 'quantity', i.quantity, 'rate', i.unit_rate,
+                                                                   'amount', i.amount, 'tax', i.tax_amount, 'total', i.total_item_amount)
+                                                ORDER BY r.created_at NULLS LAST, i.description)
+                               FROM bill_items i LEFT JOIN billing_rules r ON r.id = i.rule_id
+                               WHERE i.bill_id = v_b.id AND NOT (i.rule_id IS NULL AND i.description = 'Late payment charge')), '[]'::jsonb),
+            'subtotal', v_b.subtotal_amount, 'tax', v_b.tax_amount, 'late_fee', v_b.interest_or_late_fee,
+            'total', v_b.total_amount, 'paid', v_b.amount_paid, 'balance', v_b.balance_due),
+        'arrears', v_arrears,
+        'advance', v_advance,
+        'payable', greatest(v_b.balance_due + v_arrears - v_advance, 0),
+        'late_fee_rule', CASE v_set.late_fee_type
+            WHEN 'flat' THEN inr_text(v_set.late_fee_amount) || ' after the due date'
+            WHEN 'percentage' THEN trim_scale(v_set.late_fee_amount)::text || '% of the bill after the due date'
+            ELSE NULL END
+    );
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public;

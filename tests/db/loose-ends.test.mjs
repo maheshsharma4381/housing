@@ -117,3 +117,24 @@ test('the owner-change invite closes when the change completes through the link'
   assert.equal((await inviteStatus(t.invite_id)).status, 'revoked');
   assert.equal((await one('SELECT owner_user_id FROM unit_ownerships WHERE unit_id=$1 AND to_date IS NULL', [ids.u105])).owner_user_id, y);
 });
+
+// ---------------------------------------------------------------- 3. the bank printed on a bill
+test('the bill names the bank the CA receives into', async () => {
+  const owner = await createUser(db, 'pa@loose.test');
+  await db.query('INSERT INTO platform_admins (user_id) VALUES ($1)', [owner]);
+  const group = (await one(`SELECT id FROM account_groups WHERE society_id=$1 AND system_key='bank_accounts'`, [ids.societyId])).id;
+  const code = await val(owner, 'SELECT public.create_ledger($1,$2,$3)', [ids.societyId, group, 'ICICI Current']);
+  const icici = (await one('SELECT id FROM accounts WHERE society_id=$1 AND code=$2', [ids.societyId, code])).id;
+  const b1000 = (await one(`SELECT id FROM accounts WHERE society_id=$1 AND code='1000'`, [ids.societyId])).id;
+  const addBank = (name, no, ifsc, primary, ledger) => q(ids.secretary,
+    `INSERT INTO bank_accounts (society_id, bank_name, account_number, ifsc_code, branch_name, is_primary, ledger_id)
+     VALUES ($1,$2,$3,$4,'Baner',$5,$6)`, [ids.societyId, name, no, ifsc, primary, ledger]);
+  await addBank('HDFC', '111', 'HDFC0000001', true, b1000);
+  await addBank('ICICI', '222', 'ICIC0000001', false, icici);
+  await q(ids.secretary, `SELECT public.generate_bills($1,'2026-10-01','2026-10-31','2026-10-10')`, [ids.societyId]);
+  const bill = (await one('SELECT id FROM bills WHERE society_id=$1 AND unit_id=$2', [ids.societyId, ids.u106])).id;
+  const bankNo = async () => (await val(ids.secretary, 'SELECT public.bill_document($1)', [bill])).society.bank.account_number;
+  assert.equal(await bankNo(), '111', 'no default chosen yet: the primary account');
+  await q(owner, 'SELECT public.set_default_banks($1,$2,$3)', [ids.societyId, icici, b1000]);
+  assert.equal(await bankNo(), '222', 'the account on the ledger the CA receives into');
+});
