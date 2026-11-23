@@ -1,4 +1,4 @@
-# Autonomous run report (Phases 3–9)
+# Autonomous run report (Phases 3–10)
 
 The product owner asked on 2026-11-05: "pura project complete kar do… dont wait for me, u decide the best" and "pure project ko proper test karna, bugs clear karna".
 
@@ -437,12 +437,59 @@ You approved these on 2026-11-05 ("HAAN"), along with my three suggestions:
 
 ---
 
+## Phase 10 — notice read record, polls, staff register (migration 039)
+
+Asked for on 2026-11-23 ("haan teeno bana do"). Spec `docs/superpowers/specs/2026-11-23-community-design.md`, plan `docs/superpowers/plans/2026-11-23-community.md`.
+
+**Built**
+- **Who has seen a notice.**
+  - A notice shown on a resident's Notices screen is recorded once per person.
+  - Under each notice the committee gets "Seen by N of M" and a "Not seen yet" list (name and flat).
+  - The committee itself is not counted. An owners-only notice leaves tenants out.
+- **Polls** (Society → Polls; residents: Polls tab).
+  - One vote per flat, from owners; a committee person votes for the flat on their membership.
+  - A joint owner can change the flat's vote until it closes.
+  - Nobody sees counts while a poll is open; the committee sees which flats voted, never how.
+  - Owners are notified when a poll opens.
+  - Close now, Delete (only with no votes), Download result (CSV for the AGM file).
+  - Every poll carries "This poll shows members' views. Decisions are taken in the general body meeting."
+- **Staff register** (Society → Staff; residents: Staff tab).
+  - Residents add their maid/driver/cook; the same mobile links the existing person instead of a duplicate.
+  - The committee adds society staff, verifies (police verified date), keeps notes, removes.
+  - Residents see the register (name, kind, photo, verified badge); mobile only for their own staff; ID proofs and notes only for the committee.
+  - Files in a private `staff-files` bucket (JPG, PNG, WEBP, PDF; 5 MB).
+
+**Final review fixes** (fresh Opus reviewer; each with a failing test first)
+1. A resident could move "Police verified" onto another person, or take over committee-added staff by typing their mobile. Now residents edit only staff they added, and their change of name, mobile or photo clears the verification.
+2. Live counts next to the voted-flats list showed the committee how each flat voted. Counts now appear only after closing.
+3. A committee person's flat (stored on the committee membership) could not vote. It now counts as an owner flat.
+4. The staff screen showed buttons the server refuses. The list now says what each person may do.
+5. The staff bucket accepted any file type. It now accepts only images and PDFs.
+
+**Rulings**
+1. Polls are a secret ballot: counts only after closing, for the committee too. Cost if wrong: the committee wants live counts (one line).
+2. "Seen" means shown on the Notices screen, not scrolled to. Cost: a notice lower on a long list counts as seen.
+3. Amenity booking waits for a CA's word on its income ledger and GST.
+
+**Deferred minors**
+- Unchecking a flat in a resident's staff edit does nothing but says "Saved."
+- "Already in the register" drops the typed name and kind without saying so.
+- A resident re-adding a removed person's mobile creates a fresh record; the committee is not told.
+- The poll choice keeps the old pick after voting.
+- "Voted X of Y" can exceed Y when a voting owner has since left.
+- Flat labels in the seen list and poll list can drop the wing.
+- New RPCs are not revoked from anon (each checks the login).
+- `mark_notices_seen` does not check that the society is active.
+- Replaced staff photos and ID proofs are never deleted (a retention decision under the DPDP Act).
+- Two residents adding the same new mobile at the same moment get a raw error.
+- The polls list shows "No polls yet" on a load error.
+
 ## What you need to do next
 
-1. **Apply the database migrations** 027 to 038 (none were applied by me):
-   - `bun run db:migrate` (dry run: check the list says 027 … 038);
+1. **Apply migration 039** (027 to 038 are already applied live):
+   - `bun run db:migrate` (dry run: the list should say only 039);
    - then `bun run db:migrate --apply`.
-2. **Push** Phase 9 when you are happy. GitHub has everything up to Phase 8 (pushed on 2026-11-05); Phase 9 is on local `main` only.
+2. **Push** when you are happy. GitHub has everything up to Phase 8 (pushed on 2026-11-05); Phase 9, Phase 10 and the Gate Lite plan are on local `main` only.
 3. **Environment and Supabase settings:**
    - **3A push:** `SUPABASE_SERVICE_ROLE_KEY`, the VAPID keys, `CRON_SECRET`, and the two database settings.
    - **3C mobile login, when WhatsApp is approved:** the Phone provider with "Confirm phone" on, the Send SMS hook, `SEND_SMS_HOOK_SECRET`, the WhatsApp/MSG91 keys, the SMS rate limit, then `NEXT_PUBLIC_PHONE_LOGIN=1`.
