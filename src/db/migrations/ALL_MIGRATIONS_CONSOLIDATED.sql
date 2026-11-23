@@ -16810,7 +16810,7 @@ GRANT EXECUTE ON FUNCTION public.notice_read_summary(UUID) TO authenticated;
 -- ============================================================================
 -- 2. POLLS — one vote per flat, counted from owners only. The choice of each
 --    flat is never readable (poll_votes has no policies); the committee sees
---    counts and which flats voted, residents see counts once the poll closes.
+--    which flats voted, and everyone sees the counts once the poll closes.
 --    A poll shows members' views; decisions are taken in the general body meeting.
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS polls (
@@ -16844,11 +16844,12 @@ RETURNS BOOLEAN AS $$
     SELECT p.closed_at IS NULL AND p.closes_at > now()
 $$ LANGUAGE sql STABLE SET search_path = public;
 
--- Flats that can vote: at least one active owner membership
+-- Flats that can vote: at least one active owner membership. A committee person's flat sits on their committee
+-- membership (one row: role + flat), and committee members are owners, so those count as owner memberships too.
 CREATE OR REPLACE FUNCTION public.poll_eligible_units(p_society_id UUID)
 RETURNS SETOF UUID AS $$
     SELECT DISTINCT m.unit_id FROM society_memberships m
-    WHERE m.society_id = p_society_id AND m.is_active AND m.role = 'resident_owner' AND m.unit_id IS NOT NULL
+    WHERE m.society_id = p_society_id AND m.is_active AND m.role IN ('resident_owner', 'society_admin', 'secretary', 'chairman', 'treasurer', 'committee_member') AND m.unit_id IS NOT NULL
 $$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
 REVOKE ALL ON FUNCTION public.poll_eligible_units(UUID) FROM PUBLIC, anon, authenticated;
 
@@ -16884,7 +16885,7 @@ BEGIN
 
     PERFORM notify_users(p_society_id, (
         SELECT array_agg(DISTINCT m.user_id) FROM society_memberships m
-        WHERE m.society_id = p_society_id AND m.is_active AND m.role = 'resident_owner'
+        WHERE m.society_id = p_society_id AND m.is_active AND m.unit_id IS NOT NULL AND m.role IN ('resident_owner', 'society_admin', 'secretary', 'chairman', 'treasurer', 'committee_member')
     ), 'poll', 'Poll: ' || v_question, NULL, 'polls', v_id);
     RETURN v_id;
 END;
@@ -16899,7 +16900,7 @@ BEGIN
     IF NOT FOUND OR NOT EXISTS (
         SELECT 1 FROM society_memberships m JOIN societies s ON s.id = m.society_id AND s.is_active
         WHERE m.society_id = v_p.society_id AND m.user_id = auth.uid() AND m.unit_id = p_unit_id
-          AND m.is_active AND m.role = 'resident_owner') THEN
+          AND m.is_active AND m.role IN ('resident_owner', 'society_admin', 'secretary', 'chairman', 'treasurer', 'committee_member')) THEN
         RAISE EXCEPTION 'Only an owner of this flat can vote';
     END IF;
     IF NOT poll_is_open(v_p) THEN
@@ -16952,14 +16953,12 @@ RETURNS JSONB AS $$
 DECLARE
     v_p polls%ROWTYPE;
     v_open BOOLEAN;
-    v_committee BOOLEAN;
 BEGIN
     SELECT * INTO v_p FROM polls WHERE id = p_poll_id;
     IF NOT FOUND OR NOT (has_society_membership(v_p.society_id) OR is_committee_viewer(v_p.society_id)) THEN
         RAISE EXCEPTION 'This poll is not in your society';
     END IF;
     v_open := poll_is_open(v_p);
-    v_committee := is_committee_viewer(v_p.society_id);
     RETURN jsonb_build_object(
         'open', v_open,
         'my_flats', coalesce((
@@ -16970,9 +16969,11 @@ BEGIN
                   JOIN units u ON u.id = m.unit_id
                   LEFT JOIN wings w ON w.id = u.wing_id
                   LEFT JOIN poll_votes v ON v.poll_id = p_poll_id AND v.unit_id = m.unit_id
-                  WHERE m.society_id = v_p.society_id AND m.user_id = auth.uid() AND m.is_active AND m.role = 'resident_owner') f
+                  WHERE m.society_id = v_p.society_id AND m.user_id = auth.uid() AND m.is_active AND m.unit_id IS NOT NULL
+                    AND m.role IN ('resident_owner', 'society_admin', 'secretary', 'chairman', 'treasurer', 'committee_member')) f
         ), '[]'::jsonb),
-        'counts', CASE WHEN v_committee OR NOT v_open THEN (
+        -- counts only after closing, for everyone: live counts next to the voted-flats list would reveal each flat's choice
+        'counts', CASE WHEN NOT v_open THEN (
             SELECT jsonb_agg((SELECT count(*) FROM poll_votes v WHERE v.poll_id = p_poll_id AND v.option_index = i - 1) ORDER BY i)
             FROM generate_series(1, cardinality(v_p.options)) i) END,
         'voted', (SELECT count(*) FROM poll_votes WHERE poll_id = p_poll_id),
@@ -17046,12 +17047,13 @@ RETURNS SETOF UUID AS $$
 $$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
 REVOKE ALL ON FUNCTION public.my_household_units(UUID) FROM PUBLIC, anon, authenticated;
 
--- The committee, or a resident whose flats are the only ones this person works in
+-- The committee, or the resident who added this person while their flats are the only ones this person works in
+-- (linking someone by mobile never gives edit rights over them)
 CREATE OR REPLACE FUNCTION public.can_edit_staff(p_staff_id UUID)
 RETURNS BOOLEAN AS $$
     SELECT EXISTS (SELECT 1 FROM staff s WHERE s.id = p_staff_id AND (
         is_society_admin(s.society_id)
-        OR (s.is_active
+        OR (s.is_active AND s.created_by = auth.uid()
             AND EXISTS (SELECT 1 FROM staff_flats f WHERE f.staff_id = s.id)
             AND NOT EXISTS (SELECT 1 FROM staff_flats f WHERE f.staff_id = s.id
                             AND f.unit_id NOT IN (SELECT my_household_units(s.society_id))))))
@@ -17119,7 +17121,11 @@ BEGIN
     IF v_mobile IS NOT NULL AND EXISTS (SELECT 1 FROM staff WHERE society_id = p_society_id AND is_active AND mobile = v_mobile AND id <> p_id) THEN
         RAISE EXCEPTION 'Another person in the register has this mobile number';
     END IF;
-    UPDATE staff SET name = v_name, kind = p_kind, mobile = v_mobile WHERE id = p_id;
+    -- a resident's change of who this is (name or mobile) drops the committee's police verification
+    UPDATE staff SET name = v_name, kind = p_kind, mobile = v_mobile,
+        police_verified_on = CASE WHEN NOT v_admin AND (name IS DISTINCT FROM v_name OR mobile IS DISTINCT FROM v_mobile)
+                                  THEN NULL ELSE police_verified_on END
+    WHERE id = p_id;
     IF v_admin THEN
         DELETE FROM staff_flats WHERE staff_id = p_id AND unit_id <> ALL (v_units);
     END IF;
@@ -17201,7 +17207,9 @@ BEGIN
         IF NOT can_edit_staff(p_staff_id) THEN
             RAISE EXCEPTION 'Only the committee can change this person';
         END IF;
-        UPDATE staff SET photo_path = p_path WHERE id = p_staff_id;
+        UPDATE staff SET photo_path = p_path,
+            police_verified_on = CASE WHEN is_society_admin(v_society) THEN police_verified_on END
+        WHERE id = p_staff_id;
     ELSE
         IF NOT can_upload_staff_id(p_staff_id) THEN
             RAISE EXCEPTION 'Only the committee can change this person';
@@ -17229,6 +17237,9 @@ BEGIN
             'mobile', CASE WHEN v_committee OR x.mine THEN s.mobile END,
             'notes', CASE WHEN v_committee THEN s.notes END,
             'id_proof', CASE WHEN v_committee THEN s.id_proof_path END,
+            'has_id_proof', s.id_proof_path IS NOT NULL,
+            'can_edit', can_edit_staff(s.id),
+            'can_upload_id', can_upload_staff_id(s.id),
             'flats', coalesce((
                 SELECT jsonb_agg(jsonb_build_object('unit_id', u.id, 'wing', w.name, 'unit_number', u.unit_number) ORDER BY w.name, u.unit_number)
                 FROM staff_flats f JOIN units u ON u.id = f.unit_id LEFT JOIN wings w ON w.id = u.wing_id
@@ -17252,9 +17263,9 @@ GRANT EXECUTE ON FUNCTION public.set_staff_file(UUID, TEXT, TEXT) TO authenticat
 GRANT EXECUTE ON FUNCTION public.staff_list(UUID) TO authenticated;
 
 -- Storage
-INSERT INTO storage.buckets (id, name, public, file_size_limit)
-VALUES ('staff-files', 'staff-files', false, 5242880)
-ON CONFLICT (id) DO NOTHING;
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES ('staff-files', 'staff-files', false, 5242880, ARRAY['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])
+ON CONFLICT (id) DO UPDATE SET file_size_limit = EXCLUDED.file_size_limit, allowed_mime_types = EXCLUDED.allowed_mime_types;
 
 CREATE OR REPLACE FUNCTION public.storage_staff_id(p_name TEXT)
 RETURNS UUID AS $$

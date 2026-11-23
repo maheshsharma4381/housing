@@ -18,4 +18,6 @@ export interface StaffRow {
   id: string; name: string; kind: StaffKind; photo_path: string | null; police_verified: boolean;
   police_verified_on: string | null; active: boolean; mine: boolean; mobile: string | null;
   notes: string | null; id_proof: string | null; flats: StaffFlat[];
+  /** what the server lets the caller do (staff_list works these out with the same rules it enforces) */
+  has_id_proof: boolean; can_edit: boolean; can_upload_id: boolean;
 }

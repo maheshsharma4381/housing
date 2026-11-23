@@ -87,7 +87,6 @@ export const StaffRegister: React.FC<{ societyId: string; isCommittee: boolean; 
 
   const mine = rows.filter(r => r.mine);
   const others = isCommittee ? rows : rows.filter(r => !r.mine);
-  const canEditRow = (r: StaffRow) => canManage || (r.mine && r.flats.length > 0 && r.flats.every(f => myUnitIds.includes(f.unit_id)));
   const inputClass = 'w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-sky-500';
 
   const card = (r: StaffRow) => (
@@ -104,21 +103,22 @@ export const StaffRegister: React.FC<{ societyId: string; isCommittee: boolean; 
         {r.flats.length > 0 && <div className="text-slate-400">Works in: {r.flats.map(f => unitLabel(f.unit_id) || f.unit_number).join(', ')}</div>}
         {isCommittee && r.notes && <div className="text-slate-400">Note: {r.notes}</div>}
         <div className="flex flex-wrap gap-3 pt-1">
-          {canEditRow(r) && r.active && (
+          {r.can_edit && r.active && (
             <button onClick={() => setDraft({ id: r.id, name: r.name, kind: r.kind, mobile: r.mobile ?? '', units: r.flats.map(f => f.unit_id) })} className="text-sky-300 cursor-pointer">Edit</button>
           )}
-          {canEditRow(r) && r.active && (
+          {r.can_edit && r.active && (
             <label className="flex items-center gap-1 text-sky-300 cursor-pointer">
               {busy === `photo-${r.id}` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />} Photo
               <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={e => upload(r, 'photo', e.target.files?.[0])} />
             </label>
           )}
-          {(canManage || (r.mine && !r.id_proof && !isCommittee)) && r.active && (
+          {r.can_upload_id && (canManage || !r.has_id_proof) && r.active && (
             <label className="flex items-center gap-1 text-sky-300 cursor-pointer">
-              {busy === `id-${r.id}` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <IdCard className="w-3.5 h-3.5" />} {r.id_proof ? 'Replace ID proof' : 'Add ID proof'}
+              {busy === `id-${r.id}` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <IdCard className="w-3.5 h-3.5" />} {r.has_id_proof ? 'Replace ID proof' : 'Add ID proof'}
               <input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" className="hidden" onChange={e => upload(r, 'id', e.target.files?.[0])} />
             </label>
           )}
+          {!isCommittee && r.has_id_proof && <span className="flex items-center gap-1 text-slate-400"><IdCard className="w-3.5 h-3.5" /> ID proof given</span>}
           {isCommittee && r.id_proof && (
             <button onClick={() => openFile(r.id_proof as string)} className="flex items-center gap-1 text-sky-300 cursor-pointer"><FileText className="w-3.5 h-3.5" /> View ID proof</button>
           )}

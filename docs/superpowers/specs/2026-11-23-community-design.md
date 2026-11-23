@@ -17,7 +17,7 @@ Amenity booking waits until a CA has said which ledger its income goes to and wh
 
 **Goals**
 1. A notice records each person who has seen it; the committee sees counts and the names (with flat) of those who have not.
-2. A poll gives one vote per flat, counted only from owners; the committee sees live counts, residents see results once the poll closes.
+2. A poll gives one vote per flat, counted only from owners; while it is open the committee sees which flats have voted, and everyone sees the counts once it closes.
 3. A resident adds their own domestic help in under a minute; the committee sees and verifies everyone.
 
 **Non-goals**
@@ -43,9 +43,9 @@ Amenity booking waits until a CA has said which ledger its income goes to and wh
 ### 3.2 Polls
 - Created by managing roles (`is_society_admin`): question (5–200 characters), optional details (≤ 1000), 2–6 options (each 1–80 characters), closing date and time (at least 1 hour and at most 60 days ahead).
 - **Voters:** each flat with at least one active `resident_owner` membership. Any owner of the flat can vote for it; the vote can be changed by any owner of that flat until the poll closes; the last choice counts. An owner of two flats votes once for each.
-- Committee members vote as owners of their flats, like everyone else.
+- Committee members vote as owners of their flats, like everyone else. A committee person's flat is stored on their committee membership (one row: role + flat), so an active committee membership with a flat counts as an owner membership.
 - **Secret from residents and committee:** stored per flat with the option chosen; the committee sees counts and the list of flats that have voted and not voted, never the choice per flat. Residents see their own flat's choice.
-- **Results:** committee sees live counts. Residents see counts after the poll closes. Closing: automatic at the closing time, or "Close now" by a managing role. A closed poll cannot be reopened or edited; a poll with no votes can be deleted.
+- **Results:** nobody sees counts while the poll is open, the committee neither: live counts next to the voted-flats list would show how each flat voted (final review, 2026-11-24). Everyone sees counts after the poll closes. Closing: automatic at the closing time, or "Close now" by a managing role. A closed poll cannot be reopened or edited; a poll with no votes can be deleted.
 - Opening a poll notifies all owners (kind `poll`, title `Poll: {question}`, link `polls`). No reminder.
 - **Download:** the committee downloads the result (question, options with counts, flats voted, flats not voted) as CSV for the AGM file.
 
@@ -56,9 +56,9 @@ Amenity booking waits until a CA has said which ledger its income goes to and wh
 - **Who sees what:**
   - committee (viewer roles): everything;
   - a resident: the society staff list with name, kind, photo and "Police verified" badge; mobile only for staff who work in their own flat; never the ID proof or notes.
-- **Who edits:** the committee edits everything. A resident edits name, kind, mobile and photo of staff linked only to their own flat(s), and can unlink their flat. A resident can upload an ID proof for staff they add; after upload only the committee can see it.
+- **Who edits:** the committee edits everything. A resident edits name, kind, mobile and photo of staff **they added** while that person works only in their own flat(s), and can unlink their flat; linking someone by mobile gives no edit rights. A resident's change of name, mobile or photo clears the police verification. A resident can upload an ID proof for staff they add; after upload only the committee can see it.
 - "Remove" = inactive (kept for history); only the committee removes.
-- Files in a new private bucket `staff-files` at `{society_id}/{staff_id}/photo-{uuid}.jpg` and `{society_id}/{staff_id}/id-{uuid}.{ext}`; 5 MB limit; JPG, PNG, WEBP, PDF.
+- Files in a new private bucket `staff-files` at `{society_id}/{staff_id}/photo-{uuid}.jpg` and `{society_id}/{staff_id}/id-{uuid}.{ext}`; 5 MB limit; JPG, PNG, WEBP, PDF, enforced by the bucket.
 
 ## 4. Constraints
 

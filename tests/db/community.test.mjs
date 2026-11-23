@@ -101,7 +101,8 @@ const view = (user, poll) => val(user, 'SELECT public.poll_view($1)', [poll]);
 test('the committee opens a poll and owners are told', async () => {
   const p = await createPoll(ids.sec);
   const told = (await db.query(`SELECT user_id FROM notifications WHERE ref_id=$1 AND kind='poll'`, [p])).rows.map((r) => r.user_id).sort();
-  assert.deepEqual(told, [ids.ownerA, ids.ownerA2, ids.ownerB, ids.ownerB3].sort());
+  // committee people whose flat is on their committee membership are owners too (spec 3.2)
+  assert.deepEqual(told, [ids.ownerA, ids.ownerA2, ids.ownerB, ids.ownerB3, ids.committee].sort());
   const t = (await db.query(`SELECT title, link FROM notifications WHERE ref_id=$1 LIMIT 1`, [p])).rows[0];
   assert.deepEqual(t, { title: 'Poll: Repair the lift for Rs 4 lakh?', link: 'polls' });
   await fails(createPoll(ids.ownerA), 'Only the committee');
@@ -121,10 +122,13 @@ test('one vote per flat, the last one counts', async () => {
   const p = await createPoll(ids.sec);
   await vote(ids.ownerA, p, ids.u101, 0);
   await vote(ids.ownerA2, p, ids.u101, 1);
-  const v = await view(ids.sec, p);
-  assert.deepEqual(v.counts, [0, 1]);
+  let v = await view(ids.sec, p);
+  assert.equal(v.counts, null, 'nobody sees counts while the poll is open, the committee neither');
   assert.equal(v.voted, 1);
-  assert.equal(v.eligible, 4);
+  assert.equal(v.eligible, 5);
+  await q(ids.sec, 'SELECT public.close_poll($1)', [p]);
+  v = await view(ids.sec, p);
+  assert.deepEqual(v.counts, [0, 1]);
 });
 
 test('a tenant and a former owner cannot vote', async () => {
@@ -166,10 +170,19 @@ test('nobody reads another flat\'s choice', async () => {
   assert.equal((await q(ids.sec, 'SELECT * FROM poll_votes')).length, 0);
   assert.equal((await q(ids.ownerB, 'SELECT * FROM poll_votes')).length, 0);
   const flats = await q(ids.committee, 'SELECT * FROM public.poll_flats($1)', [p]);
-  assert.equal(flats.length, 4);
+  assert.equal(flats.length, 5);
   assert.deepEqual(Object.keys(flats[0]).sort(), ['unit_number', 'voted', 'wing']);
   assert.equal(flats.find((f) => f.unit_number === '102').voted, true);
   await fails(q(ids.ownerA, 'SELECT * FROM public.poll_flats($1)', [p]), 'Only the committee can see this');
+});
+
+test('a committee member votes for the flat on their membership', async () => {
+  const p = await createPoll(ids.sec);
+  await vote(ids.committee, p, ids.u105, 1);
+  const v = await view(ids.committee, p);
+  assert.deepEqual(v.my_flats.map((f) => [f.unit_number, f.choice]), [['105', 1]]);
+  // the secretary has no flat, so nothing to vote for
+  assert.deepEqual((await view(ids.sec, p)).my_flats, []);
 });
 
 test('a closed poll takes no votes, a voted poll cannot be deleted', async () => {
@@ -293,4 +306,62 @@ test('staff field checks', async () => {
   await fails(saveStaff(ids.ownerA, { name: ' ', units: [ids.u101] }), 'Enter the name (1 to 80 characters)');
   await fails(saveStaff(ids.ownerA, { kind: 'gardener', units: [ids.u101] }), 'Choose what they do');
   await fails(saveStaff(ids.ownerA, { mobile: '123', units: [ids.u101] }), 'Enter a valid mobile number');
+});
+
+test('a resident cannot take over staff the committee added', async () => {
+  const ramu = await saveStaff(ids.sec, { name: 'Ramu Sweeper', kind: 'cleaner', mobile: '9833333333', units: [] });
+  await q(ids.sec, 'SELECT public.set_staff_verified($1,$2)', [ramu, '2026-10-01']);
+  // the owner links him to their flat by his mobile...
+  assert.equal(await saveStaff(ids.ownerB, { name: 'Ramu', kind: 'cleaner', mobile: '9833333333', units: [ids.u102] }), ramu);
+  // ...but cannot rename him or swap his mobile, so the committee's verification stays on the right person
+  await fails(saveStaff(ids.ownerB, { id: ramu, name: 'Someone Else', kind: 'driver', mobile: '9844444444', units: [ids.u102] }), 'Only the committee can change this person');
+  const r = await find(ids.ownerB, ramu);
+  assert.equal(r.can_edit, false);
+  assert.equal(r.name, 'Ramu Sweeper');
+});
+
+test("a resident's change of name, mobile or photo clears police verification", async () => {
+  const id = await saveStaff(ids.ownerB, { name: 'Geeta', kind: 'cook', mobile: '9855555555', units: [ids.u102] });
+  await q(ids.sec, 'SELECT public.set_staff_verified($1,$2)', [id, '2026-10-01']);
+  await saveStaff(ids.ownerB, { id, name: 'Geeta', kind: 'maid', mobile: '9855555555', units: [ids.u102] });
+  assert.equal((await find(ids.ownerB, id)).police_verified, true, 'changing only the kind keeps it');
+  await saveStaff(ids.ownerB, { id, name: 'Meena', kind: 'maid', mobile: '9855555555', units: [ids.u102] });
+  assert.equal((await find(ids.ownerB, id)).police_verified, false);
+  await q(ids.sec, 'SELECT public.set_staff_verified($1,$2)', [id, '2026-10-01']);
+  const photo = `${ids.soc}/${id}/photo-9.jpg`;
+  await q(ids.ownerB, `INSERT INTO storage.objects (bucket_id, name) VALUES ('staff-files',$1)`, [photo]);
+  await q(ids.ownerB, 'SELECT public.set_staff_file($1,$2,$3)', [id, 'photo', photo]);
+  assert.equal((await find(ids.ownerB, id)).police_verified, false);
+  // the committee's own edits keep it
+  await q(ids.sec, 'SELECT public.set_staff_verified($1,$2)', [id, '2026-10-01']);
+  await saveStaff(ids.sec, { id, name: 'Meena Devi', kind: 'maid', mobile: '9855555555', units: [ids.u102] });
+  assert.equal((await find(ids.ownerB, id)).police_verified, true);
+});
+
+test('the staff list says what each person may do', async () => {
+  const id = await saveStaff(ids.ownerB, { name: 'Kamla', kind: 'nanny', mobile: '9866666666', units: [ids.u102] });
+  let k = await find(ids.ownerB, id);
+  assert.equal(k.can_edit, true);
+  assert.equal(k.can_upload_id, true);
+  assert.equal(k.has_id_proof, false);
+  const idPath = `${ids.soc}/${id}/id-1.pdf`;
+  await q(ids.ownerB, `INSERT INTO storage.objects (bucket_id, name) VALUES ('staff-files',$1)`, [idPath]);
+  await q(ids.ownerB, 'SELECT public.set_staff_file($1,$2,$3)', [id, 'id', idPath]);
+  k = await find(ids.ownerB, id);
+  assert.equal(k.has_id_proof, true);
+  assert.equal(k.id_proof, null, 'the path itself stays with the committee');
+  // a household that only linked her may not edit or add her ID
+  await saveStaff(ids.tenant, { name: 'Kamla', kind: 'nanny', mobile: '9866666666', units: [ids.u103] });
+  k = await find(ids.tenant, id);
+  assert.equal(k.can_edit, false);
+  assert.equal(k.can_upload_id, false);
+  const c = await find(ids.sec, id);
+  assert.equal(c.can_edit, true);
+  assert.equal(c.can_upload_id, true);
+});
+
+test('staff files are images or PDFs only', async () => {
+  const b = (await db.query(`SELECT allowed_mime_types, file_size_limit FROM storage.buckets WHERE id='staff-files'`)).rows[0];
+  assert.deepEqual(b.allowed_mime_types, ['image/jpeg', 'image/png', 'image/webp', 'application/pdf']);
+  assert.equal(Number(b.file_size_limit), 5242880);
 });
