@@ -20,10 +20,12 @@ import {
   CheckCircle2,
   AlertCircle,
   FolderLock,
+  Vote,
 } from 'lucide-react';
 import { SignOutMenu } from '../../components/SignOutMenu';
 import { FlatStatement } from '../../components/FlatStatement';
 import { PWAInstallButton } from '../../components/PWAInstallButton';
+import { PollsList } from '../../components/PollsList';
 
 const OUTSTANDING_STATUSES: Bill['status'][] = ['issued', 'partially_paid', 'overdue'];
 const UTR_PATTERN = /^\d{12}$/;
@@ -56,7 +58,7 @@ export const ResidentDashboardPage: React.FC = () => {
     : flatMemberships[0]?.unit_id ?? null;
   const [flatNumbers, setFlatNumbers] = useState<Record<string, string>>({});
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'bills' | 'account' | 'notices' | 'complaints' | 'documents' | 'profile'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'bills' | 'account' | 'notices' | 'polls' | 'staff' | 'complaints' | 'documents' | 'profile'>('overview');
   // Tenants see no bills, dues or ledger (spec 10.2): owners pay
   const isOwner = flatMemberships.find(m => m.unit_id === unitId)?.role === 'resident_owner';
   // a flat switched to one they rent: leave the owner-only tabs
@@ -243,7 +245,7 @@ export const ResidentDashboardPage: React.FC = () => {
             <PWAInstallButton />
             <NotificationBell onOpen={(link) => {
               if (link === 'bills' || link === 'payments') setActiveTab('bills');
-              else if (link === 'notices' || link === 'complaints') setActiveTab(link);
+              else if (link === 'notices' || link === 'complaints' || link === 'polls') setActiveTab(link);
             }} />
             <SignOutMenu />
           </div>
@@ -293,7 +295,7 @@ export const ResidentDashboardPage: React.FC = () => {
         )}
 
         {/* Navigation Tabs */}
-        <div className={`grid ${isOwner ? 'grid-cols-3 sm:grid-cols-6' : 'grid-cols-4'} gap-2 text-center text-xs`}>
+        <div className={`grid ${isOwner ? 'grid-cols-4 sm:grid-cols-7' : 'grid-cols-5'} gap-2 text-center text-xs`}>
           <button
             onClick={() => setActiveTab('overview')}
             className={`p-2.5 rounded-xl border transition cursor-pointer ${
@@ -343,6 +345,18 @@ export const ResidentDashboardPage: React.FC = () => {
           >
             <FileText className="w-4 h-4 mx-auto mb-1" />
             <span>Notices</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('polls')}
+            className={`p-2.5 rounded-xl border transition cursor-pointer ${
+              activeTab === 'polls'
+                ? 'bg-sky-600/20 border-sky-500 text-sky-400 font-bold'
+                : 'bg-slate-900 border-slate-800 text-slate-400'
+            }`}
+          >
+            <Vote className="w-4 h-4 mx-auto mb-1" />
+            <span>Polls</span>
           </button>
 
           <button
@@ -515,6 +529,10 @@ export const ResidentDashboardPage: React.FC = () => {
         {/* TAB 5: DOCUMENTS */}
         {activeTab === 'documents' && activeSociety && (
           <DocumentsVault societyId={activeSociety.id} canManage={false} />
+        )}
+
+        {activeTab === 'polls' && activeSociety && (
+          <PollsList societyId={activeSociety.id} isCommittee={false} canManage={false} />
         )}
       </div>
 
