@@ -40,7 +40,7 @@ The society supplies the gate phone; Sahvaas supplies the app (product owner, 20
 
 ## 3. Constraints
 
-- Stack and rules as in the main spec: Next.js 15, React 19, Tailwind v4, Supabase Postgres with RLS, business rules in plpgsql `SECURITY DEFINER` functions, new migration `039_gate_lite.sql`, PGlite DB tests, `bun run db:bundle`.
+- Stack and rules as in the main spec: Next.js 15, React 19, Tailwind v4, Supabase Postgres with RLS, business rules in plpgsql `SECURITY DEFINER` functions, new migration `040_gate_lite.sql`, PGlite DB tests, `bun run db:bundle`.
 - `has_society_membership()` grants read access to about 20 tables to any active `society_memberships` row. Anything added to `society_memberships` inherits that.
 - Email login is email + password; mobile login is a WhatsApp (or SMS) code and is switched on only when `NEXT_PUBLIC_PHONE_LOGIN=1` (WhatsApp approval pending). **Gate accounts log in by mobile code only** (builder's call, section 5.1), so Gate Lite ships only after mobile login is live. A shared email password would stay with every guard who leaves, against goal 5.
 - Push is payload-free and sent by the pg_cron job every few minutes (Phase 3A).
@@ -114,7 +114,7 @@ The society portal gets **Visitors** under Society: all entries, filters for dat
 - Entries are kept for 2 years, then deleted by the same job.
 - Photos live in a new private bucket `gate-photos` at `{society_id}/{yyyy-mm}/{entry_id}.jpg`. The gate account may upload only into its own society's folder; reading a photo goes through signed URLs created by an RPC that checks the same rules as the entry (committee: any; resident: household entries since joining; gate: last 24 hours).
 
-## 6. Data model (migration 039)
+## 6. Data model (migration 040)
 
 - `gate_accounts`: id, society_id, label, mobile (normalized), user_id (null until claimed), is_active, created_by, created_at, claimed_at. A mobile number is a gate account in at most one society at a time.
 - `gate_entries`: id, society_id, unit_id (null = society office), visitor_name, visitor_mobile, purpose (`guest|delivery|cab|service|other`), vehicle_number, photo_path, guard_name, gate_account_id, entered_at, exited_at, photo_removed_at.
