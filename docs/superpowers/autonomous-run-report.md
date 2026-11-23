@@ -1,4 +1,4 @@
-# Autonomous run report (Phases 3–11A)
+# Autonomous run report (Phases 3–11B)
 
 The product owner asked on 2026-11-05: "pura project complete kar do… dont wait for me, u decide the best" and "pure project ko proper test karna, bugs clear karna".
 
@@ -522,12 +522,51 @@ Asked for on 2026-11-24 ("haan, NOC se shuru karo"). Design `docs/superpowers/sp
 
 **Before using it:** ask the society's legal adviser to read the seven letter texts (Society → Requests & NOCs → NOC letters), and record share certificate numbers on the request screen.
 
+## Phase 11B — tenant registration (migration 041)
+
+Asked for on 2026-11-24 ("haan, 11B tenant shuru karo"). Plan `docs/superpowers/plans/2026-11-24-phase-11b-tenancy.md`.
+
+**Built**
+- **Register a tenant** (owner, Requests tab): tenant's name, mobile, email (optional), people living there, agreement dates (up to 60 months), police reference. It goes to the committee as a request with the society's tenant documents: registered leave and licence agreement, police intimation or verification, tenant's photo ID (required); tenant's photograph and the owner's undertaking (optional). The committee can change the list.
+- **On approval:** the tenancy is recorded and the tenant is invited (emailed when there is an email; a "Send the invite on WhatsApp" button on the request).
+- **Tenants** view for the committee (Requests & NOCs → Tenants) and for owners: Active, Ends soon (30 days), Agreement expired, Ended, Renewed; Renew (same tenant) and "Tenant moved out" (the tenant loses access, pending invites are cancelled).
+- **Reminder** to the owners and the committee 30 days before the agreement ends (09:30 every morning).
+- **Non-occupancy charges** (off by default): a % (at most 10%) of a let flat's service charges — charges credited to Maintenance Charges and not ticked "Municipal tax" in Maintenance bills — added as a line on its bill for any period it was let.
+- **A sale** ends the seller's tenancy record, so the buyer is not charged or blocked by it; the tenant keeps access (as decided in Phase 2F) until the buyer registers or removes them.
+
+**Final review fixes** (fresh Opus reviewer; each with a failing test first)
+1. After a sale, the buyer paid non-occupancy charges for the seller's tenant and could not register their own. Now a sale ends the old tenancy record.
+2. Cancelling an early renewal cut off a tenant still living there. Now the current agreement simply continues.
+3. The tenant's invite was only recorded, never sent. Now it is emailed and can be sent on WhatsApp.
+4. An earlier invite with the tenant's email blocked approval with a database error. It is now reused.
+5. An owner's own mobile or email entered as the tenant's could turn the owner into a tenant. It is refused.
+6. A new tenant could read earlier tenants' names and mobiles. Hidden now.
+7. Non-occupancy charges counted sinking fund, repair fund and parking. Now only maintenance (service) charges.
+8. A "renewal" could quietly change the tenant. Renewal is for the same tenant now.
+
+**Rulings**
+1. One active tenancy per flat; a renewal is a new request for the same tenant.
+2. A tenancy counts for non-occupancy charges for any bill period it overlaps (a tenant who left mid-month still made the flat let that month).
+3. The non-occupancy line carries no GST and posts to Maintenance Charges (4000). Ask the CA whether GST applies when maintenance carries GST.
+4. On a sale the tenant keeps access (Phase 2F rule); only the tenancy record ends.
+
+**Deferred minors**
+- The flat's "tenant occupied" mark is not cleared when a tenancy ends.
+- A future end date can be set through the API (the screen sends none).
+- A second renewal request gets the wording "has already ended".
+- The approval message drops the committee's note; owners are not told when the committee ends a tenancy.
+- An agreement that has already ended can be registered and gets a past-dated reminder.
+- Details cannot be corrected after "Ask for changes" (withdraw and register again).
+- The bill preview does not show the non-occupancy line separately.
+
+**Before using it:** if the society charges non-occupancy charges, have the general body pass the %, and ask the CA about GST on that line. Tick "Municipal tax" on any property-tax charge in Maintenance bills.
+
 ## What you need to do next
 
-1. **Apply migrations 039 and 040** (027 to 038 are already applied live):
-   - `bun run db:migrate` (dry run: the list should say 039 and 040);
+1. **Apply migrations 039, 040 and 041** (027 to 038 are already applied live):
+   - `bun run db:migrate` (dry run: the list should say 039, 040 and 041);
    - then `bun run db:migrate --apply`.
-2. **Push** when you are happy. GitHub has everything up to Phase 8 (pushed on 2026-11-05); Phase 9, Phase 10, Phase 11A and the Gate Lite and Phase 11 plans are on local `main` only.
+2. **Push** when you are happy. GitHub has everything up to Phase 8 (pushed on 2026-11-05); Phase 9, Phase 10, Phase 11A, Phase 11B and the Gate Lite and Phase 11 plans are on local `main` only.
 3. **Environment and Supabase settings:**
    - **3A push:** `SUPABASE_SERVICE_ROLE_KEY`, the VAPID keys, `CRON_SECRET`, and the two database settings.
    - **3C mobile login, when WhatsApp is approved:** the Phone provider with "Confirm phone" on, the Send SMS hook, `SEND_SMS_HOOK_SECRET`, the WhatsApp/MSG91 keys, the SMS rate limit, then `NEXT_PUBLIC_PHONE_LOGIN=1`.
