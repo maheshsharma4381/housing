@@ -168,7 +168,10 @@ test('a full refund', async () => {
   await payAll(ids.owner, ids.u101);
   const j = await refund(ids.sec, ids.shiftIn);
   assert.ok(j);
-  assert.deepEqual(await journalFor('deposit.refunded', ids.shiftIn), [['1000', -5000], ['2400', 5000]]);
+  assert.deepEqual(await journalFor('deposit.refunded', ids.shiftIn), [['1000', -5000], ['1200', 0], ['2400', 5000]]);
+  // the flat's account shows the deposit going back and the refund paid (net nil)
+  const lines = (await db.query(`SELECT narration, amount::numeric a FROM party_entries($1) WHERE kind='flat' AND party_key=$2 AND ledger_entry_id IN (SELECT l.id FROM ledger_entries l WHERE l.journal_entry_id=$3) ORDER BY amount`, [ids.soc, ids.u101, j])).rows;
+  assert.deepEqual(lines.map((l) => [l.narration, Number(l.a)]), [['Shifting deposit returned', -5000], ['Deposit refund paid', 5000]]);
   const s = (await db.query('SELECT * FROM shiftings WHERE id=$1', [ids.shiftIn])).rows[0];
   assert.equal(s.deposit_status, 'refunded');
   assert.equal(Number(s.kept_amount), 0);
@@ -195,7 +198,7 @@ test('a refund with part of the deposit kept', async () => {
   await fails(refund(ids.owner2, s), 'Only the committee can refund deposits');
   await fails(refund(ids.committee, s), 'Only the committee can refund deposits');
   await refund(ids.sec, s, 2000, 'Lift wall damaged');
-  assert.deepEqual(await journalFor('deposit.refunded', s), [['1000', -8000], ['2400', 10000], ['4500', -2000]]);
+  assert.deepEqual(await journalFor('deposit.refunded', s), [['1000', -8000], ['1200', 0], ['2400', 10000], ['4500', -2000]]);
   const row = (await db.query('SELECT kept_amount::numeric k, kept_reason FROM shiftings WHERE id=$1', [s])).rows[0];
   assert.deepEqual([Number(row.k), row.kept_reason], [2000, 'Lift wall damaged']);
 });
@@ -206,8 +209,45 @@ test('keeping the whole deposit', async () => {
   const s = (await shiftingOf(r)).id;
   await payAll(ids.owner2, ids.u102);
   await refund(ids.sec, s, 10000, 'Flooring broken');
-  assert.deepEqual(await journalFor('deposit.refunded', s), [['2400', 10000], ['4500', -10000]]);
+  assert.deepEqual(await journalFor('deposit.refunded', s), [['1200', 0], ['2400', 10000], ['4500', -10000]]);
   // a shifting without a deposit has nothing to refund
   const none = (await db.query(`SELECT id FROM shiftings WHERE deposit_status='none' LIMIT 1`)).rows[0].id;
   await fails(refund(ids.sec, none), 'There is no deposit to refund');
+});
+
+// ---------------------------------------------------------------- review fixes
+const newHeldDeposit = async () => {
+  const r = await book(ids.owner2, ids.u102, { date: isoDays(20) });
+  await decide(ids.sec, r);
+  return shiftingOf(r);
+};
+
+test('a refund paid in cash on a chosen day, with a reference', async () => {
+  const s = await newHeldDeposit();
+  await payAll(ids.owner2, ids.u102);
+  const cash = (await db.query(`SELECT id FROM accounts WHERE society_id=$1 AND code='1100'`, [ids.soc])).rows[0].id;
+  const income = (await db.query(`SELECT id FROM accounts WHERE society_id=$1 AND code='4000'`, [ids.soc])).rows[0].id;
+  const r = (args) => val(ids.sec, 'SELECT public.refund_shifting_deposit($1,$2,$3,$4,$5,$6)', args);
+  await fails(r([s.id, 0, null, isoDays(0), income, null]), 'Choose a bank account or cash');
+  await fails(r([s.id, 0, null, isoDays(3), cash, null]), 'The refund date cannot be in the future');
+  const j = await r([s.id, 0, null, isoDays(-1), cash, 'Receipt 42']);
+  assert.deepEqual(await journalFor('deposit.refunded', s.id), [['1100', -10000], ['1200', 0], ['2400', 10000]]);
+  const je = (await db.query('SELECT entry_date::text d, narration FROM journal_entries WHERE id=$1', [j])).rows[0];
+  assert.equal(je.d, isoDays(-1));
+  assert.match(je.narration, /Receipt 42/);
+});
+
+test('no late fee on a shifting bill, due on the shifting day', async () => {
+  const s = await newHeldDeposit();
+  const b = (await db.query('SELECT due_date::text d, late_fee_applied_at FROM bills WHERE id=$1', [s.bill_id])).rows[0];
+  assert.ok(b.d >= isoDays(20), `due ${b.d}`);
+  await db.query(`UPDATE society_settings SET late_fee_type='percentage', late_fee_amount=10 WHERE society_id=$1`, [ids.soc]);
+  await db.query(`SELECT public.run_late_fees($1, $2)`, [ids.soc, isoDays(60)]);
+  assert.equal(Number((await db.query('SELECT interest_or_late_fee::numeric f FROM bills WHERE id=$1', [s.bill_id])).rows[0].f), 0);
+  ids.lateTest = s;
+});
+
+test('cancelling an unpaid shifting bill releases the deposit', async () => {
+  await q(ids.sec, 'SELECT public.cancel_bill($1,$2)', [ids.lateTest.bill_id, 'Move called off']);
+  assert.equal((await db.query('SELECT deposit_status FROM shiftings WHERE id=$1', [ids.lateTest.id])).rows[0].deposit_status, 'cancelled');
 });

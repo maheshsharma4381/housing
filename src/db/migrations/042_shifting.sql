@@ -61,7 +61,7 @@ CREATE OR REPLACE FUNCTION public.charge_flat(p_unit_id UUID, p_lines JSONB, p_d
 RETURNS UUID AS $$
 DECLARE
     v_society UUID;
-    v_today DATE := (now() AT TIME ZONE 'Asia/Kolkata')::date;
+    v_today DATE := current_date;   -- the same day generate_bills, receipts and late fees use
     v_total NUMERIC;
     v_cycle UUID;
     v_prefix TEXT;
@@ -90,10 +90,11 @@ BEGIN
     WHERE m.society_id = v_society AND m.unit_id = p_unit_id AND m.is_active AND m.role = 'resident_owner'
     ORDER BY m.created_at LIMIT 1;
 
+    -- late_fee_applied_at is set so the late-fee run never charges interest on these (a deposit comes back)
     INSERT INTO bills (society_id, cycle_id, unit_id, user_id, bill_number, bill_date, due_date,
-                       subtotal_amount, tax_amount, total_amount, amount_paid, balance_due, status)
+                       subtotal_amount, tax_amount, total_amount, amount_paid, balance_due, status, late_fee_applied_at)
     VALUES (v_society, v_cycle, p_unit_id, v_owner, v_prefix || lpad(v_seq::text, 4, '0'), v_today, p_due_date,
-            v_total, 0, v_total, 0, v_total, 'issued')
+            v_total, 0, v_total, 0, v_total, 'issued', now())
     RETURNING id INTO v_bill;
     FOR v_line IN SELECT * FROM jsonb_array_elements(p_lines) LOOP
         CONTINUE WHEN round((v_line ->> 'amount')::numeric, 2) <= 0;
@@ -167,7 +168,7 @@ CREATE TABLE IF NOT EXISTS shiftings (
     charge_amount NUMERIC(10,2) NOT NULL DEFAULT 0,
     deposit_amount NUMERIC(10,2) NOT NULL DEFAULT 0,
     bill_id UUID REFERENCES bills(id) ON DELETE SET NULL,
-    deposit_status VARCHAR(10) NOT NULL DEFAULT 'none' CHECK (deposit_status IN ('none', 'held', 'refunded')),
+    deposit_status VARCHAR(10) NOT NULL DEFAULT 'none' CHECK (deposit_status IN ('none', 'held', 'refunded', 'cancelled')),
     kept_amount NUMERIC(10,2),
     kept_reason TEXT,
     refunded_on DATE,
@@ -339,7 +340,7 @@ BEGIN
             jsonb_build_object('rule_key', 'shifting_charge', 'amount', v_charge,
                 'description', 'Shifting charges (' || CASE v_r.details ->> 'direction' WHEN 'in' THEN 'moving in' ELSE 'moving out' END || ')'),
             jsonb_build_object('rule_key', 'shifting_deposit', 'amount', v_deposit, 'description', 'Shifting deposit (refundable)')),
-            v_on + 7);
+            greatest(v_on + 7, (v_r.details ->> 'date')::date));
         INSERT INTO shiftings (society_id, unit_id, request_id, direction, shift_date, shift_time, vehicle,
                                charge_amount, deposit_amount, bill_id, deposit_status)
         VALUES (v_r.society_id, v_r.unit_id, p_request_id, v_r.details ->> 'direction', (v_r.details ->> 'date')::date,
@@ -384,7 +385,10 @@ GRANT EXECUTE ON FUNCTION public.decide_request(UUID, TEXT, TEXT) TO authenticat
 --    Debit Deposits received with the whole deposit; credit the bank with what goes back and
 --    Damage recovery with what the committee keeps (with its reason).
 -- ============================================================================
-CREATE OR REPLACE FUNCTION public.refund_shifting_deposit(p_shifting_id UUID, p_kept NUMERIC, p_reason TEXT)
+CREATE OR REPLACE FUNCTION public.refund_shifting_deposit(
+    p_shifting_id UUID, p_kept NUMERIC, p_reason TEXT,
+    p_paid_on DATE DEFAULT NULL, p_ledger_id UUID DEFAULT NULL, p_reference TEXT DEFAULT NULL
+)
 RETURNS UUID AS $$
 DECLARE
     v_s shiftings%ROWTYPE;
@@ -392,7 +396,10 @@ DECLARE
     v_kept NUMERIC := round(coalesce(p_kept, 0), 2);
     v_reason TEXT := nullif(trim(regexp_replace(coalesce(p_reason, ''), '\s+', ' ', 'g')), '');
     v_today DATE := (now() AT TIME ZONE 'Asia/Kolkata')::date;
+    v_on DATE := coalesce(p_paid_on, (now() AT TIME ZONE 'Asia/Kolkata')::date);
+    v_ref TEXT := nullif(trim(regexp_replace(coalesce(p_reference, ''), '\s+', ' ', 'g')), '');
     v_bank TEXT;
+    v_party TEXT;
     v_journal UUID;
     v_req flat_requests%ROWTYPE;
 BEGIN
@@ -400,7 +407,7 @@ BEGIN
     IF NOT FOUND OR NOT is_society_admin(v_s.society_id) THEN
         RAISE EXCEPTION 'Only the committee can refund deposits';
     END IF;
-    IF v_s.deposit_status = 'none' THEN
+    IF v_s.deposit_status IN ('none', 'cancelled') THEN
         RAISE EXCEPTION 'There is no deposit to refund';
     END IF;
     IF v_s.deposit_status = 'refunded' THEN
@@ -417,16 +424,39 @@ BEGIN
         RAISE EXCEPTION 'Write why part of the deposit is kept';
     END IF;
 
+    IF v_on > v_today THEN
+        RAISE EXCEPTION 'The refund date cannot be in the future';
+    END IF;
+    IF length(coalesce(v_ref, '')) > 60 THEN
+        RAISE EXCEPTION 'The reference can be up to 60 characters';
+    END IF;
+    -- paid from the bank account or cash the committee chose (the default payment bank otherwise)
+    IF p_ledger_id IS NULL THEN
+        SELECT code INTO v_bank FROM accounts WHERE id = default_bank_ledger(v_s.society_id, 'payment');
+    ELSIF is_bank_ledger(v_s.society_id, p_ledger_id)
+          OR EXISTS (SELECT 1 FROM accounts WHERE id = p_ledger_id AND society_id = v_s.society_id AND code = '1100' AND is_active) THEN
+        SELECT code INTO v_bank FROM accounts WHERE id = p_ledger_id;
+    ELSE
+        RAISE EXCEPTION 'Choose a bank account or cash';
+    END IF;
+
     PERFORM ensure_flat_change_ledgers(v_s.society_id);
-    SELECT code INTO v_bank FROM accounts WHERE id = default_bank_ledger(v_s.society_id, 'payment');
-    v_journal := post_journal(v_s.society_id, v_today, 'deposit.refunded', v_s.id,
-        'Shifting deposit of flat ' || flat_label(v_s.unit_id) || CASE WHEN v_kept > 0 THEN ' refunded, ' || inr_text(v_kept) || ' kept: ' || v_reason ELSE ' refunded' END,
+    -- through the flat's account, so My account and the CA's party ledger show the deposit going back
+    -- and the refund paid (and anything kept, with its reason); the flat's balance is unchanged
+    v_party := v_s.unit_id::text;
+    v_journal := post_journal(v_s.society_id, v_on, 'deposit.refunded', v_s.id,
+        'Shifting deposit of flat ' || flat_label(v_s.unit_id) || CASE WHEN v_kept > 0 THEN ' refunded, ' || inr_text(v_kept) || ' kept: ' || v_reason ELSE ' refunded' END
+            || CASE WHEN v_ref IS NOT NULL THEN ' (' || v_ref || ')' ELSE '' END,
         jsonb_build_array(
             jsonb_build_object('code', '2400', 'amount', v_s.deposit_amount),
+            jsonb_build_object('code', '1200', 'amount', -v_s.deposit_amount, 'party', v_party, 'narration', 'Shifting deposit returned'),
+            jsonb_build_object('code', '1200', 'amount', v_s.deposit_amount - v_kept, 'party', v_party,
+                               'narration', 'Deposit refund paid' || CASE WHEN v_ref IS NOT NULL THEN ' (' || v_ref || ')' ELSE '' END),
             jsonb_build_object('code', v_bank, 'amount', -(v_s.deposit_amount - v_kept)),
+            jsonb_build_object('code', '1200', 'amount', v_kept, 'party', v_party, 'narration', 'Deposit kept: ' || coalesce(v_reason, '')),
             jsonb_build_object('code', '4500', 'amount', -v_kept)));
     UPDATE shiftings SET deposit_status = 'refunded', kept_amount = v_kept, kept_reason = v_reason,
-        refunded_on = v_today, refund_journal_id = v_journal
+        refunded_on = v_on, refund_journal_id = v_journal
     WHERE id = p_shifting_id;
 
     SELECT * INTO v_req FROM flat_requests WHERE id = v_s.request_id;
@@ -445,4 +475,24 @@ BEGIN
     RETURN v_journal;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
-GRANT EXECUTE ON FUNCTION public.refund_shifting_deposit(UUID, NUMERIC, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.refund_shifting_deposit(UUID, NUMERIC, TEXT, DATE, UUID, TEXT) TO authenticated;
+
+-- A cancelled shifting bill (the move was called off) releases the deposit: nothing is held any more
+CREATE OR REPLACE FUNCTION public.trg_bill_cancel_releases_deposit()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_s shiftings%ROWTYPE;
+BEGIN
+    FOR v_s IN UPDATE shiftings SET deposit_status = 'cancelled' WHERE bill_id = NEW.id AND deposit_status = 'held' RETURNING * LOOP
+        IF v_s.request_id IS NOT NULL THEN
+            INSERT INTO request_events (request_id, actor, action) VALUES (v_s.request_id, auth.uid(), 'bill_cancelled');
+        END IF;
+    END LOOP;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+REVOKE ALL ON FUNCTION public.trg_bill_cancel_releases_deposit() FROM PUBLIC, anon, authenticated;
+DROP TRIGGER IF EXISTS trg_bill_cancel_releases_deposit ON bills;
+CREATE TRIGGER trg_bill_cancel_releases_deposit AFTER UPDATE OF status ON bills
+    FOR EACH ROW WHEN (NEW.status = 'cancelled' AND OLD.status IS DISTINCT FROM 'cancelled')
+    EXECUTE FUNCTION public.trg_bill_cancel_releases_deposit();

@@ -147,7 +147,7 @@ export const FlatRequests: React.FC<{ societyId: string; canManage: boolean }> =
     <div className="space-y-4 text-xs">
       <div>
         <h2 className="text-lg font-bold text-white">Requests &amp; NOCs</h2>
-        <p className="text-slate-400">NOC requests and tenant registrations, with their documents. Approved NOCs get a number and go in the register.</p>
+        <p className="text-slate-400">NOC requests, tenant registrations and shifting bookings, with their documents. Approved NOCs get a number and go in the register.</p>
       </div>
       <div className="flex flex-wrap gap-2">{tab('inbox', 'Requests')}{tab('tenants', 'Tenants')}{tab('shifting', 'Shifting')}{tab('register', 'NOC register')}{canManage && tab('letters', 'NOC letters')}</div>
       {loading && <Loader2 className="w-4 h-4 animate-spin text-slate-500" />}

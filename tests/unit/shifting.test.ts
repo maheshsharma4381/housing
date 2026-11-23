@@ -22,5 +22,5 @@ test('the refund split', () => {
   assert.equal(refundSplit(10000, 10001).error, 'The amount kept can be at most the deposit');
   assert.equal(refundSplit(10000, -1).error, 'The amount kept can be at most the deposit');
   assert.deepEqual(DIRECTION_LABELS, { in: 'Moving in', out: 'Moving out' });
-  assert.deepEqual(DEPOSIT_LABELS, { none: 'No deposit', held: 'Deposit held', refunded: 'Deposit refunded' });
+  assert.deepEqual(DEPOSIT_LABELS, { none: 'No deposit', held: 'Deposit held', refunded: 'Deposit refunded', cancelled: 'Bill cancelled' });
 });

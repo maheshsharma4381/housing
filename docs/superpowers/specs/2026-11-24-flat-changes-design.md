@@ -94,10 +94,10 @@ Builder's call on the owner's behalf ("u decide"); can be overruled.
 - **Non-occupancy charges:** a society setting, as a % of service charges (charges credited to Maintenance Charges and not marked municipal tax), at most 10%. While a flat has an approved, unexpired tenancy, `generate_bills` adds a "Non-occupancy charges" line to the owner's maintenance bill. Off by default.
 
 ### 5.4 Shifting (11C)
-- **Request:** move-in or move-out, date and time slot (the society sets allowed hours; default 8 am to 8 pm, every day), vehicle details; the society can require a shifting request before a tenancy or transfer is approved.
+- **Request:** move-in or move-out, date and time slot (the society sets allowed hours; default 8 am to 8 pm, every day), vehicle details; the society can require a shifting request before a tenancy or transfer is approved (deferred: not in 11C; to be added with 11D).
 - **Charges (society settings, all ₹0 by default, separate for move-in and move-out):** a refundable shifting deposit and a non-refundable shifting charge. The setting screen says "Charge only what your bye-laws or a general body resolution allow."
 - **One-off flat charge:** a new RPC bills a single flat for one bill type outside the monthly run (also used for NOC and transfer fees). Bill types: "Shifting charges" (income ledger) and "Shifting deposit" (a liability ledger "Deposits received" that the CA can rename or move).
-- **Refund:** after the move, the committee records "Refund deposit": full, or partial with a deduction amount and reason. The refund is a payment from the bank ledger against the liability; a deduction moves from the liability to an income ledger "Damage recovery". The flat's account shows both.
+- **Refund:** after the move, the committee records "Refund deposit": full, or partial with a deduction amount and reason, with the date it was paid, the bank account or cash it was paid from, and a cheque/UTR reference. It goes through the flat's account (deposit returned, refund paid, amount kept) so My account shows it. Shifting bills never get late fees and fall due no earlier than the shifting day; cancelling an unpaid shifting bill releases the deposit. The refund is a payment from the bank ledger against the liability; a deduction moves from the liability to an income ledger "Damage recovery". The flat's account shows both.
 - **Gate (when Gate Lite exists):** approved shifting for today is shown to the guard. Not built here.
 
 ### 5.5 Sale and transfer (11D)

@@ -1,6 +1,6 @@
 // Shifting (Phase 11C)
 export const DIRECTION_LABELS: Record<string, string> = { in: 'Moving in', out: 'Moving out' };
-export const DEPOSIT_LABELS: Record<string, string> = { none: 'No deposit', held: 'Deposit held', refunded: 'Deposit refunded' };
+export const DEPOSIT_LABELS: Record<string, string> = { none: 'No deposit', held: 'Deposit held', refunded: 'Deposit refunded', cancelled: 'Bill cancelled' };
 export const SHIFTING_WARNING = 'Charge only what your bye-laws or a general body resolution allow.';
 
 const addDays = (iso: string, n: number) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };

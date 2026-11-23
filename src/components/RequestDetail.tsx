@@ -38,7 +38,8 @@ export const RequestDetail: React.FC<{
   const [letter, setLetter] = useState<Letter | null>(null);
   const [tenancy, setTenancy] = useState<{ invite_id: string | null; tenant_name: string; tenant_mobile: string; tenant_email: string | null } | null>(null);
   const [societyName, setSocietyName] = useState('');
-  const [shifting, setShifting] = useState<{ bill_id: string | null; deposit_amount: number; deposit_status: string; kept_amount: number | null; kept_reason: string | null } | null>(null);
+  const [canOpenBill, setCanOpenBill] = useState(false);
+  const [shifting, setShifting] = useState<{ bill_id: string | null; charge_amount: number; deposit_amount: number; deposit_status: string; kept_amount: number | null; kept_reason: string | null } | null>(null);
   const [preview, setPreview] = useState<{ body: string; warnings: string[] } | null>(null);
   const [shareNo, setShareNo] = useState<string>('');
   const [note, setNote] = useState('');
@@ -58,8 +59,14 @@ export const RequestDetail: React.FC<{
     setLetter((l as Letter) ?? null);
     setShareNo((u as { share_certificate_no: string | null } | null)?.share_certificate_no ?? '');
     if (request.kind === 'shifting') {
-      const { data: sh } = await supabase.from('shiftings').select('bill_id, deposit_amount, deposit_status, kept_amount, kept_reason').eq('request_id', request.id).maybeSingle();
-      setShifting((sh as typeof shifting) ?? null);
+      const { data: sh } = await supabase.from('shiftings').select('bill_id, charge_amount, deposit_amount, deposit_status, kept_amount, kept_reason').eq('request_id', request.id).maybeSingle();
+      const row = (sh as typeof shifting) ?? null;
+      setShifting(row);
+      // the bill belongs to the flat's owner: a tenant who booked sees the amounts, not a link they cannot open
+      if (row?.bill_id) {
+        const { data: b } = await supabase.from('bills').select('id').eq('id', row.bill_id).maybeSingle();
+        setCanOpenBill(Boolean(b));
+      }
     }
     if (request.kind === 'tenancy') {
       const [{ data: t }, { data: s }] = await Promise.all([
@@ -109,7 +116,10 @@ export const RequestDetail: React.FC<{
               <div>{request.details.direction === 'out' ? 'Moving out' : 'Moving in'} on {request.details.date} at {request.details.time}{request.details.vehicle ? ` · ${request.details.vehicle}` : ''}</div>
               {shifting && (
                 <div className="text-slate-400">
-                  {shifting.bill_id ? <Link href={`/bill/${shifting.bill_id}`} className="text-sky-300">Shifting bill</Link> : 'No charges'}
+                  {Number(shifting.charge_amount) > 0 && `Charges ${formatINR(Number(shifting.charge_amount))}`}
+                  {!shifting.bill_id ? 'No charges' : canOpenBill
+                    ? <> · <Link href={`/bill/${shifting.bill_id}`} className="text-sky-300">Shifting bill</Link></>
+                    : ' · billed to the flat owner\'s account'}
                   {Number(shifting.deposit_amount) > 0 && ` · deposit ${formatINR(Number(shifting.deposit_amount))}: ${DEPOSIT_LABELS[shifting.deposit_status]}`}
                   {shifting.deposit_status === 'refunded' && Number(shifting.kept_amount) > 0 && ` (${formatINR(Number(shifting.kept_amount))} kept: ${shifting.kept_reason})`}
                 </div>
