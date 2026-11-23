@@ -76,7 +76,8 @@ export const BillingTab: React.FC<BillingTabProps> = ({ societyId, bills, totals
   const loadRules = useCallback(async () => {
     if (!supabase) return;
     const [rRes, sRes, cRes] = await Promise.all([
-      supabase.from('billing_rules').select('*').eq('society_id', societyId).order('created_at'),
+      // 042: system rules only carry the ledger of one-off charges (shifting); they are not maintenance charges
+      supabase.from('billing_rules').select('*').eq('society_id', societyId).eq('is_system', false).order('created_at'),
       supabase.from('society_settings').select('due_day_of_month').eq('society_id', societyId).maybeSingle(),
       supabase.rpc('chart_of_accounts', { p_society_id: societyId }),
     ]);

@@ -8,6 +8,7 @@ import { EmptyState } from './EmptyState';
 import { RequestDetail, type RequestRow } from './RequestDetail';
 import { useFlatLabels } from './FlatRequests';
 import { TenancyForm } from './TenancyForm';
+import { ShiftingForm } from './ShiftingForm';
 import { Tenancies, type TenancyRow } from './Tenancies';
 import type { ChecklistItem } from '../lib/requests';
 
@@ -20,6 +21,7 @@ export const MyRequests: React.FC<{ societyId: string; userId: string; flats: My
   const [form, setForm] = useState<{ unit: string; type: string; purpose: string; addressee: string } | null>(null);
   const [tenantFor, setTenantFor] = useState<{ unit: string; renews: TenancyRow | null } | null>(null);
   const [refresh, setRefresh] = useState(0);
+  const [shiftFor, setShiftFor] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -59,7 +61,7 @@ export const MyRequests: React.FC<{ societyId: string; userId: string; flats: My
   };
 
   const inputClass = 'w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-sky-500';
-  const typeName = (r: RequestRow) => r.kind === 'tenancy' ? 'Tenant registration' : (types.find(t => t.id === r.noc_type_id)?.name ?? 'NOC request');
+  const typeName = (r: RequestRow) => r.kind === 'tenancy' ? 'Tenant registration' : r.kind === 'shifting' ? `Shifting: ${r.details.direction === 'out' ? 'moving out' : 'moving in'}` : (types.find(t => t.id === r.noc_type_id)?.name ?? 'NOC request');
   // flats this person owns (a tenant cannot register a tenant)
   const ownedUnits = unitIds.filter(u => !isTenantOf(u));
 
@@ -75,6 +77,10 @@ export const MyRequests: React.FC<{ societyId: string; userId: string; flats: My
             <button onClick={() => { const unit = unitIds[0]; setForm({ unit, type: allowed(unit)[0]?.id ?? '', purpose: '', addressee: '' }); setDone(null); }}
               className="px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold flex items-center gap-1.5 cursor-pointer"><Plus className="w-4 h-4" /> New NOC request</button>
           )}
+          {!form && !tenantFor && !shiftFor && unitIds.length > 0 && (
+            <button onClick={() => { setShiftFor(unitIds[0]); setDone(null); }}
+              className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold flex items-center gap-1.5 cursor-pointer"><Plus className="w-4 h-4" /> Book shifting</button>
+          )}
           {!form && !tenantFor && ownedUnits.length > 0 && (
             <button onClick={() => { setTenantFor({ unit: ownedUnits[0], renews: null }); setDone(null); }}
               className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold flex items-center gap-1.5 cursor-pointer"><Plus className="w-4 h-4" /> Register a tenant</button>
@@ -82,6 +88,18 @@ export const MyRequests: React.FC<{ societyId: string; userId: string; flats: My
         </div>
       </div>
       <Banner tone="success">{done}</Banner>
+
+      {shiftFor && (
+        <>
+          {unitIds.length > 1 && (
+            <select value={shiftFor} onChange={e => setShiftFor(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white">
+              {unitIds.map(u => <option key={u} value={u}>Flat {labels[u] ?? ''}</option>)}
+            </select>
+          )}
+          <ShiftingForm key={shiftFor} societyId={societyId} unitId={shiftFor} flatLabel={labels[shiftFor] ?? ''} onCancel={() => setShiftFor(null)}
+            onDone={() => { setShiftFor(null); setDone('Shifting booked. You will be told when the committee approves it.'); void load(); }} />
+        </>
+      )}
 
       {tenantFor && (
         <>

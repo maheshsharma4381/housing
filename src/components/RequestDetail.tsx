@@ -9,10 +9,13 @@ import { openNocLetter, openRequestFile, uploadRequestFile } from '../lib/reques
 import { whatsappLink, inviteText } from '../lib/messages';
 import { notify } from '../lib/notify';
 import { formatMobile } from '../lib/mobile';
+import { formatINR } from '../lib/inr';
+import { DEPOSIT_LABELS } from '../lib/shifting';
+import { Link } from '../router/RouterContext';
 
 export interface RequestRow {
   id: string; society_id: string; unit_id: string; kind: string; status: string; applicant_id: string | null;
-  details: { purpose?: string; addressee?: string; tenant_name?: string; tenant_mobile?: string; tenant_email?: string | null; occupants?: number;
+  details: { purpose?: string; addressee?: string; direction?: string; date?: string; time?: string; vehicle?: string; tenant_name?: string; tenant_mobile?: string; tenant_email?: string | null; occupants?: number;
     start_date?: string; end_date?: string; police_ref?: string | null; renews_id?: string | null }; checklist: ChecklistItem[]; committee_note: string | null;
   submitted_at: string; noc_type_id: string | null;
 }
@@ -22,7 +25,7 @@ interface Letter { id: string; number: string; issued_on: string; title: string;
 
 const ACTIONS: Record<string, string> = {
   submitted: 'Request sent', document_added: 'Document added', document_removed: 'Document removed', resubmitted: 'Sent again',
-  changes_asked: 'Committee asked for changes', approved: 'Approved', rejected: 'Declined', withdrawn: 'Withdrawn', tenancy_ended: 'Tenant moved out',
+  changes_asked: 'Committee asked for changes', approved: 'Approved', rejected: 'Declined', withdrawn: 'Withdrawn', tenancy_ended: 'Tenant moved out', deposit_refunded: 'Deposit refunded', renewal_cancelled: 'Renewal cancelled',
 };
 const when = (iso: string) => new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
@@ -35,6 +38,7 @@ export const RequestDetail: React.FC<{
   const [letter, setLetter] = useState<Letter | null>(null);
   const [tenancy, setTenancy] = useState<{ invite_id: string | null; tenant_name: string; tenant_mobile: string; tenant_email: string | null } | null>(null);
   const [societyName, setSocietyName] = useState('');
+  const [shifting, setShifting] = useState<{ bill_id: string | null; deposit_amount: number; deposit_status: string; kept_amount: number | null; kept_reason: string | null } | null>(null);
   const [preview, setPreview] = useState<{ body: string; warnings: string[] } | null>(null);
   const [shareNo, setShareNo] = useState<string>('');
   const [note, setNote] = useState('');
@@ -53,6 +57,10 @@ export const RequestDetail: React.FC<{
     setEvents((e as Event[]) ?? []);
     setLetter((l as Letter) ?? null);
     setShareNo((u as { share_certificate_no: string | null } | null)?.share_certificate_no ?? '');
+    if (request.kind === 'shifting') {
+      const { data: sh } = await supabase.from('shiftings').select('bill_id, deposit_amount, deposit_status, kept_amount, kept_reason').eq('request_id', request.id).maybeSingle();
+      setShifting((sh as typeof shifting) ?? null);
+    }
     if (request.kind === 'tenancy') {
       const [{ data: t }, { data: s }] = await Promise.all([
         supabase.from('tenancies').select('invite_id, tenant_name, tenant_mobile, tenant_email').eq('request_id', request.id).maybeSingle(),
@@ -96,6 +104,18 @@ export const RequestDetail: React.FC<{
           <div className="text-[11px] text-slate-400">Flat {flatLabel}{applicantName ? ` · ${applicantName}` : ''}</div>
           <h3 className="text-sm font-bold text-white">{title}</h3>
           {request.details.purpose && <div className="text-slate-300">Purpose: {request.details.purpose}</div>}
+          {request.kind === 'shifting' && (
+            <div className="text-slate-300 space-y-0.5 mt-1">
+              <div>{request.details.direction === 'out' ? 'Moving out' : 'Moving in'} on {request.details.date} at {request.details.time}{request.details.vehicle ? ` · ${request.details.vehicle}` : ''}</div>
+              {shifting && (
+                <div className="text-slate-400">
+                  {shifting.bill_id ? <Link href={`/bill/${shifting.bill_id}`} className="text-sky-300">Shifting bill</Link> : 'No charges'}
+                  {Number(shifting.deposit_amount) > 0 && ` · deposit ${formatINR(Number(shifting.deposit_amount))}: ${DEPOSIT_LABELS[shifting.deposit_status]}`}
+                  {shifting.deposit_status === 'refunded' && Number(shifting.kept_amount) > 0 && ` (${formatINR(Number(shifting.kept_amount))} kept: ${shifting.kept_reason})`}
+                </div>
+              )}
+            </div>
+          )}
           {request.kind === 'tenancy' && (
             <div className="text-slate-300 space-y-0.5 mt-1">
               <div>Tenant: {request.details.tenant_name} · {formatMobile(request.details.tenant_mobile ?? '')}{request.details.tenant_email ? ` · ${request.details.tenant_email}` : ''}</div>

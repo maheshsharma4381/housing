@@ -11,6 +11,8 @@ import { REQUEST_STATUS_LABELS, pendingDays, pendingTone, type ChecklistItem } f
 import { openNocLetter } from '../lib/request-files';
 import { Tenancies } from './Tenancies';
 import { TenancySettings } from './TenancySettings';
+import { Shiftings } from './Shiftings';
+import { ShiftingSettings } from './ShiftingSettings';
 
 interface NocType { id: string; code: string; name: string; title: string; body: string; signatory: string; checklist: ChecklistItem[]; tenant_can_ask: boolean; is_active: boolean }
 interface LetterRow { id: string; request_id: string; number: string; issued_on: string; type_name: string; title: string; body: string; signatory: string; issued_to: string | null; flat_label: string | null }
@@ -102,7 +104,7 @@ const NocTemplates: React.FC<{ societyId: string; types: NocType[]; onSaved: () 
 };
 
 export const FlatRequests: React.FC<{ societyId: string; canManage: boolean }> = ({ societyId, canManage }) => {
-  const [view, setView] = useState<'inbox' | 'tenants' | 'register' | 'letters'>('inbox');
+  const [view, setView] = useState<'inbox' | 'tenants' | 'shifting' | 'register' | 'letters'>('inbox');
   const [pastTenants, setPastTenants] = useState(false);
   const [requests, setRequests] = useState<RequestRow[]>([]);
   const [types, setTypes] = useState<NocType[]>([]);
@@ -134,7 +136,7 @@ export const FlatRequests: React.FC<{ societyId: string; canManage: boolean }> =
 
   useEffect(() => { void load(); }, [load]);
 
-  const typeName = (r: RequestRow) => r.kind === 'tenancy' ? 'Tenant registration' : (types.find(t => t.id === r.noc_type_id)?.name ?? r.kind);
+  const typeName = (r: RequestRow) => r.kind === 'tenancy' ? 'Tenant registration' : r.kind === 'shifting' ? `Shifting: ${r.details.direction === 'out' ? 'moving out' : 'moving in'} ${r.details.date ?? ''}` : (types.find(t => t.id === r.noc_type_id)?.name ?? r.kind);
   const shown = useMemo(() => requests.filter(r => status === 'all' || r.status === 'submitted' || r.status === 'changes_asked'), [requests, status]);
   const current = requests.find(r => r.id === selected) ?? null;
   const tab = (id: typeof view, label: string) => (
@@ -147,7 +149,7 @@ export const FlatRequests: React.FC<{ societyId: string; canManage: boolean }> =
         <h2 className="text-lg font-bold text-white">Requests &amp; NOCs</h2>
         <p className="text-slate-400">NOC requests and tenant registrations, with their documents. Approved NOCs get a number and go in the register.</p>
       </div>
-      <div className="flex flex-wrap gap-2">{tab('inbox', 'Requests')}{tab('tenants', 'Tenants')}{tab('register', 'NOC register')}{canManage && tab('letters', 'NOC letters')}</div>
+      <div className="flex flex-wrap gap-2">{tab('inbox', 'Requests')}{tab('tenants', 'Tenants')}{tab('shifting', 'Shifting')}{tab('register', 'NOC register')}{canManage && tab('letters', 'NOC letters')}</div>
       {loading && <Loader2 className="w-4 h-4 animate-spin text-slate-500" />}
 
       {view === 'inbox' && !loading && (
@@ -184,6 +186,13 @@ export const FlatRequests: React.FC<{ societyId: string; canManage: boolean }> =
           <label className="flex items-center gap-1.5 text-slate-300"><input type="checkbox" checked={pastTenants} onChange={e => setPastTenants(e.target.checked)} /> Show past tenancies</label>
           <Tenancies societyId={societyId} labels={labels} canEnd={canManage} showPast={pastTenants} />
           {canManage && <TenancySettings societyId={societyId} />}
+        </div>
+      )}
+
+      {view === 'shifting' && !loading && (
+        <div className="space-y-4">
+          <Shiftings societyId={societyId} labels={labels} canManage={canManage} />
+          {canManage && <ShiftingSettings societyId={societyId} />}
         </div>
       )}
 
