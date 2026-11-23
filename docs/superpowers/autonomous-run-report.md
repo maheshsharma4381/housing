@@ -1,4 +1,4 @@
-# Autonomous run report (Phases 3–11B)
+# Autonomous run report (Phases 3–11C)
 
 The product owner asked on 2026-11-05: "pura project complete kar do… dont wait for me, u decide the best" and "pure project ko proper test karna, bugs clear karna".
 
@@ -561,12 +561,44 @@ Asked for on 2026-11-24 ("haan, 11B tenant shuru karo"). Plan `docs/superpowers/
 
 **Before using it:** if the society charges non-occupancy charges, have the general body pass the %, and ask the CA about GST on that line. Tick "Municipal tax" on any property-tax charge in Maintenance bills.
 
+## Phase 11C — shifting charges and refundable deposits (migration 042)
+
+Asked for on 2026-11-24 ("haan, 11C shifting shuru karo"). Plan `docs/superpowers/plans/2026-11-25-phase-11c-shifting.md`.
+
+**Built**
+- **Book shifting** (owner or tenant, Requests tab): moving in or out, date (today to 90 days), time inside the society's hours, vehicle. The form shows what will be billed.
+- **Settings** (Requests & NOCs → Shifting): a charge and a refundable deposit for moving in and for moving out (all ₹0 by default), and the allowed hours (default 08:00–20:00), with "Charge only what your bye-laws or a general body resolution allow."
+- **On approval** the flat gets one bill: the charge goes to the new ledger "Shifting charges" (income), the deposit to "Deposits received" (a liability, not income). No late fee is ever added to these bills, and they fall due no earlier than the shifting day.
+- **Refund** (committee, Shifting view): full, or with an amount kept and the reason; the date it was paid, the bank account or cash, and a cheque/UTR number. The books: Deposits received down by the deposit, the bank down by what was paid back, "Damage recovery" (income) up by what was kept. The flat's account (My account) shows the deposit returned and the refund paid.
+- Cancelling an unpaid shifting bill (the move was called off) releases the deposit.
+
+**Final review fixes** (fresh Opus reviewer; each with a failing test first where it is in the database)
+1. The refund did not show in the flat's account. It does now.
+2. A refund was booked as bank money paid today, whatever happened. Now the committee gives the date, the bank or cash, and a reference.
+3. The 2% late fee was charged on refundable deposits. Shifting bills never get late fees now.
+4. A cancelled shifting bill left the deposit "held" for ever. It is released now.
+5. A tenant who booked could not open the bill (it is the owner's). They see the amounts instead.
+
+**Rulings**
+1. New ledgers on first use: 2400 Deposits received, 4400 Shifting charges, 4500 Damage recovery.
+2. A refund needs the shifting bill fully paid.
+3. A refund line in the bank statement is not matched automatically yet; mark it "no match needed".
+4. "Require a shifting request before a tenancy or transfer is approved" moves to 11D.
+
+**Deferred minors**
+- The CA can rename the three new ledgers but not move them to another group.
+- A refund can be recorded before the shifting date; approval does not check for a past date.
+- The shifting list shows the latest 200.
+- A partly paid shifting bill blocks the refund (the CA can adjust).
+- Two open bookings of the same kind for one flat are allowed.
+- System charges and shifting settings could be changed by writing to the tables directly (the screens never do).
+
 ## What you need to do next
 
-1. **Apply migrations 039, 040 and 041** (027 to 038 are already applied live):
-   - `bun run db:migrate` (dry run: the list should say 039, 040 and 041);
+1. **Apply migrations 039 to 042** (027 to 038 are already applied live):
+   - `bun run db:migrate` (dry run: the list should say 039, 040, 041 and 042);
    - then `bun run db:migrate --apply`.
-2. **Push** when you are happy. GitHub has everything up to Phase 8 (pushed on 2026-11-05); Phase 9, Phase 10, Phase 11A, Phase 11B and the Gate Lite and Phase 11 plans are on local `main` only.
+2. **Push** when you are happy. GitHub has everything up to Phase 8 (pushed on 2026-11-05); Phase 9, Phase 10, Phase 11A–11C and the Gate Lite and Phase 11 plans are on local `main` only.
 3. **Environment and Supabase settings:**
    - **3A push:** `SUPABASE_SERVICE_ROLE_KEY`, the VAPID keys, `CRON_SECRET`, and the two database settings.
    - **3C mobile login, when WhatsApp is approved:** the Phone provider with "Confirm phone" on, the Send SMS hook, `SEND_SMS_HOOK_SECRET`, the WhatsApp/MSG91 keys, the SMS rate limit, then `NEXT_PUBLIC_PHONE_LOGIN=1`.
