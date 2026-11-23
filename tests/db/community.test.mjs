@@ -198,3 +198,99 @@ test('polls are visible to members only', async () => {
   assert.equal((await q(ids.outsider, 'SELECT id FROM polls WHERE id=$1', [p])).length, 0);
   await fails(view(ids.outsider, p), 'This poll is not in your society');
 });
+
+// ---------------------------------------------------------------- 3. staff register
+const saveStaff = (user, { id = null, name = 'Sunita', kind = 'maid', mobile = '98765 43210', units }) =>
+  val(user, 'SELECT public.save_staff($1,$2,$3,$4,$5,$6::uuid[])', [ids.soc, id, name, kind, mobile, units]);
+const staffList = (user) => val(user, 'SELECT public.staff_list($1)', [ids.soc]);
+const find = async (user, id) => (await staffList(user)).find((s) => s.id === id);
+
+test('a resident adds their maid, the same mobile links instead of duplicating', async () => {
+  const id = await saveStaff(ids.ownerA, { units: [ids.u101] });
+  ids.sunita = id;
+  const mine = await find(ids.ownerA, id);
+  assert.equal(mine.mobile, '919876543210');
+  assert.equal(mine.mine, true);
+  assert.equal(mine.kind, 'maid');
+  const again = await saveStaff(ids.tenant, { name: 'Sunita B', mobile: '+91 98765-43210', units: [ids.u103] });
+  assert.equal(again, id);
+  const all = await find(ids.committee, id);
+  assert.deepEqual(all.flats.map((f) => f.unit_number).sort(), ['101', '103']);
+  assert.equal(all.name, 'Sunita', 'linking does not rename');
+});
+
+test('residents see less', async () => {
+  const s = await find(ids.ownerB, ids.sunita);
+  assert.equal(s.mobile, null);
+  assert.equal(s.notes, null);
+  assert.equal(s.id_proof, null);
+  assert.deepEqual(s.flats, []);
+  assert.equal(s.mine, false);
+  assert.equal(s.name, 'Sunita');
+});
+
+test('residents add only for their own flats', async () => {
+  await fails(saveStaff(ids.ownerA, { name: 'Raju', kind: 'driver', mobile: '9811111111', units: [ids.u102] }), 'You can add staff only for your own flat');
+  await fails(saveStaff(ids.ownerA, { name: 'Raju', kind: 'driver', mobile: '9811111111', units: [] }), 'You can add staff only for your own flat');
+  await fails(saveStaff(ids.outsider, { name: 'Raju', kind: 'driver', mobile: '9811111111', units: [ids.u101] }), 'You can add staff only for your own flat');
+});
+
+test('a resident cannot change shared staff, the committee can', async () => {
+  await fails(saveStaff(ids.ownerA, { id: ids.sunita, name: 'Sunita Devi', units: [ids.u101] }), 'Only the committee can change this person');
+  await saveStaff(ids.sec, { id: ids.sunita, name: 'Sunita Devi', units: [ids.u101, ids.u103] });
+  assert.equal((await find(ids.ownerA, ids.sunita)).name, 'Sunita Devi');
+  // a resident edits staff that works only in their flat
+  const raju = await saveStaff(ids.ownerB, { name: 'Raju', kind: 'driver', mobile: '9822222222', units: [ids.u102] });
+  await saveStaff(ids.ownerB, { id: raju, name: 'Raju Kumar', kind: 'driver', mobile: '9822222222', units: [ids.u102] });
+  assert.equal((await find(ids.ownerB, raju)).name, 'Raju Kumar');
+  await fails(saveStaff(ids.ownerA, { id: raju, name: 'X', kind: 'driver', mobile: '9822222222', units: [ids.u101] }), 'Only the committee can change this person');
+  // unlinking
+  await q(ids.ownerB, 'SELECT public.unlink_staff($1,$2)', [raju, ids.u102]);
+  assert.deepEqual((await find(ids.committee, raju)).flats, []);
+  await fails(q(ids.ownerA, 'SELECT public.unlink_staff($1,$2)', [ids.sunita, ids.u103]), 'Only the committee or that flat can do this');
+});
+
+test('the committee adds society staff with no flat', async () => {
+  const id = await saveStaff(ids.sec, { name: 'Ramu', kind: 'cleaner', mobile: null, units: [] });
+  assert.ok(await find(ids.ownerA, id), 'residents see society staff');
+});
+
+test('only the committee verifies, notes and removes', async () => {
+  await fails(q(ids.ownerA, 'SELECT public.set_staff_verified($1,$2)', [ids.sunita, '2026-11-01']), 'Only the committee can do this');
+  await fails(q(ids.committee, 'SELECT public.set_staff_verified($1,$2)', [ids.sunita, '2026-11-01']), 'Only the committee can do this');
+  await q(ids.sec, 'SELECT public.set_staff_verified($1,$2)', [ids.sunita, '2026-11-01']);
+  await q(ids.sec, 'SELECT public.set_staff_notes($1,$2)', [ids.sunita, 'Works mornings']);
+  assert.equal((await find(ids.ownerB, ids.sunita)).police_verified, true);
+  assert.equal((await find(ids.committee, ids.sunita)).notes, 'Works mornings');
+  await q(ids.sec, 'SELECT public.set_staff_active($1,false)', [ids.sunita]);
+  assert.equal(await find(ids.ownerB, ids.sunita), undefined);
+  assert.equal((await find(ids.committee, ids.sunita)).active, false);
+  await q(ids.sec, 'SELECT public.set_staff_active($1,true)', [ids.sunita]);
+});
+
+test('ID proof is for the committee, a photo for every member', async () => {
+  const idPath = `${ids.soc}/${ids.sunita}/id-1.pdf`;
+  const photoPath = `${ids.soc}/${ids.sunita}/photo-1.jpg`;
+  // the resident who added her uploads the ID; she now works in two flats, so the committee sets her photo
+  await q(ids.ownerA, `INSERT INTO storage.objects (bucket_id, name) VALUES ('staff-files',$1)`, [idPath]);
+  await q(ids.ownerA, 'SELECT public.set_staff_file($1,$2,$3)', [ids.sunita, 'id', idPath]);
+  await fails(q(ids.ownerA, 'SELECT public.set_staff_file($1,$2,$3)', [ids.sunita, 'photo', photoPath]), 'Only the committee can change this person');
+  await q(ids.sec, `INSERT INTO storage.objects (bucket_id, name) VALUES ('staff-files',$1)`, [photoPath]);
+  await q(ids.sec, 'SELECT public.set_staff_file($1,$2,$3)', [ids.sunita, 'photo', photoPath]);
+  const sel = async (user, path) => (await q(user, `SELECT name FROM storage.objects WHERE bucket_id='staff-files' AND name=$1`, [path])).length;
+  assert.equal(await sel(ids.committee, idPath), 1);
+  assert.equal(await sel(ids.ownerA, idPath), 0);
+  assert.equal(await sel(ids.ownerB, photoPath), 1);
+  assert.equal(await sel(ids.outsider, photoPath), 0);
+  assert.equal((await find(ids.committee, ids.sunita)).id_proof, idPath);
+  assert.equal((await find(ids.ownerB, ids.sunita)).photo_path, photoPath);
+  // a resident of another flat cannot upload for her, nor attach a path of another staff member
+  await fails(q(ids.ownerB, `INSERT INTO storage.objects (bucket_id, name) VALUES ('staff-files',$1)`, [`${ids.soc}/${ids.sunita}/photo-2.jpg`]), 'row-level security');
+  await fails(q(ids.sec, 'SELECT public.set_staff_file($1,$2,$3)', [ids.sunita, 'photo', `${ids.soc}/${crypto.randomUUID()}/photo-1.jpg`]), 'That file does not belong to this person');
+});
+
+test('staff field checks', async () => {
+  await fails(saveStaff(ids.ownerA, { name: ' ', units: [ids.u101] }), 'Enter the name (1 to 80 characters)');
+  await fails(saveStaff(ids.ownerA, { kind: 'gardener', units: [ids.u101] }), 'Choose what they do');
+  await fails(saveStaff(ids.ownerA, { mobile: '123', units: [ids.u101] }), 'Enter a valid mobile number');
+});
