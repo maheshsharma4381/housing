@@ -31,6 +31,7 @@ import { societyNav, societyTabFor, GROUP_LABELS, PHONE_BAR, type SocietyTab } f
 import { HomeCards } from '../../components/HomeCards';
 import { PollsList } from '../../components/PollsList';
 import { StaffRegister } from '../../components/StaffRegister';
+import { FlatRequests, RequestsWaiting } from '../../components/FlatRequests';
 import { PendingVendorBills } from '../../components/PendingVendorBills';
 import { PriorYearEditor } from '../../components/PriorYearEditor';
 import { YearLockPanel } from '../../components/YearLockPanel';
@@ -497,6 +498,11 @@ export const SocietyDashboardPage: React.FC = () => {
           <StaffRegister societyId={activeSociety.id} isCommittee canManage={!readOnly} myUnitIds={[]} />
         )}
 
+        {/* REQUESTS & NOCs (Phase 11A) */}
+        {activeTab === 'requests' && activeSociety && (
+          <FlatRequests societyId={activeSociety.id} canManage={!readOnly} />
+        )}
+
         {/* DOCUMENTS */}
         {activeTab === 'documents' && activeSociety && (
           <DocumentsVault societyId={activeSociety.id} canManage />
@@ -509,6 +515,7 @@ export const SocietyDashboardPage: React.FC = () => {
 
         {activeTab === 'approvals' && activeSociety && (
           <div className="space-y-8">
+            <RequestsWaiting societyId={activeSociety.id} onOpen={() => goTo('requests')} />
             <PendingVendorBills societyId={activeSociety.id} currentUserId={user?.id} canDecide={!readOnly} onDecided={loadSocietyData} />
             <JoinRequests societyId={activeSociety.id} units={units} canDecide={!readOnly} onDecided={loadSocietyData} />
             <OpeningBalanceReview societyId={activeSociety.id} canDecide={!readOnly} onDecided={loadSocietyData} />

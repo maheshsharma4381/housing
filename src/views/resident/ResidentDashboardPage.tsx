@@ -22,12 +22,14 @@ import {
   FolderLock,
   Vote,
   IdCard,
+  FileSignature,
 } from 'lucide-react';
 import { SignOutMenu } from '../../components/SignOutMenu';
 import { FlatStatement } from '../../components/FlatStatement';
 import { PWAInstallButton } from '../../components/PWAInstallButton';
 import { PollsList } from '../../components/PollsList';
 import { StaffRegister } from '../../components/StaffRegister';
+import { MyRequests } from '../../components/MyRequests';
 
 const OUTSTANDING_STATUSES: Bill['status'][] = ['issued', 'partially_paid', 'overdue'];
 const UTR_PATTERN = /^\d{12}$/;
@@ -60,7 +62,7 @@ export const ResidentDashboardPage: React.FC = () => {
     : flatMemberships[0]?.unit_id ?? null;
   const [flatNumbers, setFlatNumbers] = useState<Record<string, string>>({});
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'bills' | 'account' | 'notices' | 'polls' | 'staff' | 'complaints' | 'documents' | 'profile'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'bills' | 'account' | 'notices' | 'polls' | 'staff' | 'requests' | 'complaints' | 'documents' | 'profile'>('overview');
   // Tenants see no bills, dues or ledger (spec 10.2): owners pay
   const isOwner = flatMemberships.find(m => m.unit_id === unitId)?.role === 'resident_owner';
   // a flat switched to one they rent: leave the owner-only tabs
@@ -247,7 +249,7 @@ export const ResidentDashboardPage: React.FC = () => {
             <PWAInstallButton />
             <NotificationBell onOpen={(link) => {
               if (link === 'bills' || link === 'payments') setActiveTab('bills');
-              else if (link === 'notices' || link === 'complaints' || link === 'polls') setActiveTab(link);
+              else if (link === 'notices' || link === 'complaints' || link === 'polls' || link === 'requests') setActiveTab(link);
             }} />
             <SignOutMenu />
           </div>
@@ -297,7 +299,7 @@ export const ResidentDashboardPage: React.FC = () => {
         )}
 
         {/* Navigation Tabs */}
-        <div className={`grid ${isOwner ? 'grid-cols-4 sm:grid-cols-8' : 'grid-cols-3 sm:grid-cols-6'} gap-2 text-center text-xs`}>
+        <div className={`grid ${isOwner ? 'grid-cols-5 sm:grid-cols-9' : 'grid-cols-4 sm:grid-cols-7'} gap-2 text-center text-xs`}>
           <button
             onClick={() => setActiveTab('overview')}
             className={`p-2.5 rounded-xl border transition cursor-pointer ${
@@ -371,6 +373,18 @@ export const ResidentDashboardPage: React.FC = () => {
           >
             <IdCard className="w-4 h-4 mx-auto mb-1" />
             <span>Staff</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('requests')}
+            className={`p-2.5 rounded-xl border transition cursor-pointer ${
+              activeTab === 'requests'
+                ? 'bg-sky-600/20 border-sky-500 text-sky-400 font-bold'
+                : 'bg-slate-900 border-slate-800 text-slate-400'
+            }`}
+          >
+            <FileSignature className="w-4 h-4 mx-auto mb-1" />
+            <span>Requests</span>
           </button>
 
           <button
@@ -548,6 +562,11 @@ export const ResidentDashboardPage: React.FC = () => {
         {activeTab === 'staff' && activeSociety && (
           <StaffRegister societyId={activeSociety.id} isCommittee={false} canManage={false}
             myUnitIds={flatMemberships.map(m => m.unit_id).filter((u): u is string => Boolean(u))} />
+        )}
+
+        {activeTab === 'requests' && activeSociety && (
+          <MyRequests societyId={activeSociety.id}
+            flats={flatMemberships.filter(m => m.unit_id).map(m => ({ unit_id: m.unit_id as string, role: m.role }))} />
         )}
 
         {activeTab === 'polls' && activeSociety && (
