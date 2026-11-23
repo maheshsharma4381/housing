@@ -151,3 +151,230 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 GRANT EXECUTE ON FUNCTION public.set_shifting_settings(UUID, JSONB) TO authenticated;
+
+-- ============================================================================
+-- 2. BOOKING AND APPROVAL
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS shiftings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    society_id UUID NOT NULL REFERENCES societies(id) ON DELETE CASCADE,
+    unit_id UUID NOT NULL REFERENCES units(id) ON DELETE CASCADE,
+    request_id UUID UNIQUE REFERENCES flat_requests(id) ON DELETE SET NULL,
+    direction VARCHAR(3) NOT NULL CHECK (direction IN ('in', 'out')),
+    shift_date DATE NOT NULL,
+    shift_time TIME NOT NULL,
+    vehicle TEXT,
+    charge_amount NUMERIC(10,2) NOT NULL DEFAULT 0,
+    deposit_amount NUMERIC(10,2) NOT NULL DEFAULT 0,
+    bill_id UUID REFERENCES bills(id) ON DELETE SET NULL,
+    deposit_status VARCHAR(10) NOT NULL DEFAULT 'none' CHECK (deposit_status IN ('none', 'held', 'refunded')),
+    kept_amount NUMERIC(10,2),
+    kept_reason TEXT,
+    refunded_on DATE,
+    refund_journal_id UUID REFERENCES journal_entries(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_shiftings_society ON shiftings (society_id, shift_date);
+ALTER TABLE shiftings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS shiftings_select ON shiftings;
+CREATE POLICY shiftings_select ON shiftings FOR SELECT USING (can_see_request(request_id));
+
+CREATE OR REPLACE FUNCTION public.create_shifting_request(p_unit_id UUID, p_details JSONB)
+RETURNS UUID AS $$
+DECLARE
+    v_society UUID;
+    v_set society_settings%ROWTYPE;
+    v_dir TEXT := p_details ->> 'direction';
+    v_date DATE;
+    v_time TIME;
+    v_vehicle TEXT := trim(regexp_replace(coalesce(p_details ->> 'vehicle', ''), '\s+', ' ', 'g'));
+    v_today DATE := (now() AT TIME ZONE 'Asia/Kolkata')::date;
+    v_from TIME;
+    v_to TIME;
+    v_id UUID;
+BEGIN
+    SELECT society_id INTO v_society FROM units WHERE id = p_unit_id;
+    IF v_society IS NULL OR NOT (
+        is_society_admin(v_society) OR is_flat_owner(p_unit_id, auth.uid())
+        OR EXISTS (SELECT 1 FROM society_memberships m JOIN societies s ON s.id = m.society_id AND s.is_active
+                   WHERE m.unit_id = p_unit_id AND m.user_id = auth.uid() AND m.is_active AND m.role = 'resident_tenant')) THEN
+        RAISE EXCEPTION 'Only someone living in this flat can book shifting';
+    END IF;
+    IF coalesce(v_dir, '') NOT IN ('in', 'out') THEN
+        RAISE EXCEPTION 'Choose moving in or moving out';
+    END IF;
+    BEGIN
+        v_date := (p_details ->> 'date')::date;
+    EXCEPTION WHEN others THEN
+        v_date := NULL;
+    END;
+    IF v_date IS NULL OR v_date < v_today OR v_date > v_today + 90 THEN
+        RAISE EXCEPTION 'Choose a date from today up to 90 days ahead';
+    END IF;
+    SELECT * INTO v_set FROM society_settings WHERE society_id = v_society;
+    v_from := coalesce(v_set.shifting_from, '08:00'::time);
+    v_to := coalesce(v_set.shifting_to, '20:00'::time);
+    BEGIN
+        v_time := (p_details ->> 'time')::time;
+    EXCEPTION WHEN others THEN
+        v_time := NULL;
+    END;
+    IF v_time IS NULL OR v_time < v_from OR v_time > v_to THEN
+        RAISE EXCEPTION 'Shifting is allowed between % and %', to_char(v_from, 'HH24:MI'), to_char(v_to, 'HH24:MI');
+    END IF;
+    IF length(v_vehicle) > 80 THEN
+        RAISE EXCEPTION 'Vehicle details can be up to 80 characters';
+    END IF;
+
+    INSERT INTO flat_requests (society_id, unit_id, kind, applicant_id, details, checklist)
+    VALUES (v_society, p_unit_id, 'shifting', auth.uid(),
+            jsonb_build_object('direction', v_dir, 'date', v_date, 'time', to_char(v_time, 'HH24:MI'), 'vehicle', v_vehicle),
+            coalesce((SELECT checklist FROM request_checklists WHERE society_id = v_society AND kind = 'shifting'), '[]'::jsonb))
+    RETURNING id INTO v_id;
+    INSERT INTO request_events (request_id, actor, action) VALUES (v_id, auth.uid(), 'submitted');
+    PERFORM notify_users(v_society, array_remove(society_managers(v_society), auth.uid()), 'request',
+        'Shifting booked for flat ' || flat_label(p_unit_id) || ' on ' || to_char(v_date, 'DD Mon YYYY'), NULL, 'requests', v_id);
+    RETURN v_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+GRANT EXECUTE ON FUNCTION public.create_shifting_request(UUID, JSONB) TO authenticated;
+
+-- decide_request from 041, with the shifting branch
+CREATE OR REPLACE FUNCTION public.decide_request(p_request_id UUID, p_decision TEXT, p_note TEXT)
+RETURNS JSONB AS $$
+DECLARE
+    v_r flat_requests%ROWTYPE;
+    v_type TEXT;
+    v_note TEXT := nullif(trim(coalesce(p_note, '')), '');
+    v_missing TEXT;
+    v_on DATE := (now() AT TIME ZONE 'Asia/Kolkata')::date;
+    v_doc JSONB;
+    v_seq INT;
+    v_letter UUID;
+    v_number TEXT;
+    v_tenancy UUID;
+    v_set society_settings%ROWTYPE;
+    v_charge NUMERIC;
+    v_deposit NUMERIC;
+    v_bill UUID;
+    v_shifting UUID;
+BEGIN
+    SELECT * INTO v_r FROM flat_requests WHERE id = p_request_id FOR UPDATE;
+    IF NOT FOUND OR NOT is_society_admin(v_r.society_id) THEN
+        RAISE EXCEPTION 'Only the committee can decide requests';
+    END IF;
+    IF coalesce(p_decision, '') NOT IN ('approve', 'changes', 'reject') THEN
+        RAISE EXCEPTION 'Choose approve, changes or reject';
+    END IF;
+    IF v_r.status NOT IN ('submitted', 'changes_asked') THEN
+        RAISE EXCEPTION 'This request has already been decided';
+    END IF;
+    IF v_r.status = 'changes_asked' AND p_decision <> 'reject' THEN
+        RAISE EXCEPTION 'Wait for the applicant to send the changes';
+    END IF;
+    SELECT name INTO v_type FROM noc_types WHERE id = v_r.noc_type_id;
+    v_type := coalesce(v_type, CASE v_r.kind WHEN 'tenancy' THEN 'Tenant registration' WHEN 'shifting' THEN 'Shifting' ELSE initcap(v_r.kind) END);
+
+    IF p_decision = 'changes' THEN
+        IF length(coalesce(v_note, '')) NOT BETWEEN 3 AND 500 THEN
+            RAISE EXCEPTION 'Write what needs to change';
+        END IF;
+        UPDATE flat_requests SET status = 'changes_asked', committee_note = v_note WHERE id = p_request_id;
+        INSERT INTO request_events (request_id, actor, action, note) VALUES (p_request_id, auth.uid(), 'changes_asked', v_note);
+        PERFORM notify_users(v_r.society_id, ARRAY[v_r.applicant_id], 'request', 'Changes needed: ' || v_type, v_note, 'requests', p_request_id);
+        RETURN jsonb_build_object('status', 'changes_asked');
+    END IF;
+
+    IF p_decision = 'reject' THEN
+        IF length(coalesce(v_note, '')) NOT BETWEEN 3 AND 500 THEN
+            RAISE EXCEPTION 'Write the reason';
+        END IF;
+        UPDATE flat_requests SET status = 'rejected', committee_note = v_note, decided_at = now(), decided_by = auth.uid()
+        WHERE id = p_request_id;
+        INSERT INTO request_events (request_id, actor, action, note) VALUES (p_request_id, auth.uid(), 'rejected', v_note);
+        PERFORM notify_users(v_r.society_id, ARRAY[v_r.applicant_id], 'request',
+            CASE WHEN v_r.kind = 'noc' THEN 'NOC request declined: ' ELSE 'Request declined: ' END || v_type, v_note, 'requests', p_request_id);
+        RETURN jsonb_build_object('status', 'rejected');
+    END IF;
+
+    -- approve: every required document is there
+    SELECT c ->> 'label' INTO v_missing
+    FROM jsonb_array_elements(v_r.checklist) WITH ORDINALITY AS t(c, i)
+    WHERE coalesce((c ->> 'required')::boolean, false)
+      AND NOT EXISTS (SELECT 1 FROM request_documents d WHERE d.request_id = p_request_id AND d.item_key = c ->> 'key')
+    ORDER BY i LIMIT 1;
+    IF v_missing IS NOT NULL THEN
+        RAISE EXCEPTION 'Add "%" before approving', v_missing;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM society_memberships m WHERE m.unit_id = v_r.unit_id AND m.user_id = v_r.applicant_id AND m.is_active)
+       AND NOT EXISTS (SELECT 1 FROM society_memberships m WHERE m.society_id = v_r.society_id AND m.user_id = v_r.applicant_id
+                       AND m.is_active AND m.role IN ('society_admin', 'secretary', 'chairman', 'treasurer')) THEN
+        RAISE EXCEPTION 'The applicant is no longer a member of this flat';
+    END IF;
+    UPDATE flat_requests SET status = 'approved', committee_note = v_note, decided_at = now(), decided_by = auth.uid()
+    WHERE id = p_request_id;
+    INSERT INTO request_events (request_id, actor, action, note) VALUES (p_request_id, auth.uid(), 'approved', v_note);
+
+    -- 041: an approved tenant registration records the tenancy and invites the tenant
+    IF v_r.kind = 'tenancy' THEN
+        v_tenancy := approve_tenancy(v_r);
+        PERFORM notify_users(v_r.society_id, (
+            SELECT array_agg(DISTINCT x) FROM (
+                SELECT v_r.applicant_id AS x
+                UNION SELECT m.user_id FROM society_memberships m
+                WHERE m.unit_id = v_r.unit_id AND m.is_active
+                  AND m.role IN ('resident_owner', 'society_admin', 'secretary', 'chairman', 'treasurer', 'committee_member')
+            ) y WHERE x IS NOT NULL AND x <> auth.uid()
+        ), 'request', 'Tenant registered for flat ' || flat_label(v_r.unit_id), NULL, 'requests', p_request_id);
+        RETURN jsonb_build_object('status', 'approved', 'tenancy_id', v_tenancy);
+    END IF;
+
+    -- 042: an approved shifting bills the society's charge and refundable deposit for that direction
+    IF v_r.kind = 'shifting' THEN
+        SELECT * INTO v_set FROM society_settings WHERE society_id = v_r.society_id;
+        v_charge := coalesce(CASE v_r.details ->> 'direction' WHEN 'in' THEN v_set.move_in_charge ELSE v_set.move_out_charge END, 0);
+        v_deposit := coalesce(CASE v_r.details ->> 'direction' WHEN 'in' THEN v_set.move_in_deposit ELSE v_set.move_out_deposit END, 0);
+        v_bill := charge_flat(v_r.unit_id, jsonb_build_array(
+            jsonb_build_object('rule_key', 'shifting_charge', 'amount', v_charge,
+                'description', 'Shifting charges (' || CASE v_r.details ->> 'direction' WHEN 'in' THEN 'moving in' ELSE 'moving out' END || ')'),
+            jsonb_build_object('rule_key', 'shifting_deposit', 'amount', v_deposit, 'description', 'Shifting deposit (refundable)')),
+            v_on + 7);
+        INSERT INTO shiftings (society_id, unit_id, request_id, direction, shift_date, shift_time, vehicle,
+                               charge_amount, deposit_amount, bill_id, deposit_status)
+        VALUES (v_r.society_id, v_r.unit_id, p_request_id, v_r.details ->> 'direction', (v_r.details ->> 'date')::date,
+                (v_r.details ->> 'time')::time, nullif(v_r.details ->> 'vehicle', ''), v_charge, v_deposit, v_bill,
+                CASE WHEN v_deposit > 0 THEN 'held' ELSE 'none' END)
+        RETURNING id INTO v_shifting;
+        PERFORM notify_users(v_r.society_id, (
+            SELECT array_agg(DISTINCT x) FROM (
+                SELECT v_r.applicant_id AS x
+                UNION SELECT m.user_id FROM society_memberships m
+                WHERE m.unit_id = v_r.unit_id AND m.is_active
+                  AND m.role IN ('resident_owner', 'society_admin', 'secretary', 'chairman', 'treasurer', 'committee_member')
+            ) y WHERE x IS NOT NULL AND x <> auth.uid()
+        ), 'request', 'Shifting approved for flat ' || flat_label(v_r.unit_id) || ' on '
+                      || to_char((v_r.details ->> 'date')::date, 'DD Mon YYYY'), NULL, 'requests', p_request_id);
+        RETURN jsonb_build_object('status', 'approved', 'shifting_id', v_shifting, 'bill_id', v_bill);
+    END IF;
+
+    IF v_r.kind = 'noc' THEN
+        PERFORM 1 FROM societies WHERE id = v_r.society_id FOR UPDATE;  -- one number at a time per society
+        v_doc := render_noc(p_request_id, v_on);
+        SELECT coalesce(max(seq), 0) + 1 INTO v_seq FROM noc_letters WHERE society_id = v_r.society_id AND fy = fy_label(v_on);
+        v_number := 'NOC/' || fy_label(v_on) || '/' || lpad(v_seq::text, 3, '0');
+        INSERT INTO noc_letters (society_id, request_id, number, fy, seq, issued_on, type_name, title, body, signatory,
+                                 issued_to, flat_label, dues_amount, created_by)
+        VALUES (v_r.society_id, p_request_id, v_number, fy_label(v_on), v_seq, v_on, v_doc ->> 'type_name', v_doc ->> 'title',
+                v_doc ->> 'body', v_doc ->> 'signatory', v_doc ->> 'issued_to', v_doc ->> 'flat_label',
+                (v_doc ->> 'dues_amount')::numeric, auth.uid())
+        RETURNING id INTO v_letter;
+        PERFORM notify_users(v_r.society_id, ARRAY[v_r.applicant_id], 'request', 'NOC approved: ' || v_type, v_number, 'requests', p_request_id);
+        RETURN jsonb_build_object('status', 'approved', 'letter_id', v_letter, 'number', v_number);
+    END IF;
+
+    PERFORM notify_users(v_r.society_id, ARRAY[v_r.applicant_id], 'request', 'Request approved: ' || v_type, v_note, 'requests', p_request_id);
+    RETURN jsonb_build_object('status', 'approved');
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+GRANT EXECUTE ON FUNCTION public.decide_request(UUID, TEXT, TEXT) TO authenticated;

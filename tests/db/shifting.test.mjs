@@ -87,3 +87,64 @@ test('shifting settings', async () => {
   const row = (await db.query('SELECT move_in_charge::numeric a, move_in_deposit::numeric b, move_out_charge::numeric c, shifting_from::text f, shifting_to::text t FROM society_settings WHERE society_id=$1', [ids.soc])).rows[0];
   assert.deepEqual([Number(row.a), Number(row.b), Number(row.c), row.f, row.t], [1000, 5000, 500, '09:00:00', '19:00:00']);
 });
+
+// ---------------------------------------------------------------- 2. booking and approval
+const fmt = (iso) => { const [y, m, d] = iso.split('-').map(Number); return `${String(d).padStart(2, '0')} ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m - 1]} ${y}`; };
+const book = (user, unit, o = {}) => val(user, 'SELECT public.create_shifting_request($1,$2)',
+  [unit, JSON.stringify({ direction: 'in', date: isoDays(3), time: '10:00', vehicle: 'Tempo MH12 AB 1234', ...o })]);
+const decide = (user, req, d = 'approve', note = null) => val(user, 'SELECT public.decide_request($1,$2,$3)', [req, d, note]);
+const shiftingOf = async (req) => (await db.query('SELECT * FROM shiftings WHERE request_id=$1', [req])).rows[0];
+
+test('an owner books a move-in and the committee is told', async () => {
+  const r = await book(ids.owner, ids.u101);
+  const row = (await db.query('SELECT kind, details FROM flat_requests WHERE id=$1', [r])).rows[0];
+  assert.equal(row.kind, 'shifting');
+  assert.deepEqual(row.details, { direction: 'in', date: isoDays(3), time: '10:00', vehicle: 'Tempo MH12 AB 1234' });
+  const told = (await db.query(`SELECT user_id, title FROM notifications WHERE ref_id=$1`, [r])).rows;
+  assert.deepEqual(told.map((n) => [n.user_id, n.title]), [[ids.sec, `Shifting booked for flat 101 on ${fmt(isoDays(3))}`]]);
+  ids.moveIn = r;
+});
+
+test('a tenant books their move-out; another flat cannot', async () => {
+  ids.moveOut = await book(ids.tenant, ids.u101, { direction: 'out', vehicle: '' });
+  await fails(book(ids.owner2, ids.u101), 'Only someone living in this flat can book shifting');
+  await fails(book(ids.committee, ids.u101), 'Only someone living in this flat can book shifting');
+});
+
+test('booking checks', async () => {
+  await fails(book(ids.owner, ids.u101, { direction: 'sideways' }), 'Choose moving in or moving out');
+  await fails(book(ids.owner, ids.u101, { date: isoDays(-2) }), 'Choose a date from today up to 90 days ahead');
+  await fails(book(ids.owner, ids.u101, { date: isoDays(93) }), 'Choose a date from today up to 90 days ahead');
+  await fails(book(ids.owner, ids.u101, { time: '20:30' }), 'Shifting is allowed between 09:00 and 19:00');
+  await fails(book(ids.owner, ids.u101, { time: 'noon' }), 'Shifting is allowed between 09:00 and 19:00');
+  await fails(book(ids.owner, ids.u101, { vehicle: 'x'.repeat(81) }), 'Vehicle details can be up to 80 characters');
+});
+
+test('approval bills the shifting charges', async () => {
+  const out = await decide(ids.sec, ids.moveIn);
+  const s = await shiftingOf(ids.moveIn);
+  assert.equal(out.shifting_id, s.id);
+  assert.equal(out.bill_id, s.bill_id);
+  assert.equal(s.direction, 'in');
+  assert.deepEqual([Number(s.charge_amount), Number(s.deposit_amount), s.deposit_status], [1000, 5000, 'held']);
+  const items = (await db.query('SELECT description, amount::numeric a FROM bill_items WHERE bill_id=$1 ORDER BY description', [s.bill_id])).rows;
+  assert.deepEqual(items.map((i) => [i.description, Number(i.a)]), [['Shifting charges (moving in)', 1000], ['Shifting deposit (refundable)', 5000]]);
+  const told = (await db.query(`SELECT user_id FROM notifications WHERE ref_id=$1 AND title=$2`, [ids.moveIn, `Shifting approved for flat 101 on ${fmt(isoDays(3))}`])).rows;
+  assert.deepEqual(told.map((n) => n.user_id), [ids.owner]);
+  ids.shiftIn = s.id;
+  // the move-out carries only its charge
+  await decide(ids.sec, ids.moveOut);
+  const o = await shiftingOf(ids.moveOut);
+  assert.deepEqual([Number(o.charge_amount), Number(o.deposit_amount), o.deposit_status], [500, 0, 'none']);
+});
+
+test('free shifting makes no bill', async () => {
+  await q(ids.sec, 'SELECT public.set_shifting_settings($1,$2)', [ids.soc, JSON.stringify({ move_in_charge: 0, move_in_deposit: 0 })]);
+  const r = await book(ids.owner2, ids.u102);
+  const out = await decide(ids.sec, r);
+  assert.equal(out.bill_id, null);
+  const s = await shiftingOf(r);
+  assert.equal(s.bill_id, null);
+  assert.equal(s.deposit_status, 'none');
+  await q(ids.sec, 'SELECT public.set_shifting_settings($1,$2)', [ids.soc, JSON.stringify({ move_in_charge: 1000, move_in_deposit: 5000 })]);
+});
