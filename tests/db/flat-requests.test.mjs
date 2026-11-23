@@ -92,3 +92,101 @@ test('share certificate numbers', async () => {
   await q(ids.sec, 'SELECT public.set_share_certificate($1,$2)', [ids.u102, '']);
   assert.equal((await db.query('SELECT share_certificate_no FROM units WHERE id=$1', [ids.u102])).rows[0].share_certificate_no, null);
 });
+
+// ---------------------------------------------------------------- 2. requests, documents, history
+const ask = (user, code, { unit = ids.u101, purpose = 'Selling the flat', addressee = 'The Manager, HDFC Bank' } = {}) =>
+  typeId(code).then((t) => val(user, 'SELECT public.create_noc_request($1,$2,$3,$4)', [unit, t, purpose, addressee]));
+const addDoc = (user, req, key, path, name = 'file.pdf') => val(user, 'SELECT public.add_request_document($1,$2,$3,$4)', [req, key, path, name]);
+const docPath = (req, f = 'a.pdf') => `${ids.soc}/${req}/${f}`;
+const count = async (user, table, req) => (await q(user, `SELECT count(*)::int AS n FROM ${table} WHERE ${table === 'flat_requests' ? 'id' : 'request_id'} = $1`, [req]))[0].n;
+
+test('an owner asks for a sale NOC and the committee is told', async () => {
+  const r = await ask(ids.owner, 'sale');
+  const row = (await db.query('SELECT * FROM flat_requests WHERE id=$1', [r])).rows[0];
+  assert.equal(row.status, 'submitted');
+  assert.equal(row.kind, 'noc');
+  assert.equal(row.applicant_id, ids.owner);
+  assert.deepEqual(row.details, { purpose: 'Selling the flat', addressee: 'The Manager, HDFC Bank' });
+  const told = (await db.query(`SELECT user_id, title, link FROM notifications WHERE ref_id=$1 AND kind='request'`, [r])).rows;
+  assert.deepEqual(told.map((n) => n.user_id), [ids.sec]);
+  assert.equal(told[0].title, 'NOC request: Sale of flat for flat 101');
+  assert.equal(told[0].link, 'requests');
+  assert.deepEqual((await db.query('SELECT action FROM request_events WHERE request_id=$1', [r])).rows.map((e) => e.action), ['submitted']);
+});
+
+test('a tenant asks only for the types tenants may ask for', async () => {
+  const r = await ask(ids.tenant, 'passport', { purpose: 'Passport address proof', addressee: '' });
+  assert.ok(r);
+  await fails(ask(ids.tenant, 'sale'), 'Only an owner of this flat can ask for this NOC');
+  await fails(ask(ids.owner, 'sale', { unit: ids.u102 }), 'Only an owner of this flat can ask for this NOC');
+  await fails(ask(ids.outsider, 'sale'), 'Only an owner of this flat can ask for this NOC');
+  // the committee can ask on someone's behalf
+  assert.ok(await ask(ids.sec, 'electricity', { unit: ids.u102 }));
+  // an inactive type is not available
+  await db.query(`UPDATE noc_types SET is_active=false WHERE society_id=$1 AND code='gas'`, [ids.soc]);
+  await fails(ask(ids.owner, 'gas'), 'This NOC is not available');
+  await db.query(`UPDATE noc_types SET is_active=true WHERE society_id=$1 AND code='gas'`, [ids.soc]);
+});
+
+test('the purpose and addressee are checked', async () => {
+  await fails(ask(ids.owner, 'sale', { purpose: 'ab' }), 'Write the purpose (3 to 300 characters)');
+  await fails(ask(ids.owner, 'sale', { purpose: 'x'.repeat(301) }), 'Write the purpose (3 to 300 characters)');
+  await fails(ask(ids.owner, 'sale', { addressee: 'x'.repeat(161) }), 'The addressee can be up to 160 characters');
+});
+
+test('who sees a request', async () => {
+  const r = await ask(ids.owner, 'home_loan', { purpose: 'Home loan top-up' });
+  for (const u of [ids.owner, ids.joint, ids.committee, ids.sec]) {
+    for (const t of ['flat_requests', 'request_events']) assert.equal(await count(u, t, r), 1, `${t} for ${u}`);
+  }
+  for (const u of [ids.owner2, ids.tenant, ids.tenant2, ids.outsider]) {
+    for (const t of ['flat_requests', 'request_events']) assert.equal(await count(u, t, r), 0, `${t} hidden`);
+  }
+  // a tenant's own request is theirs and the flat owners'
+  const t = await ask(ids.tenant, 'passport', { purpose: 'Passport' });
+  assert.equal(await count(ids.tenant, 'flat_requests', t), 1);
+  assert.equal(await count(ids.owner, 'flat_requests', t), 1);
+});
+
+test('documents go against checklist items', async () => {
+  const r = await ask(ids.owner, 'leave_licence', { purpose: 'Letting the flat' });
+  await fails(addDoc(ids.owner, r, 'nope', docPath(r)), 'Choose a document from the list');
+  await fails(addDoc(ids.owner, r, 'agreement', `${ids.soc}/${crypto.randomUUID()}/a.pdf`), 'That file does not belong to this request');
+  await fails(addDoc(ids.owner2, r, 'agreement', docPath(r)), 'Only the applicant or the committee can do this');
+  const d = await addDoc(ids.joint, r, 'agreement', docPath(r), 'agreement.pdf');
+  assert.equal(await count(ids.committee, 'request_documents', r), 1);
+  assert.equal(await count(ids.owner2, 'request_documents', r), 0);
+  await q(ids.owner, 'SELECT public.remove_request_document($1)', [d]);
+  assert.equal(await count(ids.sec, 'request_documents', r), 0);
+  assert.deepEqual((await db.query('SELECT action FROM request_events WHERE request_id=$1 ORDER BY at, action', [r])).rows.map((e) => e.action).sort(),
+    ['document_added', 'document_removed', 'submitted']);
+});
+
+test('withdrawn requests are closed', async () => {
+  const r = await ask(ids.owner, 'gas', { purpose: 'New gas line' });
+  await fails(q(ids.owner2, 'SELECT public.withdraw_request($1)', [r]), 'Only the applicant or the committee can do this');
+  await q(ids.joint, 'SELECT public.withdraw_request($1)', [r]);
+  assert.equal((await db.query('SELECT status FROM flat_requests WHERE id=$1', [r])).rows[0].status, 'withdrawn');
+  await fails(addDoc(ids.owner, r, 'x', docPath(r)), 'This request can no longer be changed');
+  await fails(q(ids.owner, 'SELECT public.withdraw_request($1)', [r]), 'This request can no longer be changed');
+  await fails(q(ids.owner, `INSERT INTO storage.objects (bucket_id, name) VALUES ('request-files',$1)`, [docPath(r, 'late.pdf')]), 'row-level security');
+});
+
+test('storage follows the request', async () => {
+  const r = await ask(ids.owner, 'repairs', { purpose: 'Kitchen work' });
+  await q(ids.owner, `INSERT INTO storage.objects (bucket_id, name) VALUES ('request-files',$1)`, [docPath(r, 'quote.pdf')]);
+  await fails(q(ids.owner2, `INSERT INTO storage.objects (bucket_id, name) VALUES ('request-files',$1)`, [docPath(r, 'x.pdf')]), 'row-level security');
+  await fails(q(ids.owner, `INSERT INTO storage.objects (bucket_id, name) VALUES ('request-files',$1)`, [`${ids.soc2}/${r}/x.pdf`]), 'row-level security');
+  const sel = async (u) => (await q(u, `SELECT name FROM storage.objects WHERE bucket_id='request-files' AND name=$1`, [docPath(r, 'quote.pdf')])).length;
+  assert.equal(await sel(ids.committee), 1);
+  assert.equal(await sel(ids.joint), 1);
+  assert.equal(await sel(ids.owner2), 0);
+  assert.equal(await sel(ids.outsider), 0);
+});
+
+test('the request bucket takes PDFs and images up to 10 MB', async () => {
+  const b = (await db.query(`SELECT allowed_mime_types, file_size_limit, public FROM storage.buckets WHERE id='request-files'`)).rows[0];
+  assert.deepEqual(b.allowed_mime_types, ['application/pdf', 'image/jpeg', 'image/png', 'image/webp']);
+  assert.equal(Number(b.file_size_limit), 10485760);
+  assert.equal(b.public, false);
+});
