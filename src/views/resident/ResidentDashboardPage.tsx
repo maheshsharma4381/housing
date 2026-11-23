@@ -565,7 +565,7 @@ export const ResidentDashboardPage: React.FC = () => {
         )}
 
         {activeTab === 'requests' && activeSociety && (
-          <MyRequests societyId={activeSociety.id}
+          <MyRequests societyId={activeSociety.id} userId={user?.id ?? ''}
             flats={flatMemberships.filter(m => m.unit_id).map(m => ({ unit_id: m.unit_id as string, role: m.role }))} />
         )}
 

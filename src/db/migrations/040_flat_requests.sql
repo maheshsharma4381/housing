@@ -45,15 +45,15 @@ DROP POLICY IF EXISTS noc_types_select ON noc_types;
 CREATE POLICY noc_types_select ON noc_types FOR SELECT
     USING (has_society_membership(society_id) OR is_committee_viewer(society_id));
 
--- Default letters. Placeholders: {society_name} {registration_number} {society_address} {member_name} {flat}
--- {share_certificate_no} {dues_line} {date} {purpose} {addressee}. Plain wording; each society checks it
+-- Default letters. Placeholders: {society_name} {registration_number} {society_address} {member_name} (the flat's
+-- owners) {applicant_name} (who asked) {flat} {share_certificate_no} {dues_line} {date} {purpose} {addressee}. Plain wording; each society checks it
 -- with its legal adviser and can rewrite it.
 CREATE OR REPLACE FUNCTION public.seed_noc_types(p_society_id UUID)
 RETURNS VOID AS $$
 DECLARE
-    v_intro TEXT := E'{addressee}\n\nThis is to certify that {member_name} is a member of {society_name} '
-        || E'(Registration No. {registration_number}), {society_address}, and holds flat {flat} '
-        || E'under share certificate No. {share_certificate_no}.\n\n';
+    v_intro TEXT := E'{addressee}\n\nThis is to certify that flat {flat} of {society_name} '
+        || E'(Registration No. {registration_number}), {society_address}, stands in the name of {member_name}, '
+        || E'member of the society, under share certificate No. {share_certificate_no}.\n\n';
     v_end TEXT := E'\n\n{dues_line}\n\nThis certificate is issued at the member''s request for: {purpose}.';
 BEGIN
     INSERT INTO noc_types (society_id, code, name, title, body, checklist, tenant_can_ask, sort) VALUES
@@ -72,11 +72,11 @@ BEGIN
      v_intro || 'The society has no objection to the electricity meter of the flat being transferred to the member''s name.' || v_end,
      '[]', false, 40),
     (p_society_id, 'passport', 'Passport / address proof', 'Residence Certificate',
-     E'{addressee}\n\nThis is to certify that {member_name} resides in flat {flat} of {society_name} '
+     E'{addressee}\n\nThis is to certify that {applicant_name} resides in flat {flat} of {society_name} '
         || E'(Registration No. {registration_number}), {society_address}.' || v_end,
      '[{"key":"id","label":"Photo ID of the applicant","required":true}]', true, 50),
     (p_society_id, 'gas', 'Gas connection', 'No Objection Certificate — Gas connection',
-     E'{addressee}\n\nThis is to certify that {member_name} resides in flat {flat} of {society_name} '
+     E'{addressee}\n\nThis is to certify that {applicant_name} resides in flat {flat} of {society_name} '
         || E'(Registration No. {registration_number}), {society_address}. The society has no objection to a gas '
         || 'connection being installed in the flat in this name.' || v_end, '[]', true, 60),
     (p_society_id, 'repairs', 'Repairs / renovation', 'No Objection Certificate — Repairs',
@@ -256,10 +256,19 @@ RETURNS TEXT AS $$
 $$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
 REVOKE ALL ON FUNCTION public.flat_label(UUID) FROM PUBLIC, anon, authenticated;
 
+-- When the flat changed hands, its owners see only what was asked since: a buyer never reads the seller's papers
+CREATE OR REPLACE FUNCTION public.current_ownership_since(p_unit_id UUID)
+RETURNS TIMESTAMPTZ AS $$
+    SELECT coalesce((SELECT o.created_at FROM unit_ownerships o
+                     WHERE o.unit_id = p_unit_id AND o.to_date IS NULL AND o.created_by IS NOT NULL), '-infinity'::timestamptz)
+$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
+REVOKE ALL ON FUNCTION public.current_ownership_since(UUID) FROM PUBLIC, anon, authenticated;
+
 CREATE OR REPLACE FUNCTION public.can_see_request(p_request_id UUID)
 RETURNS BOOLEAN AS $$
     SELECT EXISTS (SELECT 1 FROM flat_requests r WHERE r.id = p_request_id AND (
-        is_committee_viewer(r.society_id) OR r.applicant_id = auth.uid() OR is_flat_owner(r.unit_id, auth.uid())))
+        is_committee_viewer(r.society_id) OR r.applicant_id = auth.uid()
+        OR (is_flat_owner(r.unit_id, auth.uid()) AND r.submitted_at >= current_ownership_since(r.unit_id))))
 $$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
 REVOKE ALL ON FUNCTION public.can_see_request(UUID) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.can_see_request(UUID) TO authenticated; -- used by RLS and storage policies
@@ -268,7 +277,8 @@ GRANT EXECUTE ON FUNCTION public.can_see_request(UUID) TO authenticated; -- used
 CREATE OR REPLACE FUNCTION public.can_edit_request(p_request_id UUID)
 RETURNS BOOLEAN AS $$
     SELECT EXISTS (SELECT 1 FROM flat_requests r WHERE r.id = p_request_id AND (
-        is_society_admin(r.society_id) OR r.applicant_id = auth.uid() OR is_flat_owner(r.unit_id, auth.uid())))
+        is_society_admin(r.society_id) OR r.applicant_id = auth.uid()
+        OR (is_flat_owner(r.unit_id, auth.uid()) AND r.submitted_at >= current_ownership_since(r.unit_id))))
 $$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
 -- uploads only while the request is open
 CREATE OR REPLACE FUNCTION public.can_upload_to_request(p_request_id UUID)
@@ -308,8 +318,9 @@ RETURNS UUID AS $$
 DECLARE
     v_society UUID;
     v_type noc_types%ROWTYPE;
-    v_purpose TEXT := trim(coalesce(p_purpose, ''));
-    v_addressee TEXT := trim(coalesce(p_addressee, ''));
+    -- one line each: the applicant's words never become a paragraph of the certificate
+    v_purpose TEXT := trim(regexp_replace(coalesce(p_purpose, ''), '\s+', ' ', 'g'));
+    v_addressee TEXT := trim(regexp_replace(coalesce(p_addressee, ''), '\s+', ' ', 'g'));
     v_id UUID;
 BEGIN
     SELECT society_id INTO v_society FROM units WHERE id = p_unit_id;
@@ -328,8 +339,8 @@ BEGIN
     IF length(v_purpose) NOT BETWEEN 3 AND 300 THEN
         RAISE EXCEPTION 'Write the purpose (3 to 300 characters)';
     END IF;
-    IF length(v_addressee) > 160 THEN
-        RAISE EXCEPTION 'The addressee can be up to 160 characters';
+    IF length(v_addressee) > 120 THEN
+        RAISE EXCEPTION 'The addressee can be up to 120 characters';
     END IF;
 
     INSERT INTO flat_requests (society_id, unit_id, kind, noc_type_id, applicant_id, details, checklist)
@@ -522,12 +533,32 @@ DECLARE
     v_date TEXT := to_char(p_on, 'DD Mon YYYY');
     v_body TEXT;
     v_name TEXT;
+    v_owners TEXT;
+    v_issued_to TEXT;
+    v_warnings JSONB := '[]'::jsonb;
 BEGIN
     SELECT * INTO v_r FROM flat_requests WHERE id = p_request_id;
     SELECT * INTO v_t FROM noc_types WHERE id = v_r.noc_type_id;
     SELECT * INTO v_s FROM societies WHERE id = v_r.society_id;
     SELECT * INTO v_u FROM units WHERE id = v_r.unit_id;
     SELECT full_name INTO v_name FROM profiles WHERE id = v_r.applicant_id;
+    -- the member on the letter is the flat's owner(s), whoever asked (the committee may ask on their behalf)
+    SELECT string_agg(DISTINCT p.full_name, ' and ' ORDER BY p.full_name) INTO v_owners
+    FROM society_memberships m JOIN profiles p ON p.id = m.user_id
+    WHERE m.unit_id = v_r.unit_id AND m.is_active
+      AND m.role IN ('resident_owner', 'society_admin', 'secretary', 'chairman', 'treasurer', 'committee_member');
+    v_owners := coalesce(v_owners,
+        (SELECT nullif(trim(c.owner_name), '') FROM unit_owner_contacts c WHERE c.unit_id = v_r.unit_id),
+        (SELECT o.owner_name FROM unit_ownerships o WHERE o.unit_id = v_r.unit_id AND o.to_date IS NULL));
+    v_issued_to := CASE WHEN EXISTS (SELECT 1 FROM society_memberships m WHERE m.unit_id = v_r.unit_id
+                                     AND m.user_id = v_r.applicant_id AND m.is_active) THEN v_name ELSE v_owners END;
+    IF NOT EXISTS (SELECT 1 FROM opening_balances ob WHERE ob.society_id = v_r.society_id AND ob.status = 'approved')
+       AND NOT EXISTS (SELECT 1 FROM bills b WHERE b.society_id = v_r.society_id AND b.is_opening_balance) THEN
+        v_warnings := v_warnings || to_jsonb('Opening balances are not entered yet, so dues from before Sahvaas are not counted.'::text);
+    END IF;
+    IF v_u.share_certificate_no IS NULL AND v_t.body LIKE '%{share_certificate_no}%' THEN
+        v_warnings := v_warnings || to_jsonb('The share certificate number of this flat is not recorded.'::text);
+    END IF;
     v_dues := flat_dues_on(v_r.unit_id, p_on);
     v_body := v_t.body;
     v_body := replace(v_body, '{addressee}', coalesce(nullif(v_r.details ->> 'addressee', ''), 'To whomsoever it may concern'));
@@ -535,16 +566,18 @@ BEGIN
     v_body := replace(v_body, '{registration_number}', coalesce(nullif(v_s.registration_number, ''), '—'));
     v_body := replace(v_body, '{society_address}', concat_ws(', ', nullif(v_s.address_line1, ''), nullif(v_s.address_line2, ''),
         nullif(v_s.city, ''), trim(coalesce(v_s.state, '') || ' ' || coalesce(v_s.pincode, ''))));
-    v_body := replace(v_body, '{member_name}', coalesce(nullif(v_name, ''), '—'));
+    v_body := replace(v_body, '{member_name}', coalesce(nullif(v_owners, ''), '—'));
+    v_body := replace(v_body, '{applicant_name}', coalesce(nullif(v_name, ''), '—'));
     v_body := replace(v_body, '{flat}', flat_label(v_r.unit_id));
     v_body := replace(v_body, '{share_certificate_no}', coalesce(v_u.share_certificate_no, 'not recorded'));
     v_body := replace(v_body, '{dues_line}', CASE WHEN v_dues > 0
-        THEN 'Dues of ' || inr_text(v_dues) || ' are outstanding as on ' || v_date || '.'
-        ELSE 'There are no dues outstanding as on ' || v_date || '.' END);
+        THEN 'As per the society''s accounts in Sahvaas, dues of ' || inr_text(v_dues) || ' are outstanding as on ' || v_date || '.'
+        ELSE 'As per the society''s accounts in Sahvaas, there are no dues outstanding as on ' || v_date || '.' END);
     v_body := replace(v_body, '{date}', v_date);
     v_body := replace(v_body, '{purpose}', coalesce(nullif(v_r.details ->> 'purpose', ''), '—'));
     RETURN jsonb_build_object('title', v_t.title, 'body', v_body, 'dues_amount', v_dues, 'type_name', v_t.name,
-                              'signatory', v_t.signatory, 'issued_to', v_name, 'flat_label', flat_label(v_r.unit_id), 'date', p_on);
+                              'signatory', v_t.signatory, 'issued_to', v_issued_to, 'flat_label', flat_label(v_r.unit_id), 'date', p_on,
+                              'warnings', v_warnings);
 END;
 $$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public;
 REVOKE ALL ON FUNCTION public.render_noc(UUID, DATE) FROM PUBLIC, anon, authenticated;
@@ -623,6 +656,11 @@ BEGIN
         RAISE EXCEPTION 'Add "%" before approving', v_missing;
     END IF;
 
+    IF NOT EXISTS (SELECT 1 FROM society_memberships m WHERE m.unit_id = v_r.unit_id AND m.user_id = v_r.applicant_id AND m.is_active)
+       AND NOT EXISTS (SELECT 1 FROM society_memberships m WHERE m.society_id = v_r.society_id AND m.user_id = v_r.applicant_id
+                       AND m.is_active AND m.role IN ('society_admin', 'secretary', 'chairman', 'treasurer')) THEN
+        RAISE EXCEPTION 'The applicant is no longer a member of this flat';
+    END IF;
     UPDATE flat_requests SET status = 'approved', committee_note = v_note, decided_at = now(), decided_by = auth.uid()
     WHERE id = p_request_id;
     INSERT INTO request_events (request_id, actor, action, note) VALUES (p_request_id, auth.uid(), 'approved', v_note);

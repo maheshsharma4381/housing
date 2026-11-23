@@ -30,7 +30,7 @@ export const RequestDetail: React.FC<{
   const [docs, setDocs] = useState<Doc[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [letter, setLetter] = useState<Letter | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{ body: string; warnings: string[] } | null>(null);
   const [shareNo, setShareNo] = useState<string>('');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
@@ -50,7 +50,15 @@ export const RequestDetail: React.FC<{
     setShareNo((u as { share_certificate_no: string | null } | null)?.share_certificate_no ?? '');
   }, [request.id, request.unit_id]);
 
-  useEffect(() => { void load(); setPreview(null); }, [load]);
+  const open = request.status === 'submitted' || request.status === 'changes_asked';
+  const loadPreview = useCallback(async () => {
+    if (!supabase || !isCommittee || request.kind !== 'noc' || !open) return setPreview(null);
+    const { data } = await supabase.rpc('noc_preview', { p_request_id: request.id });
+    setPreview(data ? { body: (data as { body: string }).body, warnings: (data as { warnings?: string[] }).warnings ?? [] } : null);
+  }, [request.id, request.kind, isCommittee, open]);
+
+  // the committee always sees the letter it is about to sign
+  useEffect(() => { void load(); void loadPreview(); }, [load, loadPreview]);
 
   const run = async (key: string, fn: () => Promise<void>, refreshList = true) => {
     setBusy(key); setError(null);
@@ -64,7 +72,6 @@ export const RequestDetail: React.FC<{
     return data;
   };
 
-  const open = request.status === 'submitted' || request.status === 'changes_asked';
   const missing = missingRequired(request.checklist, docs);
   const days = pendingDays(request.submitted_at, new Date());
   const amber = open && pendingTone(request.kind, days) === 'amber';
@@ -134,15 +141,17 @@ export const RequestDetail: React.FC<{
             <div className="flex items-center gap-2">
               <label className="text-slate-400">Share certificate No.</label>
               <input value={shareNo} onChange={e => setShareNo(e.target.value)} maxLength={32} className="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-white w-32" />
-              <button onClick={() => run('sc', async () => { await rpc('set_share_certificate', { p_unit_id: request.unit_id, p_number: shareNo }); setPreview(null); }, false)}
+              <button onClick={() => run('sc', async () => { await rpc('set_share_certificate', { p_unit_id: request.unit_id, p_number: shareNo }); await loadPreview(); }, false)}
                 className="text-sky-300 cursor-pointer">Save</button>
             </div>
           )}
-          {open && (
-            <button onClick={() => run('preview', async () => { const p = await rpc('noc_preview', { p_request_id: request.id }) as { body: string }; setPreview(p.body); }, false)}
-              className="text-sky-300 cursor-pointer">{busy === 'preview' ? 'Loading…' : 'Preview letter'}</button>
+          {preview && (
+            <div className="space-y-1.5">
+              <div className="font-semibold text-slate-300">The letter as it will be issued today</div>
+              {preview.warnings.map(w => <Banner key={w} tone="info">{w}</Banner>)}
+              <pre className="whitespace-pre-wrap font-sans p-3 rounded-xl bg-slate-950 border border-slate-800 text-slate-200">{preview.body}</pre>
+            </div>
           )}
-          {preview && <pre className="whitespace-pre-wrap font-sans p-3 rounded-xl bg-slate-950 border border-slate-800 text-slate-200">{preview}</pre>}
         </div>
       )}
 

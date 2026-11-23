@@ -48,7 +48,7 @@ const NocTemplates: React.FC<{ societyId: string; types: NocType[]; onSaved: () 
 
   return (
     <div className="space-y-2">
-      <Banner tone="info">Check this wording with your society&apos;s legal adviser. Words in {'{braces}'} are filled in by Sahvaas: {'{member_name} {flat} {share_certificate_no} {dues_line} {date} {purpose} {addressee} {society_name} {registration_number} {society_address}'}.</Banner>
+      <Banner tone="info">Check this wording with your society&apos;s legal adviser. Words in {'{braces}'} are filled in by Sahvaas: {'{member_name} (the flat owners) {applicant_name} (who asked) {flat} {share_certificate_no} {dues_line} {date} {purpose} {addressee} {society_name} {registration_number} {society_address}'}.</Banner>
       {!edit && (
         <>
           {types.map(t => (
@@ -57,7 +57,7 @@ const NocTemplates: React.FC<{ societyId: string; types: NocType[]; onSaved: () 
               <button onClick={() => setEdit({ ...t })} className="text-sky-300 cursor-pointer">Edit</button>
             </div>
           ))}
-          <button onClick={() => setEdit({ id: null, name: '', title: 'No Objection Certificate', body: '{addressee}\n\nThis is to certify that {member_name} of flat {flat} ...\n\n{dues_line}', signatory: 'secretary', checklist: [], tenant_can_ask: false, is_active: true })}
+          <button onClick={() => setEdit({ id: null, name: '', title: 'No Objection Certificate', body: '{addressee}\n\nThis is to certify that flat {flat} of {society_name} stands in the name of {member_name}.\n\n{dues_line}', signatory: 'secretary', checklist: [], tenant_can_ask: false, is_active: true })}
             className="flex items-center gap-1 text-sky-300 cursor-pointer"><Plus className="w-4 h-4" /> Add a NOC type</button>
         </>
       )}

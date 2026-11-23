@@ -12,7 +12,7 @@ import type { ChecklistItem } from '../lib/requests';
 interface NocType { id: string; name: string; checklist: ChecklistItem[]; tenant_can_ask: boolean; is_active: boolean }
 export interface MyFlat { unit_id: string; role: string }
 
-export const MyRequests: React.FC<{ societyId: string; flats: MyFlat[] }> = ({ societyId, flats }) => {
+export const MyRequests: React.FC<{ societyId: string; userId: string; flats: MyFlat[] }> = ({ societyId, userId, flats }) => {
   const [requests, setRequests] = useState<RequestRow[]>([]);
   const [types, setTypes] = useState<NocType[]>([]);
   const [form, setForm] = useState<{ unit: string; type: string; purpose: string; addressee: string } | null>(null);
@@ -21,17 +21,21 @@ export const MyRequests: React.FC<{ societyId: string; flats: MyFlat[] }> = ({ s
   const [done, setDone] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const labels = useFlatLabels(societyId);
+  const unitKey = [...new Set(flats.map(f => f.unit_id))].sort().join(',');
 
   const load = useCallback(async () => {
     if (!supabase) return;
     const [{ data: r }, { data: t }] = await Promise.all([
-      supabase.from('flat_requests').select('*').eq('society_id', societyId).order('submitted_at', { ascending: false }).limit(100),
+      // only this person's requests and their flats' (a committee member sees everyone's in the society view, not here)
+      supabase.from('flat_requests').select('*').eq('society_id', societyId)
+        .or([`applicant_id.eq.${userId}`, ...(unitKey ? [`unit_id.in.(${unitKey})`] : [])].join(','))
+        .order('submitted_at', { ascending: false }).limit(100),
       supabase.from('noc_types').select('id, name, checklist, tenant_can_ask, is_active').eq('society_id', societyId).eq('is_active', true).order('sort'),
     ]);
     setRequests((r as RequestRow[]) ?? []);
     setTypes((t as NocType[]) ?? []);
     setLoading(false);
-  }, [societyId]);
+  }, [societyId, userId, unitKey]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -51,7 +55,7 @@ export const MyRequests: React.FC<{ societyId: string; flats: MyFlat[] }> = ({ s
   };
 
   const inputClass = 'w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-sky-500';
-  const typeName = (r: RequestRow) => types.find(t => t.id === r.noc_type_id)?.name ?? 'NOC';
+  const typeName = (r: RequestRow) => types.find(t => t.id === r.noc_type_id)?.name ?? 'NOC request';
 
   return (
     <div className="space-y-4 text-xs">

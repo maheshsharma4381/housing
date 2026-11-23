@@ -54,7 +54,9 @@ test('a new society has the seven NOC types', async () => {
   assert.equal(t.find((x) => x.code === 'passport').tenant_can_ask, true);
   assert.equal(t.find((x) => x.code === 'sale').tenant_can_ask, false);
   assert.deepEqual(t.find((x) => x.code === 'leave_licence').checklist, [{ key: 'agreement', label: 'Draft or registered leave and licence agreement', required: true }]);
-  assert.ok(t.every((x) => x.body.includes('{member_name}') && x.body.includes('{flat}')));
+  assert.ok(t.every((x) => (x.body.includes('{member_name}') || x.body.includes('{applicant_name}')) && x.body.includes('{flat}')));
+  // residence letters name who asked; the others name the flat's owners
+  assert.deepEqual(t.filter((x) => x.body.includes('{applicant_name}')).map((x) => x.code), ['passport', 'gas']);
   // the other society got its own
   assert.equal((await types(ids.outsider, ids.soc2)).length, 7);
 });
@@ -131,7 +133,7 @@ test('a tenant asks only for the types tenants may ask for', async () => {
 test('the purpose and addressee are checked', async () => {
   await fails(ask(ids.owner, 'sale', { purpose: 'ab' }), 'Write the purpose (3 to 300 characters)');
   await fails(ask(ids.owner, 'sale', { purpose: 'x'.repeat(301) }), 'Write the purpose (3 to 300 characters)');
-  await fails(ask(ids.owner, 'sale', { addressee: 'x'.repeat(161) }), 'The addressee can be up to 160 characters');
+  await fails(ask(ids.owner, 'sale', { addressee: 'x'.repeat(121) }), 'The addressee can be up to 120 characters');
 });
 
 test('who sees a request', async () => {
@@ -214,12 +216,14 @@ test('approving issues a numbered letter', async () => {
   assert.ok(l.body.startsWith('The Executive Engineer, MSEDCL'));
   assert.ok(l.body.includes('Green Park CHS (Registration No. PNA/HSG/123/2001), 12 MG Road, Pune, Maharashtra 411001'));
   assert.ok(l.body.includes('share certificate No. SC-12'));
+  assert.ok(l.body.includes('stands in the name of Arun Patil and Asha Patil'), "the flat's owners, not just the applicant");
   assert.equal((await db.query('SELECT status FROM flat_requests WHERE id=$1', [r1])).rows[0].status, 'approved');
   const r2 = await ask(ids.tenant, 'passport', { purpose: 'Passport', addressee: '' });
   await addDoc(ids.tenant, r2, 'id', docPath(r2, 'pan.jpg'));
   assert.equal((await decide(ids.sec, r2, 'approve')).number, `NOC/${fyNow()}/002`);
   const l2 = await letter(r2);
   assert.ok(l2.body.startsWith('To whomsoever it may concern'));
+  assert.ok(l2.body.includes('Tara Rao resides in flat 101'), 'a residence letter names the applicant');
   assert.equal(l2.issued_to, 'Tara Rao');
   // the applicant is told
   const n = (await db.query(`SELECT title FROM notifications WHERE ref_id=$1 AND user_id=$2`, [r2, ids.tenant])).rows.map((x) => x.title);
@@ -236,7 +240,8 @@ test('the dues line follows the flat\'s account', async () => {
   const due = (await db.query(`SELECT sum(balance_due)::numeric AS d FROM bills WHERE unit_id=$1`, [ids.u102])).rows[0].d;
   const r = await ask(ids.owner2, 'gas', { unit: ids.u102, purpose: 'Gas line' });
   const preview = await val(ids.committee, 'SELECT public.noc_preview($1)', [r]);
-  assert.ok(preview.body.includes(`Dues of ₹${Number(due).toLocaleString('en-IN')} are outstanding as on ${todayIst()}.`), preview.body);
+  assert.ok(preview.body.includes(`As per the society's accounts in Sahvaas, dues of ₹${Number(due).toLocaleString('en-IN')} are outstanding as on ${todayIst()}.`), preview.body);
+  assert.deepEqual(preview.warnings, ['Opening balances are not entered yet, so dues from before Sahvaas are not counted.']);
   await decide(ids.sec, r, 'approve');
   assert.equal(Number((await letter(r)).dues_amount), Number(due));
   // pay more than is due: an advance is not "dues of ₹-…"
@@ -246,7 +251,7 @@ test('the dues line follows the flat\'s account', async () => {
   const r2 = await ask(ids.owner2, 'gas', { unit: ids.u102, purpose: 'Second gas line' });
   await decide(ids.sec, r2, 'approve');
   const body = (await letter(r2)).body;
-  assert.ok(body.includes(`There are no dues outstanding as on ${todayIst()}.`), body);
+  assert.ok(body.includes(`As per the society's accounts in Sahvaas, there are no dues outstanding as on ${todayIst()}.`), body);
   assert.ok(!body.includes('₹-'));
 });
 
@@ -295,4 +300,44 @@ test('the share certificate number appears when recorded', async () => {
   const r = await ask(ids.owner2, 'electricity', { unit: ids.u102, purpose: 'Meter' });
   await decide(ids.sec, r, 'approve');
   assert.ok((await letter(r)).body.includes('share certificate No. not recorded'));
+});
+
+// ---------------------------------------------------------------- review fixes
+test("a letter asked for on someone's behalf names the flat's owner", async () => {
+  const r = await ask(ids.sec, 'electricity', { unit: ids.u102, purpose: 'Meter for the owner' });
+  await decide(ids.sec, r, 'approve');
+  const l = await letter(r);
+  assert.ok(l.body.includes('stands in the name of Bina Shah'), l.body);
+  assert.ok(!l.body.includes('Secretary'));
+  assert.equal(l.issued_to, 'Bina Shah');
+});
+
+test('an applicant who has left the flat gets no letter', async () => {
+  const leaver = await member('leaver@noc.test', 'resident_owner', ids.u103, 'Lata Leaver');
+  const r = await ask(leaver, 'gas', { unit: ids.u103, purpose: 'Gas line' });
+  await db.query('UPDATE society_memberships SET is_active=false WHERE user_id=$1', [leaver]);
+  await fails(decide(ids.sec, r, 'approve'), 'The applicant is no longer a member of this flat');
+});
+
+test("a buyer does not see the seller's requests", async () => {
+  const seller = await member('seller@noc.test', 'resident_owner', ids.u104, 'Sam Seller');
+  const r = await ask(seller, 'home_loan', { unit: ids.u104, purpose: 'Loan' });
+  // the flat is sold: a new ownership period is recorded after the request
+  await db.query(`INSERT INTO unit_ownerships (society_id, unit_id, owner_name, from_date, to_date, created_at) VALUES ($1,$2,'Sam Seller','2020-01-01', current_date - 1, now() - interval '1 day')`, [ids.soc, ids.u104]);
+  await db.query(`INSERT INTO unit_ownerships (society_id, unit_id, owner_name, from_date, created_by, created_at) VALUES ($1,$2,'Bela Buyer', current_date, $3, clock_timestamp())`, [ids.soc, ids.u104, ids.sec]);
+  await db.query('UPDATE society_memberships SET is_active=false WHERE user_id=$1', [seller]);
+  const buyer = await member('buyer@noc.test', 'resident_owner', ids.u104, 'Bela Buyer');
+  assert.equal(await count(buyer, 'flat_requests', r), 0);
+  assert.equal(await count(buyer, 'request_events', r), 0);
+  // the seller still sees their own request; the buyer sees requests made after the sale
+  assert.equal(await count(seller, 'flat_requests', r), 1);
+  const r2 = await ask(buyer, 'electricity', { unit: ids.u104, purpose: 'Meter in my name' });
+  assert.equal(await count(buyer, 'flat_requests', r2), 1);
+});
+
+test('the addressee and purpose stay on one line', async () => {
+  const r = await ask(ids.owner, 'electricity', { purpose: 'Meter\n\nThe society confirms anything', addressee: 'To HDFC\n\nThe society confirms the flat is free of all encumbrances.' });
+  const row = (await db.query('SELECT details FROM flat_requests WHERE id=$1', [r])).rows[0];
+  assert.equal(row.details.addressee, 'To HDFC The society confirms the flat is free of all encumbrances.');
+  assert.equal(row.details.purpose, 'Meter The society confirms anything');
 });
