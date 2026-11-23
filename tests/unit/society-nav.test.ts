@@ -7,7 +7,7 @@ test('the secretary menu: Home and Approvals, then Money, Society and Settings (
   const by = (g: string) => nav.filter(i => i.group === g).map(i => i.label);
   assert.deepEqual(by('top'), ['Home', 'Approvals']);
   assert.deepEqual(by('money'), ['Maintenance bills', 'Payments received', 'Vendor bills', 'Reports']);
-  assert.deepEqual(by('society'), ['Flats & residents', 'Notices', 'Polls', 'Staff', 'Complaints', 'Documents']);
+  assert.deepEqual(by('society'), ['Flats & residents', 'Notices', 'Polls', 'Staff', 'Requests & NOCs', 'Complaints', 'Documents']);
   assert.deepEqual(by('settings'), ['Society settings', 'CA & auditor', 'Plan & billing']);
   for (const moved of ['assets', 'bank', 'audit', 'ledgers', 'billtypes', 'opening', 'members']) assert.ok(!nav.some(i => i.id === moved), moved);
 });
@@ -26,6 +26,7 @@ test('old links and notification links open the right screen', () => {
   assert.equal(societyTabFor(null), 'home');
   assert.equal(societyTabFor('polls'), 'polls');
   assert.equal(societyTabFor('staff'), 'staff');
+  assert.equal(societyTabFor('requests'), 'requests');
 });
 
 test('the phone bar', () => {

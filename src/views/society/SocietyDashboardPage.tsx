@@ -71,6 +71,7 @@ import {
   BookOpen,
   Vote,
   IdCard,
+  FileSignature,
 } from 'lucide-react';
 import { SignOutMenu, LogoutEverywhereButton } from '../../components/SignOutMenu';
 import { nextSetupStep, type SetupStatus } from '../../lib/setup';
@@ -80,7 +81,7 @@ type Tab = SocietyTab;
 
 const ICONS: Record<SocietyTab, React.ComponentType<{ className?: string }>> = {
   home: Home, approvals: ListChecks, flats: Building2, members: Users, billing: CreditCard, payments: QrCode,
-  expenses: Receipt, documents: FolderLock, notices: FileText, polls: Vote, staff: IdCard, complaints: MessageSquare, professionals: Briefcase,
+  expenses: Receipt, documents: FolderLock, notices: FileText, polls: Vote, staff: IdCard, requests: FileSignature, complaints: MessageSquare, professionals: Briefcase,
   reports: BarChart3, settings: Settings, plan: Gem,
   ledgers: ListTree, billtypes: Tags, opening: BookOpen, assets: Boxes, bank: Landmark, audit: Scale,
 };
