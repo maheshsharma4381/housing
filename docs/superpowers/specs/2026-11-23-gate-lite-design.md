@@ -23,10 +23,12 @@ The society supplies the gate phone; Sahvaas supplies the app (product owner, 20
 3. The people living in the flat get an inbox notification (and a push, when push is set up) for every entry to their flat.
 4. The committee sees the whole register, filters by date and flat, and downloads it for Excel.
 5. A guard changing shift or leaving the job needs nothing from the secretary.
+6. Daily staff already in the staff register (Phase 10, migration 039) are logged in two taps: pick the person, Save. The flats they work in are told "Sunita (Maid) has arrived" (product owner, 2026-11-24).
 
 **Non-goals (this round)**
 - Approve/deny inside the app, delivery pre-approval, visitor passes or QR codes.
-- Daily staff (maid, driver) attendance, vehicle registry, parcel log.
+- Staff attendance reports, salary or leave tracking, vehicle registry, parcel log. (Staff arrivals are logged as entries, section 5.2, but there is no attendance view.)
+- Adding or editing staff at the gate. The register is kept by residents and the committee (Phase 10).
 - Calls placed by the server (IVR) or instant (sub-second) push. Push stays the existing job (it may arrive up to 5 minutes later); the phone call is the real-time channel.
 - Hindi or Marathi. The app stays English-only (spec 2026-10-31, section 2). The gate screen uses large text and icons so a guard with little English can follow it.
 - A native app. The gate screen is a page of the installable PWA.
@@ -34,6 +36,7 @@ The society supplies the gate phone; Sahvaas supplies the app (product owner, 20
 **Anti-goals (a failure even if it works)**
 - The gate account can read anything other than what the gate screen needs: no bills, dues, ledgers, notices, documents, members list or other residents' visitor history.
 - A resident sees visitors of another flat.
+- The gate shows a staff member's mobile, ID proof or committee notes.
 - The guard needs a login of their own, or the secretary has to do something every time a guard changes.
 - Visitor photos are kept forever.
 - Anything on the gate screen depends on the push job to work.
@@ -83,8 +86,9 @@ A login that holds an active gate account lands on `/gate` and can open nothing 
    - **Photo** (optional): opens the camera; the page shrinks it to at most 1280 px and about 200 KB before upload;
    - **Save entry**.
 3. **After saving:** "Entry saved" and one **Call** button per person living in the flat (name shown, the button opens the dialer through `tel:`). With nobody to call: "No phone number for this flat".
-4. **Inside now:** entries of the last 24 hours without an exit, newest first, each with **Exit**. Older entries are not shown to the gate.
-5. If the gate account is switched off, the screen says "This gate phone has been switched off by the society" and offers Log out.
+4. **Staff** (a second button next to **New visitor**): a search box over the society's staff register (name, kind, photo, "Police verified" badge and the flats they work in; never mobile, ID proof or notes). Tapping a person and **Save entry** logs them; photo, mobile and purpose are not asked (purpose is `staff`). Staff the committee has removed still appear, in red: "Removed from the register by the committee — call the secretary", with no Save button. Staff with no flats (society staff such as a sweeper) are logged to "Society office".
+5. **Inside now:** entries of the last 24 hours without an exit, newest first, each with **Exit**; staff entries show the kind ("Maid"). Older entries are not shown to the gate.
+6. If the gate account is switched off, the screen says "This gate phone has been switched off by the society" and offers Log out.
 
 ### 5.3 Who "lives in the flat"
 
@@ -98,15 +102,18 @@ A login that holds an active gate account lands on `/gate` and can open nothing 
 
 ### 5.4 Notifications
 
-Each entry to a flat calls `notify_users` for the people living there: kind `visitor`, title "Visitor at the gate: {name}", body the purpose (and "Delivery" etc.), link `visitors`. Entries to "Society office" notify nobody. Exit sends nothing.
+Each entry calls `notify_users` for the households of its flats:
+- a visitor: kind `visitor`, title "Visitor at the gate: {name}", body the purpose label, link `visitors`;
+- a staff member: kind `staff_arrived`, title "{name} ({kind}) has arrived", no body, link `visitors`, to the household of every flat the person works in at that moment.
+Entries to "Society office" notify nobody. Exit sends nothing.
 
 ### 5.5 Resident screen
 
-The resident portal gets **Visitors**: entries to the flat(s) where the person is in the household (5.3), made since they joined, for the last 30 days, newest first: date and time, name, purpose, photo thumbnail (opens larger), entered and exited times. A tenant sees this tab too (visitors are about who lives there, not about money).
+The resident portal gets **Visitors**: entries to the flat(s) where the person is in the household (5.3), made since they joined, for the last 30 days, newest first: date and time, name, purpose (staff show their kind), photo thumbnail (opens larger; for staff, the register photo), entered and exited times. A staff entry belongs to the flats the person worked in when they arrived; unlinking them later does not move old entries. A tenant sees this tab too (visitors are about who lives there, not about money).
 
 ### 5.6 Committee register
 
-The society portal gets **Visitors** under Society: all entries, filters for date range (default this month) and flat, the photo on tap, and **Download** (CSV through `toCsv`/`downloadCsv`, opening in Excel): date, time in, time out, flat, visitor, mobile, purpose, vehicle, guard on duty, gate. Committee members (read-only role) see it too.
+The society portal gets **Visitors** under Society: all entries, filters for date range (default this month), flat and "Staff only", the photo on tap, and **Download** (CSV through `toCsv`/`downloadCsv`, opening in Excel): date, time in, time out, flat (a staff entry lists all its flats, separated by " / "), visitor, mobile (blank for staff), purpose (staff: their kind), vehicle, guard on duty, gate. Committee members (read-only role) see it too.
 
 ### 5.7 Keeping data
 
@@ -117,8 +124,10 @@ The society portal gets **Visitors** under Society: all entries, filters for dat
 ## 6. Data model (migration 040)
 
 - `gate_accounts`: id, society_id, label, mobile (normalized), user_id (null until claimed), is_active, created_by, created_at, claimed_at. A mobile number is a gate account in at most one society at a time.
-- `gate_entries`: id, society_id, unit_id (null = society office), visitor_name, visitor_mobile, purpose (`guest|delivery|cab|service|other`), vehicle_number, photo_path, guard_name, gate_account_id, entered_at, exited_at, photo_removed_at.
-- RLS on both tables with no policy for the gate account; committee read on `gate_entries` through `is_committee_viewer`; resident read of household rows since joining (5.3). All gate actions go through RPCs: `my_gate_account()`, `gate_flats()`, `gate_log_entry(...)`, `gate_flat_contacts(entry_id)`, `gate_inside_now()`, `gate_mark_exit(entry_id)`, `gate_photo_url(entry_id)`; secretary actions: `add_gate_account`, `set_gate_account_active`.
+- `gate_entry_flats`: entry_id, unit_id (primary key both). A visitor entry has one row (none for "Society office"); a staff entry has one row per flat the person works in at that moment. Notifications, the Visitors tab, photo rights and the flat filter all go through this table.
+- `gate_entries`: id, society_id, staff_id (null for visitors; references `staff`), visitor_name, visitor_mobile, purpose (`guest|delivery|cab|service|other|staff`), vehicle_number, photo_path, guard_name, gate_account_id, entered_at, exited_at, photo_removed_at.
+- RLS on both tables with no policy for the gate account; committee read on `gate_entries` through `is_committee_viewer`; resident read of household rows since joining (5.3). All gate actions go through RPCs: `my_gate_account()`, `gate_flats()`, `gate_staff()`, `gate_log_entry(...)`, `gate_log_staff(...)`, `gate_flat_contacts(entry_id)`, `gate_inside_now()`, `gate_mark_exit(entry_id)`, `gate_photo_url(entry_id)`; secretary actions: `add_gate_account`, `set_gate_account_active`.
+- Storage policy on `staff-files`: the gate account may read `photo-*` objects of its own society (not `id-*`).
 - `notifications.link` gains the value `visitors` for both portals (`societyTabFor` and the resident equivalent).
 
 ## 7. Left to the builder
