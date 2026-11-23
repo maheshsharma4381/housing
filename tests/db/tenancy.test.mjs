@@ -204,3 +204,58 @@ test('ending the tenancy removes the tenant', async () => {
   await q(ids.sec, 'SELECT public.end_tenancy($1,NULL)', [ids.t101b]);
   assert.deepEqual((await invites(ids.u101)).map((i) => i.status), ['revoked']);
 });
+
+// ---------------------------------------------------------------- 4. reminders and non-occupancy charges
+const istDate = (iso) => { const [y, m, d] = iso.split('-').map(Number); return `${String(d).padStart(2, '0')} ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m - 1]} ${y}`; };
+
+test('a reminder goes once, 30 days before the end', async () => {
+  await db.query('DELETE FROM tenancies');
+  const soon = await addTenancy(ids.u104, { end: isoDays(20) });
+  await addTenancy(ids.u103, { end: isoDays(40) });
+  assert.equal((await db.query('SELECT public.tenancy_reminders() AS n')).rows[0].n, 1);
+  const end = (await db.query('SELECT end_date::text AS e FROM tenancies WHERE id=$1', [soon])).rows[0].e;
+  const told = (await db.query(`SELECT user_id, title, link FROM notifications WHERE ref_id=$1 AND kind='tenancy' ORDER BY user_id`, [soon])).rows;
+  assert.deepEqual(told.map((n) => n.user_id).sort(), [ids.committee, ids.sec].sort());
+  assert.equal(told[0].title, `Tenancy of flat 104 ends on ${istDate(end)}`);
+  assert.equal(told[0].link, 'requests');
+  assert.equal((await db.query('SELECT public.tenancy_reminders() AS n')).rows[0].n, 0);
+  await db.query('DELETE FROM tenancies');
+});
+
+const bill = async (unit, start) => (await db.query(
+  `SELECT b.id, b.subtotal_amount::numeric AS subtotal, b.total_amount::numeric AS total,
+          coalesce(json_agg(json_build_object('d', i.description, 'a', i.amount::numeric, 't', i.tax_amount::numeric) ORDER BY i.description) FILTER (WHERE i.id IS NOT NULL), '[]') AS items
+   FROM bills b JOIN billing_cycles c ON c.id = b.cycle_id LEFT JOIN bill_items i ON i.bill_id = b.id
+   WHERE b.unit_id=$1 AND c.period_start=$2 GROUP BY b.id`, [unit, start])).rows[0];
+
+test('non-occupancy charges on let flats', async () => {
+  await fails(q(ids.sec, 'SELECT public.set_non_occupancy_percent($1,11)', [ids.soc]), 'Non-occupancy charges can be at most 10% of service charges');
+  await fails(q(ids.owner, 'SELECT public.set_non_occupancy_percent($1,5)', [ids.soc]), 'Only the committee can change this');
+  await q(ids.sec, 'SELECT public.set_non_occupancy_percent($1,10)', [ids.soc]);
+  await db.query(`INSERT INTO billing_rules (society_id, name, calculation_type, rate, is_municipal_tax) VALUES ($1,'Property tax','flat_per_unit',300,true)`, [ids.soc]);
+  await addTenancy(ids.u101, { start: '2030-01-15', end: '2030-12-31' });          // let from the middle of January
+  await addTenancy(ids.u102, { start: '2029-01-01', end: '2029-12-31', status: 'ended' }); // ended before January
+  await q(ids.sec, `SELECT public.generate_bills($1,'2030-01-01','2030-01-31','2030-01-10')`, [ids.soc]);
+  const b101 = await bill(ids.u101, '2030-01-01');
+  assert.deepEqual(b101.items.map((i) => [i.d, Number(i.a), Number(i.t)]),
+    [['Maintenance', 1500, 0], ['Non-occupancy charges', 150, 0], ['Property tax', 300, 0]]);
+  assert.equal(Number(b101.subtotal), 1950);
+  assert.equal(Number(b101.total), 1950);
+  const b102 = await bill(ids.u102, '2030-01-01');
+  assert.ok(!b102.items.some((i) => i.d === 'Non-occupancy charges'));
+  assert.equal(Number(b102.total), 1800);
+  // the bill posts and balances
+  const sum = (await db.query(`SELECT sum(l.amount)::numeric AS s, count(*)::int AS n FROM ledger_entries l JOIN journal_entries j ON j.id = l.journal_entry_id
+    WHERE j.reference_event_type='bill.issued' AND j.reference_event_id=$1`, [b101.id])).rows[0];
+  assert.ok(sum.n > 0);
+  assert.equal(Number(sum.s), 0);
+  // at 0% nothing is added
+  await q(ids.sec, 'SELECT public.set_non_occupancy_percent($1,0)', [ids.soc]);
+  await q(ids.sec, `SELECT public.generate_bills($1,'2030-02-01','2030-02-28','2030-02-10')`, [ids.soc]);
+  assert.ok(!(await bill(ids.u101, '2030-02-01')).items.some((i) => i.d === 'Non-occupancy charges'));
+  // the dry run shows the same total
+  await q(ids.sec, 'SELECT public.set_non_occupancy_percent($1,10)', [ids.soc]);
+  const preview = await val(ids.sec, `SELECT public.generate_bills($1,'2030-03-01','2030-03-31','2030-03-10',NULL,true)`, [ids.soc]);
+  const p101 = preview.preview.find((p) => p.unit_number === '101');
+  assert.equal(Number(p101.total), 1950);
+});

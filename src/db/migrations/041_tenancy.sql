@@ -432,3 +432,262 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 GRANT EXECUTE ON FUNCTION public.end_tenancy(UUID, DATE) TO authenticated;
+
+-- ============================================================================
+-- 4. END-DATE REMINDERS AND NON-OCCUPANCY CHARGES
+-- ============================================================================
+CREATE OR REPLACE FUNCTION public.tenancy_reminders()
+RETURNS INT AS $$
+DECLARE
+    v_t RECORD;
+    v_count INT := 0;
+    v_today DATE := (now() AT TIME ZONE 'Asia/Kolkata')::date;
+BEGIN
+    FOR v_t IN
+        SELECT t.* FROM tenancies t JOIN societies s ON s.id = t.society_id AND s.is_active
+        WHERE t.status = 'active' AND t.reminded_at IS NULL AND t.end_date <= v_today + 30
+        FOR UPDATE OF t
+    LOOP
+        PERFORM notify_users(v_t.society_id, (
+            SELECT array_agg(DISTINCT x) FROM (
+                SELECT unnest(society_managers(v_t.society_id)) AS x
+                UNION SELECT m.user_id FROM society_memberships m
+                WHERE m.unit_id = v_t.unit_id AND m.is_active
+                  AND m.role IN ('resident_owner', 'society_admin', 'secretary', 'chairman', 'treasurer', 'committee_member')
+            ) y WHERE x IS NOT NULL
+        ), 'tenancy', 'Tenancy of flat ' || flat_label(v_t.unit_id) || ' ends on ' || to_char(v_t.end_date, 'DD Mon YYYY'),
+           v_t.tenant_name, 'requests', v_t.id);
+        UPDATE tenancies SET reminded_at = now() WHERE id = v_t.id;
+        v_count := v_count + 1;
+    END LOOP;
+    RETURN v_count;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+REVOKE ALL ON FUNCTION public.tenancy_reminders() FROM PUBLIC, anon, authenticated;
+
+-- Every morning at 09:30 IST (04:00 UTC), when pg_cron is available
+DO $outer$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'pg_cron') THEN
+        CREATE EXTENSION IF NOT EXISTS pg_cron;
+        PERFORM cron.unschedule(jobid) FROM cron.job WHERE jobname = 'sahvaas-tenancy-reminders';
+        PERFORM cron.schedule('sahvaas-tenancy-reminders', '0 4 * * *', $cron$SELECT public.tenancy_reminders()$cron$);
+    END IF;
+END
+$outer$;
+
+ALTER TABLE society_settings ADD COLUMN IF NOT EXISTS non_occupancy_percent NUMERIC(4,2) NOT NULL DEFAULT 0;
+ALTER TABLE society_settings DROP CONSTRAINT IF EXISTS chk_non_occupancy_percent;
+ALTER TABLE society_settings ADD CONSTRAINT chk_non_occupancy_percent CHECK (non_occupancy_percent BETWEEN 0 AND 10);
+ALTER TABLE billing_rules ADD COLUMN IF NOT EXISTS is_municipal_tax BOOLEAN NOT NULL DEFAULT false;
+
+CREATE OR REPLACE FUNCTION public.set_non_occupancy_percent(p_society_id UUID, p_percent NUMERIC)
+RETURNS VOID AS $$
+BEGIN
+    IF NOT is_society_admin(p_society_id) THEN
+        RAISE EXCEPTION 'Only the committee can change this';
+    END IF;
+    IF p_percent IS NULL OR p_percent < 0 OR p_percent > 10 THEN
+        RAISE EXCEPTION 'Non-occupancy charges can be at most 10%% of service charges';
+    END IF;
+    INSERT INTO society_settings (society_id, non_occupancy_percent) VALUES (p_society_id, round(p_percent, 2))
+    ON CONFLICT (society_id) DO UPDATE SET non_occupancy_percent = EXCLUDED.non_occupancy_percent;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+GRANT EXECUTE ON FUNCTION public.set_non_occupancy_percent(UUID, NUMERIC) TO authenticated;
+
+-- generate_bills from 033, with the non-occupancy line
+CREATE OR REPLACE FUNCTION public.generate_bills(
+    p_society_id UUID,
+    p_period_start DATE,
+    p_period_end DATE,
+    p_due_date DATE,
+    p_cycle_name TEXT DEFAULT NULL,
+    p_dry_run BOOLEAN DEFAULT false
+)
+RETURNS JSONB AS $$
+DECLARE
+    v_cycle_id UUID;
+    v_existing_cycle UUID;
+    v_cycle_name TEXT;
+    v_unit RECORD;
+    v_rule RECORD;
+    v_owner UUID;
+    v_bill_id UUID;
+    v_seq INT := 0;
+    v_base INT;
+    v_prefix TEXT;
+    v_line NUMERIC;
+    v_line_tax NUMERIC;
+    v_subtotal NUMERIC;
+    v_tax NUMERIC;
+    v_total_all NUMERIC := 0;
+    v_skipped JSONB := '[]'::jsonb;
+    v_preview JSONB := '[]'::jsonb;
+    v_noc_pct NUMERIC := 0;
+    v_noc NUMERIC;
+BEGIN
+    IF NOT (is_platform_admin() OR is_society_admin(p_society_id)) THEN
+        RAISE EXCEPTION 'Only the society committee can generate bills';
+    END IF;
+    IF p_period_end < p_period_start THEN
+        RAISE EXCEPTION 'Period end must be on or after period start';
+    END IF;
+    IF p_due_date < p_period_start THEN
+        RAISE EXCEPTION 'Due date cannot be before the billing period starts';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM billing_rules
+        WHERE society_id = p_society_id AND is_active = true
+          AND calculation_type IN ('flat_per_unit', 'per_sqft')
+    ) THEN
+        RAISE EXCEPTION 'Add at least one active billing rule (flat per unit or per sq.ft) first';
+    END IF;
+
+    SELECT id INTO v_existing_cycle FROM billing_cycles
+    WHERE society_id = p_society_id AND period_start = p_period_start AND period_end = p_period_end;
+    IF v_existing_cycle IS NOT NULL AND EXISTS (
+        SELECT 1 FROM bills WHERE cycle_id = v_existing_cycle AND status <> 'cancelled'
+    ) THEN
+        RAISE EXCEPTION 'Bills for % to % have already been generated', p_period_start, p_period_end;
+    END IF;
+
+    -- 041: non-occupancy charges on let flats (a society setting, at most 10% of service charges)
+    SELECT coalesce(non_occupancy_percent, 0) INTO v_noc_pct FROM society_settings WHERE society_id = p_society_id;
+    v_noc_pct := coalesce(v_noc_pct, 0);
+
+    v_cycle_name := coalesce(nullif(trim(p_cycle_name), ''), to_char(p_period_start, 'FMMonth YYYY') || ' Maintenance');
+
+    -- Continue numbering after the highest bill of this month (supports several cycles per month)
+    PERFORM 1 FROM societies WHERE id = p_society_id FOR UPDATE;
+    v_prefix := 'B' || to_char(p_period_start, 'YYMM') || '-';
+    SELECT coalesce(max(substring(bill_number FROM '^' || v_prefix || '([0-9]+)$')::int), 0) INTO v_base
+    FROM bills WHERE society_id = p_society_id;
+
+    IF NOT p_dry_run THEN
+        IF v_existing_cycle IS NOT NULL THEN
+            v_cycle_id := v_existing_cycle; -- every bill of it was cancelled: reuse
+            UPDATE billing_cycles SET cycle_name = v_cycle_name, due_date = p_due_date, status = 'published'
+            WHERE id = v_cycle_id;
+        ELSE
+            INSERT INTO billing_cycles (society_id, cycle_name, period_start, period_end, due_date, status)
+            VALUES (p_society_id, v_cycle_name, p_period_start, p_period_end, p_due_date, 'published')
+            RETURNING id INTO v_cycle_id;
+        END IF;
+    END IF;
+
+    FOR v_unit IN
+        SELECT u.*, w.name AS wing_name
+        FROM units u JOIN wings w ON w.id = u.wing_id
+        WHERE u.society_id = p_society_id
+        ORDER BY w.name, u.unit_number
+    LOOP
+        SELECT m.user_id INTO v_owner
+        FROM society_memberships m
+        WHERE m.society_id = p_society_id AND m.unit_id = v_unit.id
+          AND m.is_active = true AND m.role = 'resident_owner'
+        ORDER BY m.created_at
+        LIMIT 1;
+        -- Bills belong to the flat (033): the joined owner pays; with nobody joined yet the bill waits for them
+
+        SELECT
+            coalesce(sum(round(CASE r.calculation_type WHEN 'per_sqft' THEN r.rate * v_unit.carpet_area_sqft ELSE r.rate END, 2)), 0),
+            coalesce(sum(round(round(CASE r.calculation_type WHEN 'per_sqft' THEN r.rate * v_unit.carpet_area_sqft ELSE r.rate END, 2) * r.tax_rate_percent / 100, 2)), 0)
+        INTO v_subtotal, v_tax
+        FROM billing_rules r
+        WHERE r.society_id = p_society_id AND r.is_active = true
+          AND r.calculation_type IN ('flat_per_unit', 'per_sqft')
+          AND (r.applies_to_unit_type IS NULL OR r.applies_to_unit_type = '' OR r.applies_to_unit_type = v_unit.unit_type)
+          -- a charge for chosen flats bills only those flats (033)
+          AND (NOT r.applies_to_selected OR EXISTS (SELECT 1 FROM billing_rule_units x WHERE x.rule_id = r.id AND x.unit_id = v_unit.id));
+
+        -- 041: a flat let for any part of the period pays non-occupancy charges on its service charges
+        -- (its rule amounts before tax, leaving out rules marked municipal tax)
+        v_noc := 0;
+        IF v_noc_pct > 0 AND EXISTS (
+            SELECT 1 FROM tenancies t
+            WHERE t.unit_id = v_unit.id AND t.start_date <= p_period_end
+              AND coalesce(t.ended_on, t.end_date) >= p_period_start
+              AND coalesce(t.ended_on, t.end_date) >= t.start_date) THEN
+            SELECT round(coalesce(sum(round(CASE r.calculation_type WHEN 'per_sqft' THEN r.rate * v_unit.carpet_area_sqft ELSE r.rate END, 2)), 0)
+                         * v_noc_pct / 100, 2)
+            INTO v_noc
+            FROM billing_rules r
+            WHERE r.society_id = p_society_id AND r.is_active = true AND NOT r.is_municipal_tax
+              AND r.calculation_type IN ('flat_per_unit', 'per_sqft')
+              AND (r.applies_to_unit_type IS NULL OR r.applies_to_unit_type = '' OR r.applies_to_unit_type = v_unit.unit_type)
+              AND (NOT r.applies_to_selected OR EXISTS (SELECT 1 FROM billing_rule_units x WHERE x.rule_id = r.id AND x.unit_id = v_unit.id));
+            v_subtotal := v_subtotal + v_noc;
+        END IF;
+
+        IF v_subtotal <= 0 THEN
+            v_skipped := v_skipped || jsonb_build_object('unit_number', v_unit.unit_number, 'reason', 'No applicable billing rule');
+            CONTINUE;
+        END IF;
+
+        v_seq := v_seq + 1;
+        v_total_all := v_total_all + v_subtotal + v_tax;
+        IF v_seq <= 500 THEN
+            v_preview := v_preview || jsonb_build_object(
+                'unit_number', v_unit.unit_number, 'wing', v_unit.wing_name,
+                'subtotal', v_subtotal, 'tax', v_tax, 'total', v_subtotal + v_tax, 'non_occupancy', v_noc
+            );
+        END IF;
+
+        IF NOT p_dry_run THEN
+            INSERT INTO bills (
+                society_id, cycle_id, unit_id, user_id, bill_number, bill_date, due_date,
+                subtotal_amount, tax_amount, total_amount, amount_paid, balance_due, status
+            ) VALUES (
+                p_society_id, v_cycle_id, v_unit.id, v_owner,
+                v_prefix || lpad((v_base + v_seq)::text, 4, '0'),
+                current_date, p_due_date,
+                v_subtotal, v_tax, v_subtotal + v_tax, 0, v_subtotal + v_tax, 'issued'
+            )
+            RETURNING id INTO v_bill_id;
+
+            FOR v_rule IN
+                SELECT * FROM billing_rules r
+                WHERE r.society_id = p_society_id AND r.is_active = true
+                  AND r.calculation_type IN ('flat_per_unit', 'per_sqft')
+                  AND (r.applies_to_unit_type IS NULL OR r.applies_to_unit_type = '' OR r.applies_to_unit_type = v_unit.unit_type)
+          -- a charge for chosen flats bills only those flats (033)
+          AND (NOT r.applies_to_selected OR EXISTS (SELECT 1 FROM billing_rule_units x WHERE x.rule_id = r.id AND x.unit_id = v_unit.id))
+                ORDER BY r.created_at
+            LOOP
+                v_line := round(CASE v_rule.calculation_type WHEN 'per_sqft' THEN v_rule.rate * v_unit.carpet_area_sqft ELSE v_rule.rate END, 2);
+                v_line_tax := round(v_line * v_rule.tax_rate_percent / 100, 2);
+                INSERT INTO bill_items (bill_id, rule_id, description, quantity, unit_rate, amount, tax_rate, tax_amount, total_item_amount)
+                VALUES (
+                    v_bill_id, v_rule.id, v_rule.name,
+                    CASE v_rule.calculation_type WHEN 'per_sqft' THEN v_unit.carpet_area_sqft ELSE 1 END,
+                    v_rule.rate, v_line, v_rule.tax_rate_percent, v_line_tax, v_line + v_line_tax
+                );
+            END LOOP;
+            IF v_noc > 0 THEN
+                INSERT INTO bill_items (bill_id, rule_id, description, quantity, unit_rate, amount, tax_rate, tax_amount, total_item_amount)
+                VALUES (v_bill_id, NULL, 'Non-occupancy charges', 1, v_noc, v_noc, 0, 0, v_noc);
+            END IF;
+        END IF;
+    END LOOP;
+
+    IF NOT p_dry_run THEN
+        IF v_seq = 0 THEN
+            RAISE EXCEPTION 'No bills to generate: check the billing rules';
+        END IF;
+        INSERT INTO audit_logs (society_id, user_id, action, entity_type, entity_id, new_value)
+        VALUES (p_society_id, auth.uid(), 'billing_cycle.generated', 'billing_cycle', v_cycle_id::text,
+                jsonb_build_object('bills', v_seq, 'total', v_total_all, 'period_start', p_period_start));
+    END IF;
+
+    RETURN jsonb_build_object(
+        'cycle_id', v_cycle_id,
+        'cycle_name', v_cycle_name,
+        'dry_run', p_dry_run,
+        'bills', v_seq,
+        'total_amount', v_total_all,
+        'skipped_units', v_skipped,
+        'preview', v_preview
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
