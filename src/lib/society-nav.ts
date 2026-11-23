@@ -3,7 +3,7 @@
 // member who is the society's Accountant (Phase 2D).
 
 export type SocietyTab = 'home' | 'approvals' | 'members' | 'flats' | 'billing' | 'payments' | 'expenses' | 'documents' | 'notices'
-  | 'complaints' | 'professionals' | 'reports' | 'settings' | 'plan'
+  | 'complaints' | 'polls' | 'staff' | 'professionals' | 'reports' | 'settings' | 'plan'
   | 'ledgers' | 'billtypes' | 'opening' | 'assets' | 'bank' | 'audit';
 
 export type NavGroup = 'top' | 'money' | 'society' | 'settings' | 'accounts';
@@ -21,6 +21,8 @@ const MAIN: NavItem[] = [
   // flats, members and owner change on one screen
   { id: 'flats', label: 'Flats & residents', group: 'society' },
   { id: 'notices', label: 'Notices', group: 'society' },
+  { id: 'polls', label: 'Polls', group: 'society' },
+  { id: 'staff', label: 'Staff', group: 'society' },
   { id: 'complaints', label: 'Complaints', group: 'society' },
   { id: 'documents', label: 'Documents', group: 'society' },
   { id: 'settings', label: 'Society settings', group: 'settings' },
