@@ -87,3 +87,100 @@ test('every society has the transfer checklist', async () => {
   await db.query(`DELETE FROM request_checklists WHERE society_id=$1 AND kind='tenancy'`, [ids.soc]);
   await db.query('SELECT public.seed_request_checklists($1)', [ids.soc]);
 });
+
+// ---------------------------------------------------------------- 2. applying, fees and cancellation
+const buyer = { buyer_name: '  Neha   Joshi ', buyer_mobile: '98765 43210', buyer_email: ' Neha@Buyer.TEST ', deed_date: isoDays(-3), deed_number: 'HVL-1234-2026' };
+const apply = (user, unit, d = buyer) => val(user, 'SELECT public.create_transfer_request($1,$2)', [unit, JSON.stringify(d)]);
+const billFees = (user, r, fee, premium) => val(user, 'SELECT public.bill_transfer_fees($1,$2,$3)', [r, fee, premium]);
+const details = async (r) => (await db.query('SELECT details FROM flat_requests WHERE id=$1', [r])).rows[0].details;
+let payNo = 0;
+const payAll = async (user, unit) => {
+  const due = Number((await db.query(`SELECT coalesce(sum(balance_due),0)::numeric d FROM bills WHERE unit_id=$1 AND status <> 'cancelled'`, [unit])).rows[0].d);
+  payNo += 1;
+  const p = await val(user, `INSERT INTO payments (society_id, unit_id, user_id, payment_number, amount, transaction_reference_utr, status)
+    VALUES ($1,$2,$3,$4,$5,$6,'pending_verification') RETURNING id`, [ids.soc, unit, user, `PAY-TR-${payNo}`, due, String(625219500000 + payNo)]);
+  await q(ids.sec, 'SELECT public.verify_payment($1, true)', [p]);
+};
+
+test('an owner applies to transfer the flat', async () => {
+  ids.req = await apply(ids.owner, ids.u101);
+  const r = (await db.query('SELECT kind, status, applicant_id, details, jsonb_array_length(checklist) n FROM flat_requests WHERE id=$1', [ids.req])).rows[0];
+  assert.deepEqual([r.kind, r.status, r.applicant_id, r.n], ['transfer', 'submitted', ids.owner, 9]);
+  assert.deepEqual(r.details, { buyer_name: 'Neha Joshi', buyer_mobile: '919876543210', buyer_email: 'neha@buyer.test', deed_date: isoDays(-3), deed_number: 'HVL-1234-2026' });
+  const n = (await db.query(`SELECT title FROM notifications WHERE user_id=$1 AND ref_id=$2`, [ids.sec, ids.req])).rows.map((x) => x.title);
+  assert.deepEqual(n, ['Transfer requested for flat A-101']);
+});
+
+test('who can apply', async () => {
+  for (const u of [ids.tenant, ids.owner2, ids.committee]) {
+    await fails(apply(u, ids.u101), 'Only an owner of this flat can apply for a transfer');
+  }
+  const r = await apply(ids.sec, ids.u104, { ...buyer, buyer_mobile: '9811111111', buyer_email: '' });
+  assert.equal((await details(r)).buyer_email, undefined);
+  await q(ids.sec, 'SELECT public.withdraw_request($1)', [r]);
+});
+
+test('application checks', async () => {
+  const bad = (o, m) => fails(apply(ids.owner2, ids.u102, { ...buyer, ...o }), m);
+  await bad({ buyer_name: ' N ' }, "Enter the buyer's name");
+  await bad({ buyer_mobile: '' }, "Enter the buyer's mobile number");
+  await bad({ buyer_mobile: '12345' }, 'Mobile 12345 is not a valid number');
+  await bad({ buyer_email: 'neha' }, 'Enter a valid email for the buyer');
+  await db.query('UPDATE profiles SET phone=$2 WHERE id=$1', [ids.owner2, '9822222222']);
+  await bad({ buyer_mobile: '9822222222' }, 'This mobile belongs to an owner of this flat');
+  await bad({ deed_date: '' }, 'Enter the sale deed date');
+  await bad({ deed_date: isoDays(2) }, 'The sale deed date cannot be in the future');
+  await bad({ deed_number: 'x'.repeat(41) }, 'The registration number can be up to 40 characters');
+});
+
+test('one open transfer per flat', async () => {
+  await fails(apply(ids.owner, ids.u101), 'A transfer request for this flat is already open');
+});
+
+test('fees are billed once', async () => {
+  await fails(billFees(ids.owner, ids.req, 500, 0), 'Only the committee can do this');
+  await fails(billFees(ids.committee, ids.req, 500, 0), 'Only the committee can do this');
+  await fails(billFees(ids.sec, ids.req, 500, 25001), 'The transfer premium can be at most ₹25,000');
+  await fails(billFees(ids.sec, ids.req, -5, 0), 'Amounts must be between ₹0 and ₹1,00,000');
+  const bill = await billFees(ids.sec, ids.req, 500, 20000);
+  const lines = (await db.query('SELECT description, amount::numeric a FROM bill_items WHERE bill_id=$1 ORDER BY amount', [bill])).rows.map((l) => [l.description, Number(l.a)]);
+  assert.deepEqual(lines, [['Transfer fee', 500], ['Transfer premium', 20000]]);
+  assert.equal(await dues(ids.u101), 20500);
+  const d = await details(ids.req);
+  assert.deepEqual([d.fee, d.premium, d.fee_bill_id], [500, 20000, bill]);
+  assert.ok(d.fees_billed_at);
+  const n = (await db.query(`SELECT title FROM notifications WHERE user_id=$1 AND ref_id=$2`, [ids.owner, ids.req])).rows.map((x) => x.title);
+  assert.deepEqual(n, ['Transfer fees billed for flat A-101: ₹20,500']);
+  await fails(billFees(ids.sec, ids.req, 500, 0), 'The transfer fees are already billed');
+  ids.feeBill = bill;
+});
+
+test('no fees makes no bill', async () => {
+  const r = await apply(ids.owner4, ids.u104, { ...buyer, buyer_mobile: '9833333333', buyer_email: 'om@buyer.test' });
+  assert.equal(await billFees(ids.sec, r, 0, 0), null);
+  const d = await details(r);
+  assert.ok(d.fees_billed_at);
+  assert.equal(d.fee_bill_id, null);
+  ids.req104 = r;
+});
+
+test('withdrawing cancels an unpaid fee bill', async () => {
+  const r = await apply(ids.owner2, ids.u102, { ...buyer, buyer_mobile: '9844444444', buyer_email: 'pia@buyer.test' });
+  const bill = await billFees(ids.sec, r, 500, 1000);
+  assert.equal(await dues(ids.u102), 1500);
+  await q(ids.owner2, 'SELECT public.withdraw_request($1)', [r]);
+  assert.equal((await db.query('SELECT status FROM bills WHERE id=$1', [bill])).rows[0].status, 'cancelled');
+  assert.equal(await dues(ids.u102), 0);
+  const j = await journalFor('bill.cancelled', bill);
+  assert.deepEqual(j, [['1200', -1500], ['4600', 500], ['4700', 1000]]);
+  assert.equal(j.reduce((s, [, a]) => s + a, 0), 0);
+});
+
+test('a paid fee bill stays when the request is rejected', async () => {
+  const r = await apply(ids.owner2, ids.u102, { ...buyer, buyer_mobile: '9855555555', buyer_email: 'raj@buyer.test' });
+  const bill = await billFees(ids.sec, r, 500, 0);
+  await payAll(ids.owner2, ids.u102);
+  await q(ids.sec, `SELECT public.decide_request($1,'reject','Buyer did not apply')`, [r]);
+  assert.equal((await db.query('SELECT status FROM bills WHERE id=$1', [bill])).rows[0].status, 'paid');
+  assert.equal(await dues(ids.u102), 0);
+});
