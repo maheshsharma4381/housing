@@ -459,3 +459,193 @@ CREATE POLICY "request files: upload" ON storage.objects
         AND public.request_society_id(public.storage_request_id(name)) = public.storage_society_id(name)
         AND public.can_upload_to_request(public.storage_request_id(name))
     );
+
+-- ============================================================================
+-- 3. DECISIONS AND NOC LETTERS
+--    Approving a NOC request renders the society's template into a numbered letter
+--    (NOC/<FY>/<nnn>, per society per financial year), with the flat's dues on that day.
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS noc_letters (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    society_id UUID NOT NULL REFERENCES societies(id) ON DELETE CASCADE,
+    request_id UUID NOT NULL UNIQUE REFERENCES flat_requests(id) ON DELETE CASCADE,
+    number VARCHAR(24) NOT NULL,
+    fy VARCHAR(7) NOT NULL,
+    seq INT NOT NULL,
+    issued_on DATE NOT NULL,
+    type_name TEXT NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    signatory VARCHAR(16) NOT NULL,
+    issued_to TEXT,
+    flat_label TEXT,
+    dues_amount NUMERIC(14, 2) NOT NULL DEFAULT 0,
+    created_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_noc_letter_seq UNIQUE (society_id, fy, seq)
+);
+ALTER TABLE noc_letters ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS noc_letters_select ON noc_letters;
+CREATE POLICY noc_letters_select ON noc_letters FOR SELECT USING (can_see_request(request_id));
+
+CREATE OR REPLACE FUNCTION public.fy_label(p_date DATE)
+RETURNS TEXT AS $$
+    SELECT y::text || '-' || lpad(((y + 1) % 100)::text, 2, '0')
+    FROM (SELECT CASE WHEN extract(month FROM p_date) >= 4 THEN extract(year FROM p_date)::int
+                      ELSE extract(year FROM p_date)::int - 1 END AS y) x
+$$ LANGUAGE sql IMMUTABLE SET search_path = public;
+
+CREATE OR REPLACE FUNCTION public.noc_letter_number(p_society_id UUID, p_on DATE)
+RETURNS TEXT AS $$
+    SELECT 'NOC/' || fy_label(p_on) || '/' || lpad((coalesce(max(seq), 0) + 1)::text, 3, '0')
+    FROM noc_letters WHERE society_id = p_society_id AND fy = fy_label(p_on)
+$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
+REVOKE ALL ON FUNCTION public.noc_letter_number(UUID, DATE) FROM PUBLIC, anon, authenticated;
+
+-- The flat's balance on a day, from the same entries as My account and the CA's party ledger (> 0 = owed)
+CREATE OR REPLACE FUNCTION public.flat_dues_on(p_unit_id UUID, p_on DATE)
+RETURNS NUMERIC AS $$
+    SELECT coalesce(sum(e.amount), 0)
+    FROM units u, party_entries(u.society_id) e
+    WHERE u.id = p_unit_id AND e.kind = 'flat' AND e.party_key = p_unit_id::text AND e.entry_date <= p_on
+$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
+REVOKE ALL ON FUNCTION public.flat_dues_on(UUID, DATE) FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.render_noc(p_request_id UUID, p_on DATE)
+RETURNS JSONB AS $$
+DECLARE
+    v_r flat_requests%ROWTYPE;
+    v_t noc_types%ROWTYPE;
+    v_s societies%ROWTYPE;
+    v_u units%ROWTYPE;
+    v_dues NUMERIC;
+    v_date TEXT := to_char(p_on, 'DD Mon YYYY');
+    v_body TEXT;
+    v_name TEXT;
+BEGIN
+    SELECT * INTO v_r FROM flat_requests WHERE id = p_request_id;
+    SELECT * INTO v_t FROM noc_types WHERE id = v_r.noc_type_id;
+    SELECT * INTO v_s FROM societies WHERE id = v_r.society_id;
+    SELECT * INTO v_u FROM units WHERE id = v_r.unit_id;
+    SELECT full_name INTO v_name FROM profiles WHERE id = v_r.applicant_id;
+    v_dues := flat_dues_on(v_r.unit_id, p_on);
+    v_body := v_t.body;
+    v_body := replace(v_body, '{addressee}', coalesce(nullif(v_r.details ->> 'addressee', ''), 'To whomsoever it may concern'));
+    v_body := replace(v_body, '{society_name}', v_s.name);
+    v_body := replace(v_body, '{registration_number}', coalesce(nullif(v_s.registration_number, ''), '—'));
+    v_body := replace(v_body, '{society_address}', concat_ws(', ', nullif(v_s.address_line1, ''), nullif(v_s.address_line2, ''),
+        nullif(v_s.city, ''), trim(coalesce(v_s.state, '') || ' ' || coalesce(v_s.pincode, ''))));
+    v_body := replace(v_body, '{member_name}', coalesce(nullif(v_name, ''), '—'));
+    v_body := replace(v_body, '{flat}', flat_label(v_r.unit_id));
+    v_body := replace(v_body, '{share_certificate_no}', coalesce(v_u.share_certificate_no, 'not recorded'));
+    v_body := replace(v_body, '{dues_line}', CASE WHEN v_dues > 0
+        THEN 'Dues of ' || inr_text(v_dues) || ' are outstanding as on ' || v_date || '.'
+        ELSE 'There are no dues outstanding as on ' || v_date || '.' END);
+    v_body := replace(v_body, '{date}', v_date);
+    v_body := replace(v_body, '{purpose}', coalesce(nullif(v_r.details ->> 'purpose', ''), '—'));
+    RETURN jsonb_build_object('title', v_t.title, 'body', v_body, 'dues_amount', v_dues, 'type_name', v_t.name,
+                              'signatory', v_t.signatory, 'issued_to', v_name, 'flat_label', flat_label(v_r.unit_id), 'date', p_on);
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public;
+REVOKE ALL ON FUNCTION public.render_noc(UUID, DATE) FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.noc_preview(p_request_id UUID)
+RETURNS JSONB AS $$
+DECLARE
+    v_society UUID := request_society_id(p_request_id);
+BEGIN
+    IF v_society IS NULL OR NOT is_committee_viewer(v_society)
+       OR NOT EXISTS (SELECT 1 FROM flat_requests WHERE id = p_request_id AND kind = 'noc') THEN
+        RAISE EXCEPTION 'Only the committee can see this';
+    END IF;
+    RETURN render_noc(p_request_id, (now() AT TIME ZONE 'Asia/Kolkata')::date);
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public;
+
+CREATE OR REPLACE FUNCTION public.decide_request(p_request_id UUID, p_decision TEXT, p_note TEXT)
+RETURNS JSONB AS $$
+DECLARE
+    v_r flat_requests%ROWTYPE;
+    v_type TEXT;
+    v_note TEXT := nullif(trim(coalesce(p_note, '')), '');
+    v_missing TEXT;
+    v_on DATE := (now() AT TIME ZONE 'Asia/Kolkata')::date;
+    v_doc JSONB;
+    v_seq INT;
+    v_letter UUID;
+    v_number TEXT;
+BEGIN
+    SELECT * INTO v_r FROM flat_requests WHERE id = p_request_id FOR UPDATE;
+    IF NOT FOUND OR NOT is_society_admin(v_r.society_id) THEN
+        RAISE EXCEPTION 'Only the committee can decide requests';
+    END IF;
+    IF coalesce(p_decision, '') NOT IN ('approve', 'changes', 'reject') THEN
+        RAISE EXCEPTION 'Choose approve, changes or reject';
+    END IF;
+    IF v_r.status NOT IN ('submitted', 'changes_asked') THEN
+        RAISE EXCEPTION 'This request has already been decided';
+    END IF;
+    IF v_r.status = 'changes_asked' AND p_decision <> 'reject' THEN
+        RAISE EXCEPTION 'Wait for the applicant to send the changes';
+    END IF;
+    SELECT name INTO v_type FROM noc_types WHERE id = v_r.noc_type_id;
+    v_type := coalesce(v_type, initcap(v_r.kind));
+
+    IF p_decision = 'changes' THEN
+        IF length(coalesce(v_note, '')) NOT BETWEEN 3 AND 500 THEN
+            RAISE EXCEPTION 'Write what needs to change';
+        END IF;
+        UPDATE flat_requests SET status = 'changes_asked', committee_note = v_note WHERE id = p_request_id;
+        INSERT INTO request_events (request_id, actor, action, note) VALUES (p_request_id, auth.uid(), 'changes_asked', v_note);
+        PERFORM notify_users(v_r.society_id, ARRAY[v_r.applicant_id], 'request', 'Changes needed: ' || v_type, v_note, 'requests', p_request_id);
+        RETURN jsonb_build_object('status', 'changes_asked');
+    END IF;
+
+    IF p_decision = 'reject' THEN
+        IF length(coalesce(v_note, '')) NOT BETWEEN 3 AND 500 THEN
+            RAISE EXCEPTION 'Write the reason';
+        END IF;
+        UPDATE flat_requests SET status = 'rejected', committee_note = v_note, decided_at = now(), decided_by = auth.uid()
+        WHERE id = p_request_id;
+        INSERT INTO request_events (request_id, actor, action, note) VALUES (p_request_id, auth.uid(), 'rejected', v_note);
+        PERFORM notify_users(v_r.society_id, ARRAY[v_r.applicant_id], 'request',
+            CASE WHEN v_r.kind = 'noc' THEN 'NOC request declined: ' ELSE 'Request declined: ' END || v_type, v_note, 'requests', p_request_id);
+        RETURN jsonb_build_object('status', 'rejected');
+    END IF;
+
+    -- approve: every required document is there
+    SELECT c ->> 'label' INTO v_missing
+    FROM jsonb_array_elements(v_r.checklist) WITH ORDINALITY AS t(c, i)
+    WHERE coalesce((c ->> 'required')::boolean, false)
+      AND NOT EXISTS (SELECT 1 FROM request_documents d WHERE d.request_id = p_request_id AND d.item_key = c ->> 'key')
+    ORDER BY i LIMIT 1;
+    IF v_missing IS NOT NULL THEN
+        RAISE EXCEPTION 'Add "%" before approving', v_missing;
+    END IF;
+
+    UPDATE flat_requests SET status = 'approved', committee_note = v_note, decided_at = now(), decided_by = auth.uid()
+    WHERE id = p_request_id;
+    INSERT INTO request_events (request_id, actor, action, note) VALUES (p_request_id, auth.uid(), 'approved', v_note);
+
+    IF v_r.kind = 'noc' THEN
+        PERFORM 1 FROM societies WHERE id = v_r.society_id FOR UPDATE;  -- one number at a time per society
+        v_doc := render_noc(p_request_id, v_on);
+        SELECT coalesce(max(seq), 0) + 1 INTO v_seq FROM noc_letters WHERE society_id = v_r.society_id AND fy = fy_label(v_on);
+        v_number := 'NOC/' || fy_label(v_on) || '/' || lpad(v_seq::text, 3, '0');
+        INSERT INTO noc_letters (society_id, request_id, number, fy, seq, issued_on, type_name, title, body, signatory,
+                                 issued_to, flat_label, dues_amount, created_by)
+        VALUES (v_r.society_id, p_request_id, v_number, fy_label(v_on), v_seq, v_on, v_doc ->> 'type_name', v_doc ->> 'title',
+                v_doc ->> 'body', v_doc ->> 'signatory', v_doc ->> 'issued_to', v_doc ->> 'flat_label',
+                (v_doc ->> 'dues_amount')::numeric, auth.uid())
+        RETURNING id INTO v_letter;
+        PERFORM notify_users(v_r.society_id, ARRAY[v_r.applicant_id], 'request', 'NOC approved: ' || v_type, v_number, 'requests', p_request_id);
+        RETURN jsonb_build_object('status', 'approved', 'letter_id', v_letter, 'number', v_number);
+    END IF;
+
+    PERFORM notify_users(v_r.society_id, ARRAY[v_r.applicant_id], 'request', 'Request approved: ' || v_type, v_note, 'requests', p_request_id);
+    RETURN jsonb_build_object('status', 'approved');
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+GRANT EXECUTE ON FUNCTION public.noc_preview(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.decide_request(UUID, TEXT, TEXT) TO authenticated;

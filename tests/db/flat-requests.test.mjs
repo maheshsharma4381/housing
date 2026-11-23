@@ -190,3 +190,109 @@ test('the request bucket takes PDFs and images up to 10 MB', async () => {
   assert.equal(Number(b.file_size_limit), 10485760);
   assert.equal(b.public, false);
 });
+
+// ---------------------------------------------------------------- 3. decisions and the NOC letter
+const decide = (user, req, decision, note = null) => val(user, 'SELECT public.decide_request($1,$2,$3)', [req, decision, note]);
+const letter = async (req) => (await db.query('SELECT * FROM noc_letters WHERE request_id=$1', [req])).rows[0];
+const todayIst = () => new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' }).format(new Date()).replace(/Sept/, 'Sep');
+const fyNow = () => {
+  const [y, m] = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit' }).format(new Date()).split('-').map(Number);
+  const start = m >= 4 ? y : y - 1;
+  return `${start}-${String((start + 1) % 100).padStart(2, '0')}`;
+};
+
+test('approving issues a numbered letter', async () => {
+  const r1 = await ask(ids.owner, 'electricity', { purpose: 'MSEDCL meter transfer', addressee: 'The Executive Engineer, MSEDCL' });
+  const out = await decide(ids.sec, r1, 'approve');
+  assert.equal(out.number, `NOC/${fyNow()}/001`);
+  const l = await letter(r1);
+  assert.equal(l.number, `NOC/${fyNow()}/001`);
+  assert.equal(l.issued_to, 'Asha Patil');
+  assert.equal(l.flat_label, '101');
+  assert.equal(l.signatory, 'secretary');
+  assert.ok(!l.body.includes('{'), 'every placeholder is filled');
+  assert.ok(l.body.startsWith('The Executive Engineer, MSEDCL'));
+  assert.ok(l.body.includes('Green Park CHS (Registration No. PNA/HSG/123/2001), 12 MG Road, Pune, Maharashtra 411001'));
+  assert.ok(l.body.includes('share certificate No. SC-12'));
+  assert.equal((await db.query('SELECT status FROM flat_requests WHERE id=$1', [r1])).rows[0].status, 'approved');
+  const r2 = await ask(ids.tenant, 'passport', { purpose: 'Passport', addressee: '' });
+  await addDoc(ids.tenant, r2, 'id', docPath(r2, 'pan.jpg'));
+  assert.equal((await decide(ids.sec, r2, 'approve')).number, `NOC/${fyNow()}/002`);
+  const l2 = await letter(r2);
+  assert.ok(l2.body.startsWith('To whomsoever it may concern'));
+  assert.equal(l2.issued_to, 'Tara Rao');
+  // the applicant is told
+  const n = (await db.query(`SELECT title FROM notifications WHERE ref_id=$1 AND user_id=$2`, [r2, ids.tenant])).rows.map((x) => x.title);
+  assert.deepEqual(n, ['NOC approved: Passport / address proof']);
+});
+
+test('the number restarts each financial year', async () => {
+  assert.equal((await db.query(`SELECT public.noc_letter_number($1,'2027-04-01') AS n`, [ids.soc])).rows[0].n, 'NOC/2027-28/001');
+  assert.equal((await db.query(`SELECT public.noc_letter_number($1,'2027-03-31') AS n`, [ids.soc])).rows[0].n, 'NOC/2026-27/003');
+});
+
+test('the dues line follows the flat\'s account', async () => {
+  await q(ids.sec, `SELECT public.generate_bills($1,'2026-10-01','2026-10-31','2026-10-10')`, [ids.soc]);
+  const due = (await db.query(`SELECT sum(balance_due)::numeric AS d FROM bills WHERE unit_id=$1`, [ids.u102])).rows[0].d;
+  const r = await ask(ids.owner2, 'gas', { unit: ids.u102, purpose: 'Gas line' });
+  const preview = await val(ids.committee, 'SELECT public.noc_preview($1)', [r]);
+  assert.ok(preview.body.includes(`Dues of ₹${Number(due).toLocaleString('en-IN')} are outstanding as on ${todayIst()}.`), preview.body);
+  await decide(ids.sec, r, 'approve');
+  assert.equal(Number((await letter(r)).dues_amount), Number(due));
+  // pay more than is due: an advance is not "dues of ₹-…"
+  const pay = await val(ids.owner2, `INSERT INTO payments (society_id, unit_id, user_id, payment_number, amount, transaction_reference_utr, status)
+    VALUES ($1,$2,$3,'PAY-NOC-1',$4,'625219401299','pending_verification') RETURNING id`, [ids.soc, ids.u102, ids.owner2, Number(due) + 500]);
+  await q(ids.sec, 'SELECT public.verify_payment($1, true)', [pay]);
+  const r2 = await ask(ids.owner2, 'gas', { unit: ids.u102, purpose: 'Second gas line' });
+  await decide(ids.sec, r2, 'approve');
+  const body = (await letter(r2)).body;
+  assert.ok(body.includes(`There are no dues outstanding as on ${todayIst()}.`), body);
+  assert.ok(!body.includes('₹-'));
+});
+
+test('a missing required document blocks approval', async () => {
+  const r = await ask(ids.owner, 'leave_licence', { purpose: 'Letting the flat' });
+  await fails(decide(ids.sec, r, 'approve'), 'Add "Draft or registered leave and licence agreement" before approving');
+});
+
+test('ask for changes, then resubmit', async () => {
+  const r = await ask(ids.owner, 'repairs', { purpose: 'Bathroom work' });
+  await fails(decide(ids.sec, r, 'changes', ''), 'Write what needs to change');
+  await decide(ids.sec, r, 'changes', 'Attach the contractor quote');
+  assert.equal((await db.query('SELECT status, committee_note FROM flat_requests WHERE id=$1', [r])).rows[0].status, 'changes_asked');
+  await fails(decide(ids.sec, r, 'approve'), 'Wait for the applicant to send the changes');
+  assert.ok((await db.query(`SELECT 1 FROM notifications WHERE ref_id=$1 AND user_id=$2 AND title='Changes needed: Repairs / renovation'`, [r, ids.owner])).rows.length);
+  await addDoc(ids.owner, r, 'scope', docPath(r, 'quote.pdf'));
+  await q(ids.owner, 'SELECT public.resubmit_request($1,$2)', [r, 'Quote attached']);
+  assert.equal((await db.query('SELECT status FROM flat_requests WHERE id=$1', [r])).rows[0].status, 'submitted');
+  await decide(ids.sec, r, 'approve');
+  const steps = (await db.query('SELECT action FROM request_events WHERE request_id=$1 ORDER BY at', [r])).rows.map((e) => e.action);
+  assert.deepEqual(steps, ['submitted', 'changes_asked', 'document_added', 'resubmitted', 'approved']);
+});
+
+test('only managing roles decide; a decided request stays decided', async () => {
+  const r = await ask(ids.owner, 'sale', { purpose: 'Selling' });
+  await fails(decide(ids.committee, r, 'approve'), 'Only the committee can decide requests');
+  await fails(decide(ids.owner, r, 'approve'), 'Only the committee can decide requests');
+  await fails(decide(ids.sec, r, 'reject', ''), 'Write the reason');
+  await decide(ids.sec, r, 'reject', 'Dues pending');
+  assert.ok((await db.query(`SELECT 1 FROM notifications WHERE ref_id=$1 AND title='NOC request declined: Sale of flat'`, [r])).rows.length);
+  await fails(decide(ids.sec, r, 'approve'), 'This request has already been decided');
+  await fails(decide(ids.sec, r, 'maybe', 'x'), 'Choose approve, changes or reject');
+});
+
+test('the letter is visible to those who see the request', async () => {
+  const r = await ask(ids.owner, 'electricity', { purpose: 'Meter' });
+  await decide(ids.sec, r, 'approve');
+  const n = async (u) => (await q(u, 'SELECT count(*)::int AS n FROM noc_letters WHERE request_id=$1', [r]))[0].n;
+  assert.equal(await n(ids.joint), 1);
+  assert.equal(await n(ids.committee), 1);
+  assert.equal(await n(ids.owner2), 0);
+  assert.equal(await n(ids.outsider), 0);
+});
+
+test('the share certificate number appears when recorded', async () => {
+  const r = await ask(ids.owner2, 'electricity', { unit: ids.u102, purpose: 'Meter' });
+  await decide(ids.sec, r, 'approve');
+  assert.ok((await letter(r)).body.includes('share certificate No. not recorded'));
+});
