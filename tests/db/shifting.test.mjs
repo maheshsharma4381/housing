@@ -148,3 +148,66 @@ test('free shifting makes no bill', async () => {
   assert.equal(s.deposit_status, 'none');
   await q(ids.sec, 'SELECT public.set_shifting_settings($1,$2)', [ids.soc, JSON.stringify({ move_in_charge: 1000, move_in_deposit: 5000 })]);
 });
+
+// ---------------------------------------------------------------- 3. deposit refunds
+let payNo = 0;
+const payAll = async (user, unit) => {
+  const due = Number((await db.query(`SELECT coalesce(sum(balance_due),0)::numeric d FROM bills WHERE unit_id=$1 AND status <> 'cancelled'`, [unit])).rows[0].d);
+  payNo += 1;
+  const p = await val(user, `INSERT INTO payments (society_id, unit_id, user_id, payment_number, amount, transaction_reference_utr, status)
+    VALUES ($1,$2,$3,$4,$5,$6,'pending_verification') RETURNING id`, [ids.soc, unit, user, `PAY-SH-${payNo}`, due, String(625219400000 + payNo)]);
+  await q(ids.sec, 'SELECT public.verify_payment($1, true)', [p]);
+};
+const refund = (user, s, kept = 0, reason = null) => val(user, 'SELECT public.refund_shifting_deposit($1,$2,$3)', [s, kept, reason]);
+
+test('an unpaid deposit cannot be refunded', async () => {
+  await fails(refund(ids.sec, ids.shiftIn), 'The deposit has not been paid yet');
+});
+
+test('a full refund', async () => {
+  await payAll(ids.owner, ids.u101);
+  const j = await refund(ids.sec, ids.shiftIn);
+  assert.ok(j);
+  assert.deepEqual(await journalFor('deposit.refunded', ids.shiftIn), [['1000', -5000], ['2400', 5000]]);
+  const s = (await db.query('SELECT * FROM shiftings WHERE id=$1', [ids.shiftIn])).rows[0];
+  assert.equal(s.deposit_status, 'refunded');
+  assert.equal(Number(s.kept_amount), 0);
+  assert.ok(s.refunded_on);
+  assert.equal(s.refund_journal_id, j);
+  // the deposit came in and went out of Deposits received
+  const net = (await db.query(`SELECT sum(l.amount)::numeric n FROM ledger_entries l JOIN accounts a ON a.id=l.account_id JOIN journal_entries je ON je.id=l.journal_entry_id
+    WHERE a.code='2400' AND a.society_id=$1 AND ((je.reference_event_type='bill.issued' AND je.reference_event_id=$2) OR (je.reference_event_type='deposit.refunded' AND je.reference_event_id=$3))`,
+    [ids.soc, s.bill_id, ids.shiftIn])).rows[0].n;
+  assert.equal(Number(net), 0);
+  const told = (await db.query(`SELECT user_id FROM notifications WHERE title='Shifting deposit refunded: ₹5,000'`)).rows.map((n) => n.user_id);
+  assert.deepEqual(told, [ids.owner]);
+  await fails(refund(ids.sec, ids.shiftIn), 'This deposit has already been refunded');
+});
+
+test('a refund with part of the deposit kept', async () => {
+  await q(ids.sec, 'SELECT public.set_shifting_settings($1,$2)', [ids.soc, JSON.stringify({ move_in_charge: 0, move_in_deposit: 10000 })]);
+  const r = await book(ids.owner2, ids.u102);
+  await decide(ids.sec, r);
+  const s = (await shiftingOf(r)).id;
+  await payAll(ids.owner2, ids.u102);
+  await fails(refund(ids.sec, s, 10001, 'Too much'), 'The amount kept can be at most the deposit');
+  await fails(refund(ids.sec, s, 2000, ''), 'Write why part of the deposit is kept');
+  await fails(refund(ids.owner2, s), 'Only the committee can refund deposits');
+  await fails(refund(ids.committee, s), 'Only the committee can refund deposits');
+  await refund(ids.sec, s, 2000, 'Lift wall damaged');
+  assert.deepEqual(await journalFor('deposit.refunded', s), [['1000', -8000], ['2400', 10000], ['4500', -2000]]);
+  const row = (await db.query('SELECT kept_amount::numeric k, kept_reason FROM shiftings WHERE id=$1', [s])).rows[0];
+  assert.deepEqual([Number(row.k), row.kept_reason], [2000, 'Lift wall damaged']);
+});
+
+test('keeping the whole deposit', async () => {
+  const r = await book(ids.owner2, ids.u102);
+  await decide(ids.sec, r);
+  const s = (await shiftingOf(r)).id;
+  await payAll(ids.owner2, ids.u102);
+  await refund(ids.sec, s, 10000, 'Flooring broken');
+  assert.deepEqual(await journalFor('deposit.refunded', s), [['2400', 10000], ['4500', -10000]]);
+  // a shifting without a deposit has nothing to refund
+  const none = (await db.query(`SELECT id FROM shiftings WHERE deposit_status='none' LIMIT 1`)).rows[0].id;
+  await fails(refund(ids.sec, none), 'There is no deposit to refund');
+});

@@ -378,3 +378,71 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 GRANT EXECUTE ON FUNCTION public.decide_request(UUID, TEXT, TEXT) TO authenticated;
+
+-- ============================================================================
+-- 3. DEPOSIT REFUNDS
+--    Debit Deposits received with the whole deposit; credit the bank with what goes back and
+--    Damage recovery with what the committee keeps (with its reason).
+-- ============================================================================
+CREATE OR REPLACE FUNCTION public.refund_shifting_deposit(p_shifting_id UUID, p_kept NUMERIC, p_reason TEXT)
+RETURNS UUID AS $$
+DECLARE
+    v_s shiftings%ROWTYPE;
+    v_b bills%ROWTYPE;
+    v_kept NUMERIC := round(coalesce(p_kept, 0), 2);
+    v_reason TEXT := nullif(trim(regexp_replace(coalesce(p_reason, ''), '\s+', ' ', 'g')), '');
+    v_today DATE := (now() AT TIME ZONE 'Asia/Kolkata')::date;
+    v_bank TEXT;
+    v_journal UUID;
+    v_req flat_requests%ROWTYPE;
+BEGIN
+    SELECT * INTO v_s FROM shiftings WHERE id = p_shifting_id FOR UPDATE;
+    IF NOT FOUND OR NOT is_society_admin(v_s.society_id) THEN
+        RAISE EXCEPTION 'Only the committee can refund deposits';
+    END IF;
+    IF v_s.deposit_status = 'none' THEN
+        RAISE EXCEPTION 'There is no deposit to refund';
+    END IF;
+    IF v_s.deposit_status = 'refunded' THEN
+        RAISE EXCEPTION 'This deposit has already been refunded';
+    END IF;
+    SELECT * INTO v_b FROM bills WHERE id = v_s.bill_id;
+    IF v_b.id IS NULL OR v_b.status <> 'paid' OR v_b.balance_due > 0 THEN
+        RAISE EXCEPTION 'The deposit has not been paid yet';
+    END IF;
+    IF v_kept < 0 OR v_kept > v_s.deposit_amount THEN
+        RAISE EXCEPTION 'The amount kept can be at most the deposit';
+    END IF;
+    IF v_kept > 0 AND length(coalesce(v_reason, '')) NOT BETWEEN 3 AND 200 THEN
+        RAISE EXCEPTION 'Write why part of the deposit is kept';
+    END IF;
+
+    PERFORM ensure_flat_change_ledgers(v_s.society_id);
+    SELECT code INTO v_bank FROM accounts WHERE id = default_bank_ledger(v_s.society_id, 'payment');
+    v_journal := post_journal(v_s.society_id, v_today, 'deposit.refunded', v_s.id,
+        'Shifting deposit of flat ' || flat_label(v_s.unit_id) || CASE WHEN v_kept > 0 THEN ' refunded, ' || inr_text(v_kept) || ' kept: ' || v_reason ELSE ' refunded' END,
+        jsonb_build_array(
+            jsonb_build_object('code', '2400', 'amount', v_s.deposit_amount),
+            jsonb_build_object('code', v_bank, 'amount', -(v_s.deposit_amount - v_kept)),
+            jsonb_build_object('code', '4500', 'amount', -v_kept)));
+    UPDATE shiftings SET deposit_status = 'refunded', kept_amount = v_kept, kept_reason = v_reason,
+        refunded_on = v_today, refund_journal_id = v_journal
+    WHERE id = p_shifting_id;
+
+    SELECT * INTO v_req FROM flat_requests WHERE id = v_s.request_id;
+    IF v_req.id IS NOT NULL THEN
+        INSERT INTO request_events (request_id, actor, action, note)
+        VALUES (v_req.id, auth.uid(), 'deposit_refunded', inr_text(v_s.deposit_amount - v_kept) || CASE WHEN v_kept > 0 THEN ' (' || inr_text(v_kept) || ' kept: ' || v_reason || ')' ELSE '' END);
+        PERFORM notify_users(v_s.society_id, (
+            SELECT array_agg(DISTINCT x) FROM (
+                SELECT v_req.applicant_id AS x
+                UNION SELECT m.user_id FROM society_memberships m
+                WHERE m.unit_id = v_s.unit_id AND m.is_active
+                  AND m.role IN ('resident_owner', 'society_admin', 'secretary', 'chairman', 'treasurer', 'committee_member')
+            ) y WHERE x IS NOT NULL AND x <> auth.uid()
+        ), 'request', 'Shifting deposit refunded: ' || inr_text(v_s.deposit_amount - v_kept), v_reason, 'requests', v_req.id);
+    END IF;
+    RETURN v_journal;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+GRANT EXECUTE ON FUNCTION public.refund_shifting_deposit(UUID, NUMERIC, TEXT) TO authenticated;
