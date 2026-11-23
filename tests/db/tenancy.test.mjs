@@ -115,14 +115,14 @@ test('one tenant at a time', async () => {
   await fails(register(ids.owner3, ids.u103, { renews_id: crypto.randomUUID() }), 'Choose the tenancy this renews');
   const other = await addTenancy(ids.u104, { status: 'ended' });
   await fails(register(ids.owner3, ids.u103, { renews_id: other }), 'Choose the tenancy this renews');
-  const r = await register(ids.owner3, ids.u103, { renews_id: t });
+  const r = await register(ids.owner3, ids.u103, { renews_id: t, tenant_mobile: '9800000000' });
   assert.equal((await db.query('SELECT details FROM flat_requests WHERE id=$1', [r])).rows[0].details.renews_id, t);
   await db.query('DELETE FROM tenancies WHERE id IN ($1,$2)', [t, other]);
 });
 
 test("the buyer of a let flat sees neither the seller's request nor the old tenancy", async () => {
   const t = await addTenancy(ids.u102, { created: new Date(Date.now() - 86400_000).toISOString() });
-  const r = await register(ids.owner2, ids.u102, { renews_id: t });
+  const r = await register(ids.owner2, ids.u102, { renews_id: t, tenant_mobile: '9800000000' });
   await db.query(`INSERT INTO unit_ownerships (society_id, unit_id, owner_name, from_date, created_by, created_at) VALUES ($1,$2,'Bela Buyer', current_date, $3, clock_timestamp())`, [ids.soc, ids.u102, ids.sec]);
   await db.query('UPDATE society_memberships SET is_active=false WHERE user_id=$1', [ids.owner2]);
   const buyer = await member('buyer@ten.test', 'resident_owner', ids.u102, 'Bela Buyer');
@@ -200,8 +200,12 @@ test('ending the tenancy removes the tenant', async () => {
   assert.equal((await db.query(`SELECT is_active FROM society_memberships WHERE user_id=$1`, [ids.tom])).rows[0].is_active, false);
   assert.equal((await q(ids.tom, 'SELECT count(*)::int AS n FROM notices WHERE id=$1', [notice]))[0].n, 0);
   await fails(q(ids.owner3, 'SELECT public.end_tenancy($1,NULL)', [ids.t103]), 'This tenancy has already ended');
-  // a pending tenant invite of the flat is revoked when its tenancy ends
+  // ending the renewal before it starts cancels it: the current tenancy goes on, the invite stays
   await q(ids.sec, 'SELECT public.end_tenancy($1,NULL)', [ids.t101b]);
+  assert.equal((await db.query('SELECT status FROM tenancies WHERE id=$1', [ids.t101])).rows[0].status, 'active');
+  assert.deepEqual((await invites(ids.u101)).map((i) => i.status), ['pending']);
+  // a pending tenant invite of the flat is revoked when its tenancy ends
+  await q(ids.sec, 'SELECT public.end_tenancy($1,NULL)', [ids.t101]);
   assert.deepEqual((await invites(ids.u101)).map((i) => i.status), ['revoked']);
 });
 
@@ -258,4 +262,74 @@ test('non-occupancy charges on let flats', async () => {
   const preview = await val(ids.sec, `SELECT public.generate_bills($1,'2030-03-01','2030-03-31','2030-03-10',NULL,true)`, [ids.soc]);
   const p101 = preview.preview.find((p) => p.unit_number === '101');
   assert.equal(Number(p101.total), 1950);
+});
+
+// ---------------------------------------------------------------- review fixes
+test('a sale ends the seller’s tenancy and the buyer starts clean', async () => {
+  const t = await addTenancy(ids.u103);
+  const tenant = await member('ten3@ten.test', 'resident_tenant', ids.u103, 'Tenant Three');
+  await db.query(`INSERT INTO unit_ownerships (society_id, unit_id, owner_name, from_date, created_by, created_at) VALUES ($1,$2,'New Buyer', current_date, $3, clock_timestamp())`, [ids.soc, ids.u103, ids.sec]);
+  const row = (await db.query('SELECT status, ended_on::text AS e FROM tenancies WHERE id=$1', [t])).rows[0];
+  assert.equal(row.status, 'ended');
+  assert.equal(row.e, (await db.query(`SELECT (current_date - 1)::text AS d`)).rows[0].d);
+  assert.equal((await db.query('SELECT is_active FROM society_memberships WHERE user_id=$1', [tenant])).rows[0].is_active, true, 'the tenant keeps the flat (Phase 2F)');
+  await db.query('UPDATE society_memberships SET is_active=false WHERE user_id=$1', [ids.owner3]);
+  const buyer = await member('buyer3@ten.test', 'resident_owner', ids.u103, 'New Buyer');
+  assert.ok(await register(buyer, ids.u103, { tenant_mobile: '9876533333', tenant_email: '' }), 'the buyer can register a tenant');
+  await q(ids.sec, 'SELECT public.set_non_occupancy_percent($1,10)', [ids.soc]);
+  await q(ids.sec, `SELECT public.generate_bills($1,'2031-01-01','2031-01-31','2031-01-10')`, [ids.soc]);
+  assert.ok(!(await bill(ids.u103, '2031-01-01')).items.some((i) => i.d === 'Non-occupancy charges'));
+});
+
+test('cancelling an early renewal keeps the tenant living there', async () => {
+  const old = await addTenancy(ids.u104, { start: isoDays(-100), end: isoDays(200) });
+  const tenant = await member('ten4@ten.test', 'resident_tenant', ids.u104, 'Tenant Four');
+  await db.query(`UPDATE tenancies SET status='renewed' WHERE id=$1`, [old]);
+  const renewal = (await db.query(`INSERT INTO tenancies (society_id, unit_id, tenant_name, tenant_mobile, occupants, start_date, end_date, renews_id)
+    VALUES ($1,$2,'Old Tenant','919800000000',2,$3,$4,$5) RETURNING id`, [ids.soc, ids.u104, isoDays(201), isoDays(500), old])).rows[0].id;
+  await q(ids.sec, 'SELECT public.end_tenancy($1,NULL)', [renewal]);
+  assert.equal((await db.query('SELECT status FROM tenancies WHERE id=$1', [renewal])).rows[0].status, 'ended');
+  assert.equal((await db.query('SELECT status FROM tenancies WHERE id=$1', [old])).rows[0].status, 'active', 'the current agreement is active again');
+  assert.equal((await db.query('SELECT is_active FROM society_memberships WHERE user_id=$1', [tenant])).rows[0].is_active, true);
+  // ending it for real now ends the tenant's access
+  await q(ids.sec, 'SELECT public.end_tenancy($1,NULL)', [old]);
+  assert.equal((await db.query('SELECT is_active FROM society_memberships WHERE user_id=$1', [tenant])).rows[0].is_active, false);
+});
+
+test('a pending invite with the tenant’s email is reused', async () => {
+  await val(ids.sec, `INSERT INTO member_invites (society_id, email, full_name, role, unit_id, invited_by) VALUES ($1,'neha@mail.com','Neha','resident_tenant',$2,$3) RETURNING id`, [ids.soc, ids.u102, ids.sec]);
+  const r = await register(ids.buyer, ids.u102, { tenant_name: 'Neha', tenant_mobile: '9876544444', tenant_email: 'Neha@Mail.com' });
+  await addDocs(ids.buyer, r);
+  await decide(ids.sec, r);
+  const inv = await invites(ids.u102);
+  assert.equal(inv.filter((i) => i.status === 'pending').length, 1);
+  assert.equal(inv.find((i) => i.status === 'pending').mobile, '919876544444');
+});
+
+test('the tenant cannot be an owner of the flat', async () => {
+  await db.query(`UPDATE auth.users SET phone='919876555555', phone_confirmed_at=now() WHERE id=$1`, [ids.owner]);
+  await fails(register(ids.owner, ids.u101, { tenant_mobile: '9876555555', tenant_email: '' }), 'This mobile or email belongs to an owner of this flat');
+  await fails(register(ids.owner, ids.u101, { tenant_mobile: '9876566666', tenant_email: 'ASHA@ten.test' }), 'This mobile or email belongs to an owner of this flat');
+});
+
+test('a tenant sees only the current tenancy, not earlier tenants', async () => {
+  const past = await addTenancy(ids.u101, { start: '2020-01-01', end: '2020-12-31', status: 'ended' });
+  const current = (await db.query(`SELECT id FROM tenancies WHERE unit_id=$1 AND status='active'`, [ids.u101])).rows[0].id;
+  const tenant = await member('ten1@ten.test', 'resident_tenant', ids.u101, 'Tenant One');
+  assert.equal((await q(tenant, 'SELECT count(*)::int AS n FROM tenancies WHERE id=$1', [past]))[0].n, 0);
+  assert.equal((await q(tenant, 'SELECT count(*)::int AS n FROM tenancies WHERE id=$1', [current]))[0].n, 1);
+});
+
+test('a renewal keeps the same tenant', async () => {
+  const current = (await db.query(`SELECT id FROM tenancies WHERE unit_id=$1 AND status='active'`, [ids.u101])).rows[0].id;
+  await fails(register(ids.owner, ids.u101, { renews_id: current, tenant_mobile: '9876577777', tenant_email: '' }), 'Register the new tenant after ending this tenancy');
+});
+
+test('non-occupancy charges count only service charges', async () => {
+  await db.query(`UPDATE tenancies SET end_date='2031-12-31' WHERE unit_id=$1 AND status='active'`, [ids.u101]);
+  await db.query(`INSERT INTO billing_rules (society_id, name, calculation_type, rate, account_code) VALUES ($1,'Sinking fund','flat_per_unit',500,'3000')`, [ids.soc]);
+  await q(ids.sec, 'SELECT public.set_non_occupancy_percent($1,10)', [ids.soc]);
+  await q(ids.sec, `SELECT public.generate_bills($1,'2031-02-01','2031-02-28','2031-02-10')`, [ids.soc]);
+  const b = await bill(ids.u101, '2031-02-01');
+  assert.equal(Number(b.items.find((i) => i.d === 'Non-occupancy charges').a), 150, 'maintenance only: not the sinking fund, not property tax');
 });

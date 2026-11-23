@@ -36,7 +36,8 @@ export const TenancyForm: React.FC<{
       <Banner tone="error">{error}</Banner>
       <input value={d.tenant_name} onChange={e => setD({ ...d, tenant_name: e.target.value })} maxLength={80} placeholder="Tenant's name" className={inputClass} />
       <div className="grid grid-cols-2 gap-2">
-        <input value={d.tenant_mobile} onChange={e => setD({ ...d, tenant_mobile: e.target.value })} inputMode="tel" placeholder="Tenant's mobile" className={inputClass} />
+        <input value={d.tenant_mobile} onChange={e => setD({ ...d, tenant_mobile: e.target.value })} inputMode="tel" placeholder="Tenant's mobile" readOnly={!!renews}
+          title={renews ? 'A renewal is for the same tenant. To change the tenant, end this tenancy and register the new one.' : undefined} className={inputClass} />
         <input value={d.tenant_email} onChange={e => setD({ ...d, tenant_email: e.target.value })} type="email" placeholder="Email (optional)" className={inputClass} />
       </div>
       <div className="grid grid-cols-3 gap-2">

@@ -89,7 +89,9 @@ Builder's call on the owner's behalf ("u decide"); can be overruled.
 - **On approval:** a tenant invite (`resident_tenant`, the flat) goes to the tenant's mobile; the tenancy is recorded with its dates.
 - **Renewal:** 30 days before the end date, the owner and the managing roles are notified; after the end date the flat shows "Agreement expired". The owner renews (new request with the new agreement) or ends it.
 - **Ending:** "Tenant moved out" by the owner or the committee ends the tenancy and switches off the tenant's membership; a move-out shifting request (11C) can follow.
-- **Non-occupancy charges:** a society setting, as a % of service charges, at most 10%. While a flat has an approved, unexpired tenancy, `generate_bills` adds a "Non-occupancy charges" line to the owner's maintenance bill. Off by default.
+- **After a sale:** the seller's tenancy record ends the day before the transfer (the buyer is not charged, reminded or blocked by it); the tenant keeps access (Phase 2F) until the buyer registers or removes them.
+- **Renewal:** for the same tenant (same mobile); a different tenant is registered after ending the tenancy. Ending a renewal before it starts cancels it and the current agreement goes on.
+- **Non-occupancy charges:** a society setting, as a % of service charges (charges credited to Maintenance Charges and not marked municipal tax), at most 10%. While a flat has an approved, unexpired tenancy, `generate_bills` adds a "Non-occupancy charges" line to the owner's maintenance bill. Off by default.
 
 ### 5.4 Shifting (11C)
 - **Request:** move-in or move-out, date and time slot (the society sets allowed hours; default 8 am to 8 pm, every day), vehicle details; the society can require a shifting request before a tenancy or transfer is approved.

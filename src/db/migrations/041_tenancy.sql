@@ -144,8 +144,9 @@ RETURNS BOOLEAN AS $$
     SELECT EXISTS (SELECT 1 FROM tenancies t WHERE t.id = p_tenancy_id AND (
         is_committee_viewer(t.society_id)
         OR (is_flat_owner(t.unit_id, auth.uid()) AND t.created_at >= current_ownership_since(t.unit_id))
-        OR EXISTS (SELECT 1 FROM society_memberships m JOIN societies s ON s.id = m.society_id AND s.is_active
-                   WHERE m.unit_id = t.unit_id AND m.user_id = auth.uid() AND m.is_active AND m.role = 'resident_tenant')))
+        OR (t.status IN ('active', 'renewed')   -- a tenant never reads earlier tenants' details
+            AND EXISTS (SELECT 1 FROM society_memberships m JOIN societies s ON s.id = m.society_id AND s.is_active
+                        WHERE m.unit_id = t.unit_id AND m.user_id = auth.uid() AND m.is_active AND m.role = 'resident_tenant'))))
 $$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
 REVOKE ALL ON FUNCTION public.can_see_tenancy(UUID) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.can_see_tenancy(UUID) TO authenticated; -- used by RLS
@@ -214,6 +215,17 @@ BEGIN
         RAISE EXCEPTION 'Only an owner of this flat can register a tenant';
     END IF;
     v_details := clean_tenancy_details(coalesce(p_details, '{}'::jsonb));
+    -- the tenant is someone else: an owner's own mobile or email would turn the owner into the tenant
+    IF EXISTS (
+        SELECT 1 FROM society_memberships m
+        LEFT JOIN auth.users au ON au.id = m.user_id
+        LEFT JOIN profiles pr ON pr.id = m.user_id
+        WHERE m.unit_id = p_unit_id AND m.is_active AND m.role <> 'resident_tenant'
+          AND (normalize_mobile(au.phone) = v_details ->> 'tenant_mobile'
+               OR normalize_mobile(pr.phone) = v_details ->> 'tenant_mobile'
+               OR (v_details ->> 'tenant_email' IS NOT NULL AND lower(au.email) = v_details ->> 'tenant_email'))) THEN
+        RAISE EXCEPTION 'This mobile or email belongs to an owner of this flat';
+    END IF;
     SELECT id INTO v_active FROM tenancies WHERE unit_id = p_unit_id AND status = 'active';
     IF v_details ->> 'renews_id' IS NOT NULL THEN
         BEGIN
@@ -223,6 +235,9 @@ BEGIN
         END;
         IF v_renews IS NULL OR v_renews IS DISTINCT FROM v_active THEN
             RAISE EXCEPTION 'Choose the tenancy this renews';
+        END IF;
+        IF (SELECT tenant_mobile FROM tenancies WHERE id = v_active) IS DISTINCT FROM v_details ->> 'tenant_mobile' THEN
+            RAISE EXCEPTION 'Register the new tenant after ending this tenancy';
         END IF;
     ELSIF v_active IS NOT NULL THEN
         RAISE EXCEPTION 'This flat already has a tenant. End that tenancy or renew it.';
@@ -270,10 +285,16 @@ BEGIN
             LEFT JOIN profiles pr ON pr.id = m.user_id
             WHERE m.unit_id = p_r.unit_id AND m.is_active AND m.role = 'resident_tenant'
               AND (normalize_mobile(au.phone) = d ->> 'tenant_mobile' OR normalize_mobile(pr.phone) = d ->> 'tenant_mobile')) THEN
+            -- an invite already waiting for this tenant (by mobile or email) is reused and completed
             SELECT id INTO v_invite FROM member_invites
-            WHERE society_id = p_r.society_id AND unit_id = p_r.unit_id AND status = 'pending'
-              AND normalize_mobile(mobile) = d ->> 'tenant_mobile';
-            IF v_invite IS NULL THEN
+            WHERE society_id = p_r.society_id AND unit_id = p_r.unit_id AND status = 'pending' AND role = 'resident_tenant'
+              AND (normalize_mobile(mobile) = d ->> 'tenant_mobile'
+                   OR (d ->> 'tenant_email' IS NOT NULL AND lower(email) = d ->> 'tenant_email'))
+            ORDER BY created_at LIMIT 1;
+            IF v_invite IS NOT NULL THEN
+                UPDATE member_invites SET mobile = coalesce(mobile, d ->> 'tenant_mobile'), email = coalesce(email, d ->> 'tenant_email')
+                WHERE id = v_invite;
+            ELSE
                 INSERT INTO member_invites (society_id, email, mobile, full_name, role, unit_id, invited_by)
                 VALUES (p_r.society_id, d ->> 'tenant_email', d ->> 'tenant_mobile', d ->> 'tenant_name', 'resident_tenant',
                         p_r.unit_id, auth.uid())
@@ -417,7 +438,18 @@ BEGIN
     IF p_end_date IS NOT NULL AND p_end_date < v_t.start_date THEN
         RAISE EXCEPTION 'The end date cannot be before the tenancy started';
     END IF;
+    -- a renewal that has not started yet is cancelled: the current agreement goes on, the tenant stays
+    IF v_t.renews_id IS NOT NULL AND v_end < v_t.start_date
+       AND EXISTS (SELECT 1 FROM tenancies WHERE id = v_t.renews_id AND status = 'renewed') THEN
+        UPDATE tenancies SET status = 'ended', ended_on = v_end WHERE id = p_tenancy_id;
+        UPDATE tenancies SET status = 'active' WHERE id = v_t.renews_id;
+        IF v_t.request_id IS NOT NULL THEN
+            INSERT INTO request_events (request_id, actor, action, note) VALUES (v_t.request_id, auth.uid(), 'renewal_cancelled', NULL);
+        END IF;
+        RETURN;
+    END IF;
     UPDATE tenancies SET status = 'ended', ended_on = v_end WHERE id = p_tenancy_id;
+    UPDATE tenancies SET ended_on = least(end_date, v_end) WHERE id = v_t.renews_id AND status = 'renewed' AND ended_on IS NULL;
     -- the tenant leaves: their access to the flat ends, and an invite not yet accepted can no longer be
     UPDATE society_memberships SET is_active = false
     WHERE unit_id = v_t.unit_id AND role = 'resident_tenant' AND is_active;
@@ -614,6 +646,7 @@ BEGIN
             INTO v_noc
             FROM billing_rules r
             WHERE r.society_id = p_society_id AND r.is_active = true AND NOT r.is_municipal_tax
+              AND r.account_code = '4000'   -- service charges only: not fund contributions (sinking, repairs) or parking
               AND r.calculation_type IN ('flat_per_unit', 'per_sqft')
               AND (r.applies_to_unit_type IS NULL OR r.applies_to_unit_type = '' OR r.applies_to_unit_type = v_unit.unit_type)
               AND (NOT r.applies_to_selected OR EXISTS (SELECT 1 FROM billing_rule_units x WHERE x.rule_id = r.id AND x.unit_id = v_unit.id));
@@ -691,3 +724,27 @@ BEGIN
     );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- ============================================================================
+-- 5. A SALE ENDS THE SELLER'S TENANCY
+--    An owner change (transfer_flat_owner records a period with created_by) ends the flat's tenancy records the
+--    day before the transfer: the buyer is not charged for, reminded about or blocked by the seller's agreement.
+--    The tenant keeps access (Phase 2F), so the buyer can register them under a new agreement.
+-- ============================================================================
+CREATE OR REPLACE FUNCTION public.trg_owner_change_ends_tenancies()
+RETURNS TRIGGER AS $$
+BEGIN
+    UPDATE tenancies SET status = 'ended', ended_on = greatest(start_date, NEW.from_date - 1)
+    WHERE unit_id = NEW.unit_id AND status = 'active' AND created_at < NEW.created_at;
+    UPDATE tenancies SET ended_on = least(end_date, greatest(start_date, NEW.from_date - 1))
+    WHERE unit_id = NEW.unit_id AND status = 'renewed' AND ended_on IS NULL AND created_at < NEW.created_at;
+    -- the tenant's access is left alone: an owner change keeps the tenant on the flat (Phase 2F); the buyer
+    -- registers them under a new agreement or ends it
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+REVOKE ALL ON FUNCTION public.trg_owner_change_ends_tenancies() FROM PUBLIC, anon, authenticated;
+DROP TRIGGER IF EXISTS trg_owner_change_ends_tenancies ON unit_ownerships;
+CREATE TRIGGER trg_owner_change_ends_tenancies AFTER INSERT ON unit_ownerships
+    FOR EACH ROW WHEN (NEW.created_by IS NOT NULL AND NEW.to_date IS NULL)
+    EXECUTE FUNCTION public.trg_owner_change_ends_tenancies();

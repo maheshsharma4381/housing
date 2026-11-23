@@ -6,7 +6,8 @@ import { supabase } from '../lib/supabase/client';
 import { Banner } from './Banner';
 import { REQUEST_STATUS_LABELS, missingRequired, pendingDays, pendingTone, PENDING_NOTE, type ChecklistItem } from '../lib/requests';
 import { openNocLetter, openRequestFile, uploadRequestFile } from '../lib/request-files';
-import { whatsappLink } from '../lib/messages';
+import { whatsappLink, inviteText } from '../lib/messages';
+import { notify } from '../lib/notify';
 import { formatMobile } from '../lib/mobile';
 
 export interface RequestRow {
@@ -32,6 +33,8 @@ export const RequestDetail: React.FC<{
   const [docs, setDocs] = useState<Doc[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [letter, setLetter] = useState<Letter | null>(null);
+  const [tenancy, setTenancy] = useState<{ invite_id: string | null; tenant_name: string; tenant_mobile: string; tenant_email: string | null } | null>(null);
+  const [societyName, setSocietyName] = useState('');
   const [preview, setPreview] = useState<{ body: string; warnings: string[] } | null>(null);
   const [shareNo, setShareNo] = useState<string>('');
   const [note, setNote] = useState('');
@@ -50,7 +53,15 @@ export const RequestDetail: React.FC<{
     setEvents((e as Event[]) ?? []);
     setLetter((l as Letter) ?? null);
     setShareNo((u as { share_certificate_no: string | null } | null)?.share_certificate_no ?? '');
-  }, [request.id, request.unit_id]);
+    if (request.kind === 'tenancy') {
+      const [{ data: t }, { data: s }] = await Promise.all([
+        supabase.from('tenancies').select('invite_id, tenant_name, tenant_mobile, tenant_email').eq('request_id', request.id).maybeSingle(),
+        supabase.from('societies').select('name').eq('id', request.society_id).maybeSingle(),
+      ]);
+      setTenancy((t as typeof tenancy) ?? null);
+      setSocietyName((s as { name: string } | null)?.name ?? '');
+    }
+  }, [request.id, request.unit_id, request.kind, request.society_id]);
 
   const open = request.status === 'submitted' || request.status === 'changes_asked';
   const loadPreview = useCallback(async () => {
@@ -145,6 +156,15 @@ export const RequestDetail: React.FC<{
         </div>
       )}
 
+      {request.status === 'approved' && tenancy?.invite_id && (
+        <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 space-y-1">
+          <div className="text-emerald-300 font-semibold">Tenant registered. {tenancy.tenant_email ? 'The invite was emailed.' : ''}</div>
+          <a href={whatsappLink(inviteText({ societyName: societyName || 'Our society', inviteeName: tenancy.tenant_name, role: 'Tenant',
+              email: tenancy.tenant_email, mobile: tenancy.tenant_mobile, flat: flatLabel, appUrl: typeof window !== 'undefined' ? window.location.origin : '' }), tenancy.tenant_mobile)}
+            target="_blank" rel="noreferrer" className="flex items-center gap-1 text-emerald-300"><Share2 className="w-4 h-4" /> Send the invite to {tenancy.tenant_name} on WhatsApp</a>
+        </div>
+      )}
+
       {isCommittee && request.kind === 'noc' && (
         <div className="space-y-2">
           {canDecide && open && (
@@ -173,7 +193,15 @@ export const RequestDetail: React.FC<{
           <div className="flex flex-wrap gap-2">
             {request.status === 'submitted' && (
               <>
-                <button disabled={busy !== null || missing.length > 0} onClick={() => run('approve', async () => { await rpc('decide_request', { p_request_id: request.id, p_decision: 'approve', p_note: note }); setNote(''); })}
+                <button disabled={busy !== null || missing.length > 0} onClick={() => run('approve', async () => {
+                  await rpc('decide_request', { p_request_id: request.id, p_decision: 'approve', p_note: note }); setNote('');
+                  // 11B: the tenant's invite goes by email when there is one; WhatsApp is offered below
+                  if (request.kind === 'tenancy' && supabase) {
+                    const { data: t } = await supabase.from('tenancies').select('invite_id, tenant_email').eq('request_id', request.id).maybeSingle();
+                    const row = t as { invite_id: string | null; tenant_email: string | null } | null;
+                    if (row?.invite_id && row.tenant_email) await notify('member_invite', row.invite_id);
+                  }
+                })}
                   className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold disabled:opacity-50 cursor-pointer">{busy === 'approve' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Approve'}</button>
                 <button disabled={busy !== null} onClick={() => run('changes', async () => { await rpc('decide_request', { p_request_id: request.id, p_decision: 'changes', p_note: note }); setNote(''); })}
                   className="px-3 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold disabled:opacity-50 cursor-pointer">Ask for changes</button>

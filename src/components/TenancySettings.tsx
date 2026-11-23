@@ -59,7 +59,7 @@ export const TenancySettings: React.FC<{ societyId: string }> = ({ societyId }) 
       </div>
       <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
         <div className="font-bold text-white">Non-occupancy charges</div>
-        <p className="text-slate-400">Added to the bill of a let flat, as a % of its service charges (charges not ticked as municipal tax in Maintenance bills). The law allows at most 10%; 0 means off. Charge only what your general body has passed.</p>
+        <p className="text-slate-400">Added to the bill of a let flat, as a % of its service charges: charges credited to Maintenance Charges and not ticked as municipal tax (sinking fund, repair fund and parking are left out). The law allows at most 10%; 0 means off. Charge only what your general body has passed.</p>
         <div className="flex gap-2 items-center">
           <input type="number" min={0} max={10} step={0.5} value={pct} onChange={e => setPct(e.target.value)} className="w-24 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white" />
           <span className="text-slate-300">%</span>
