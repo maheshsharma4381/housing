@@ -90,3 +90,111 @@ test('only the committee sees the summary', async () => {
   await fails(summary(ids.ownerA, n), 'Only the committee can see this');
   assert.equal((await summary(ids.committee, n)).total, 5);
 });
+
+// ---------------------------------------------------------------- 2. polls
+const inHours = (h) => new Date(Date.now() + h * 3600_000).toISOString();
+const createPoll = (user, { question = 'Repair the lift for Rs 4 lakh?', details = '', options = ['Yes', 'No'], closes = inHours(48) } = {}) =>
+  val(user, 'SELECT public.create_poll($1,$2,$3,$4::text[],$5)', [ids.soc, question, details, options, closes]);
+const vote = (user, poll, unit, option) => q(user, 'SELECT public.cast_poll_vote($1,$2,$3)', [poll, unit, option]);
+const view = (user, poll) => val(user, 'SELECT public.poll_view($1)', [poll]);
+
+test('the committee opens a poll and owners are told', async () => {
+  const p = await createPoll(ids.sec);
+  const told = (await db.query(`SELECT user_id FROM notifications WHERE ref_id=$1 AND kind='poll'`, [p])).rows.map((r) => r.user_id).sort();
+  assert.deepEqual(told, [ids.ownerA, ids.ownerA2, ids.ownerB, ids.ownerB3].sort());
+  const t = (await db.query(`SELECT title, link FROM notifications WHERE ref_id=$1 LIMIT 1`, [p])).rows[0];
+  assert.deepEqual(t, { title: 'Poll: Repair the lift for Rs 4 lakh?', link: 'polls' });
+  await fails(createPoll(ids.ownerA), 'Only the committee');
+});
+
+test('poll checks', async () => {
+  await fails(createPoll(ids.sec, { question: 'Lift' }), 'Write the question (5 to 200 characters)');
+  await fails(createPoll(ids.sec, { details: 'x'.repeat(1001) }), 'Details can be up to 1000 characters');
+  await fails(createPoll(ids.sec, { options: ['Yes'] }), 'Give 2 to 6 options, each up to 80 characters');
+  await fails(createPoll(ids.sec, { options: ['1', '2', '3', '4', '5', '6', '7'] }), 'Give 2 to 6 options, each up to 80 characters');
+  await fails(createPoll(ids.sec, { options: ['Yes', 'n'.repeat(81)] }), 'Give 2 to 6 options, each up to 80 characters');
+  await fails(createPoll(ids.sec, { closes: inHours(0.5) }), 'Close the poll between 1 hour and 60 days from now');
+  await fails(createPoll(ids.sec, { closes: inHours(61 * 24) }), 'Close the poll between 1 hour and 60 days from now');
+});
+
+test('one vote per flat, the last one counts', async () => {
+  const p = await createPoll(ids.sec);
+  await vote(ids.ownerA, p, ids.u101, 0);
+  await vote(ids.ownerA2, p, ids.u101, 1);
+  const v = await view(ids.sec, p);
+  assert.deepEqual(v.counts, [0, 1]);
+  assert.equal(v.voted, 1);
+  assert.equal(v.eligible, 4);
+});
+
+test('a tenant and a former owner cannot vote', async () => {
+  const p = await createPoll(ids.sec);
+  await fails(vote(ids.tenant, p, ids.u103, 0), 'Only an owner of this flat can vote');
+  await fails(vote(ids.former, p, ids.u105, 0), 'Only an owner of this flat can vote');
+  await fails(vote(ids.ownerA, p, ids.u102, 0), 'Only an owner of this flat can vote');
+  await fails(vote(ids.ownerA, p, ids.u101, 2), 'Choose one of the options');
+});
+
+test('an owner of two flats votes for each', async () => {
+  const p = await createPoll(ids.sec);
+  await vote(ids.ownerB3, p, ids.u103, 0);
+  await vote(ids.ownerB3, p, ids.u104, 1);
+  assert.equal((await view(ids.sec, p)).voted, 2);
+  assert.deepEqual((await view(ids.ownerB3, p)).my_flats.map((f) => f.choice), [0, 1]);
+});
+
+test('residents see counts only after closing', async () => {
+  const p = await createPoll(ids.sec);
+  await vote(ids.ownerA, p, ids.u101, 1);
+  let v = await view(ids.ownerA, p);
+  assert.equal(v.counts, null);
+  assert.equal(v.open, true);
+  assert.equal(v.my_flats[0].choice, 1);
+  assert.equal(v.my_flats[0].unit_number, '101');
+  await q(ids.sec, 'SELECT public.close_poll($1)', [p]);
+  v = await view(ids.ownerA, p);
+  assert.deepEqual(v.counts, [0, 1]);
+  assert.equal(v.open, false);
+  // a tenant can read the poll, with no flat to vote for
+  const t = await view(ids.tenant, p);
+  assert.deepEqual(t.my_flats, []);
+});
+
+test('nobody reads another flat\'s choice', async () => {
+  const p = await createPoll(ids.sec);
+  await vote(ids.ownerB, p, ids.u102, 0);
+  assert.equal((await q(ids.sec, 'SELECT * FROM poll_votes')).length, 0);
+  assert.equal((await q(ids.ownerB, 'SELECT * FROM poll_votes')).length, 0);
+  const flats = await q(ids.committee, 'SELECT * FROM public.poll_flats($1)', [p]);
+  assert.equal(flats.length, 4);
+  assert.deepEqual(Object.keys(flats[0]).sort(), ['unit_number', 'voted', 'wing']);
+  assert.equal(flats.find((f) => f.unit_number === '102').voted, true);
+  await fails(q(ids.ownerA, 'SELECT * FROM public.poll_flats($1)', [p]), 'Only the committee can see this');
+});
+
+test('a closed poll takes no votes, a voted poll cannot be deleted', async () => {
+  const p = await createPoll(ids.sec);
+  await vote(ids.ownerA, p, ids.u101, 0);
+  await fails(q(ids.sec, 'SELECT public.delete_poll($1)', [p]), 'A poll with votes cannot be deleted');
+  await q(ids.sec, 'SELECT public.close_poll($1)', [p]);
+  await fails(vote(ids.ownerA, p, ids.u101, 1), 'This poll is closed');
+  await fails(q(ids.sec, 'SELECT public.close_poll($1)', [p]), 'This poll is closed');
+  const empty = await createPoll(ids.sec);
+  await q(ids.sec, 'SELECT public.delete_poll($1)', [empty]);
+  assert.equal((await db.query('SELECT count(*)::int AS n FROM polls WHERE id=$1', [empty])).rows[0].n, 0);
+});
+
+test('a poll past its closing time is closed', async () => {
+  const p = await createPoll(ids.sec);
+  await vote(ids.ownerA, p, ids.u101, 0);
+  await db.query(`UPDATE polls SET closes_at = now() - interval '1 minute' WHERE id=$1`, [p]);
+  await fails(vote(ids.ownerA, p, ids.u101, 1), 'This poll is closed');
+  assert.deepEqual((await view(ids.ownerB, p)).counts, [1, 0]);
+});
+
+test('polls are visible to members only', async () => {
+  const p = await createPoll(ids.sec);
+  assert.equal((await q(ids.tenant, 'SELECT id FROM polls WHERE id=$1', [p])).length, 1);
+  assert.equal((await q(ids.outsider, 'SELECT id FROM polls WHERE id=$1', [p])).length, 0);
+  await fails(view(ids.outsider, p), 'This poll is not in your society');
+});
