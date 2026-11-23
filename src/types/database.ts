@@ -329,6 +329,8 @@ export interface BillingRule {
   account_code: string;
   /** 033: only the flats listed in billing_rule_units are charged */
   applies_to_selected?: boolean;
+  /** 041: municipal taxes are left out of non-occupancy charges */
+  is_municipal_tax?: boolean;
   is_active: boolean;
   created_at: string;
 }

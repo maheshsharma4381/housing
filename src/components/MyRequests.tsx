@@ -7,6 +7,8 @@ import { Banner } from './Banner';
 import { EmptyState } from './EmptyState';
 import { RequestDetail, type RequestRow } from './RequestDetail';
 import { useFlatLabels } from './FlatRequests';
+import { TenancyForm } from './TenancyForm';
+import { Tenancies, type TenancyRow } from './Tenancies';
 import type { ChecklistItem } from '../lib/requests';
 
 interface NocType { id: string; name: string; checklist: ChecklistItem[]; tenant_can_ask: boolean; is_active: boolean }
@@ -16,6 +18,8 @@ export const MyRequests: React.FC<{ societyId: string; userId: string; flats: My
   const [requests, setRequests] = useState<RequestRow[]>([]);
   const [types, setTypes] = useState<NocType[]>([]);
   const [form, setForm] = useState<{ unit: string; type: string; purpose: string; addressee: string } | null>(null);
+  const [tenantFor, setTenantFor] = useState<{ unit: string; renews: TenancyRow | null } | null>(null);
+  const [refresh, setRefresh] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -55,7 +59,9 @@ export const MyRequests: React.FC<{ societyId: string; userId: string; flats: My
   };
 
   const inputClass = 'w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-sky-500';
-  const typeName = (r: RequestRow) => types.find(t => t.id === r.noc_type_id)?.name ?? 'NOC request';
+  const typeName = (r: RequestRow) => r.kind === 'tenancy' ? 'Tenant registration' : (types.find(t => t.id === r.noc_type_id)?.name ?? 'NOC request');
+  // flats this person owns (a tenant cannot register a tenant)
+  const ownedUnits = unitIds.filter(u => !isTenantOf(u));
 
   return (
     <div className="space-y-4 text-xs">
@@ -64,12 +70,40 @@ export const MyRequests: React.FC<{ societyId: string; userId: string; flats: My
           <h2 className="text-base font-bold text-white">Requests</h2>
           <p className="text-slate-400">Ask the committee for a NOC. You get the letter here once it is approved.</p>
         </div>
-        {!form && unitIds.length > 0 && (
-          <button onClick={() => { const unit = unitIds[0]; setForm({ unit, type: allowed(unit)[0]?.id ?? '', purpose: '', addressee: '' }); setDone(null); }}
-            className="px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold flex items-center gap-1.5 cursor-pointer"><Plus className="w-4 h-4" /> New NOC request</button>
-        )}
+        <div className="flex flex-wrap gap-2 justify-end">
+          {!form && !tenantFor && unitIds.length > 0 && (
+            <button onClick={() => { const unit = unitIds[0]; setForm({ unit, type: allowed(unit)[0]?.id ?? '', purpose: '', addressee: '' }); setDone(null); }}
+              className="px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold flex items-center gap-1.5 cursor-pointer"><Plus className="w-4 h-4" /> New NOC request</button>
+          )}
+          {!form && !tenantFor && ownedUnits.length > 0 && (
+            <button onClick={() => { setTenantFor({ unit: ownedUnits[0], renews: null }); setDone(null); }}
+              className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold flex items-center gap-1.5 cursor-pointer"><Plus className="w-4 h-4" /> Register a tenant</button>
+          )}
+        </div>
       </div>
       <Banner tone="success">{done}</Banner>
+
+      {tenantFor && (
+        <>
+          {ownedUnits.length > 1 && !tenantFor.renews && (
+            <select value={tenantFor.unit} onChange={e => setTenantFor({ unit: e.target.value, renews: null })}
+              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white">
+              {ownedUnits.map(u => <option key={u} value={u}>Flat {labels[u] ?? ''}</option>)}
+            </select>
+          )}
+          <TenancyForm key={`${tenantFor.unit}-${tenantFor.renews?.id ?? 'new'}`} unitId={tenantFor.unit} flatLabel={labels[tenantFor.unit] ?? ''} renews={tenantFor.renews}
+            onCancel={() => setTenantFor(null)}
+            onDone={() => { setTenantFor(null); setDone('Sent to the committee. Add the agreement, police papers and ID on the request below.'); void load(); }} />
+        </>
+      )}
+
+      {ownedUnits.length > 0 && (
+        <div className="space-y-2">
+          <h3 className="font-bold text-white text-sm">Tenants</h3>
+          <Tenancies societyId={societyId} unitIds={ownedUnits} labels={labels} canEnd showPast={false} refreshKey={refresh}
+            onRenew={t => { setTenantFor({ unit: t.unit_id, renews: t }); setDone(null); setRefresh(x => x + 1); }} />
+        </div>
+      )}
 
       {form && (
         <div className="p-4 rounded-2xl bg-slate-900 border border-sky-500/40 space-y-2">

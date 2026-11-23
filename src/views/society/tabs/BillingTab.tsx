@@ -130,6 +130,13 @@ export const BillingTab: React.FC<BillingTabProps> = ({ societyId, bills, totals
     loadRules();
   };
 
+  const toggleMunicipal = async (rule: BillingRule) => {
+    if (!supabase) return;
+    const { error: updErr } = await supabase.from('billing_rules').update({ is_municipal_tax: !rule.is_municipal_tax }).eq('id', rule.id);
+    if (updErr) showError(updErr.message);
+    loadRules();
+  };
+
   const deleteRule = async (rule: BillingRule) => {
     if (!supabase || !window.confirm(`Delete rule "${rule.name}"? Existing bills are not affected.`)) return;
     const { error: delErr } = await supabase.from('billing_rules').delete().eq('id', rule.id);
@@ -261,6 +268,11 @@ export const BillingTab: React.FC<BillingTabProps> = ({ societyId, bills, totals
                     {` • → ${creditLabel(r.account_code)}`}
                   </div>
                   <RuleFlats ruleId={r.id} selected={!!r.applies_to_selected} units={units} canManage onChanged={loadRules} />
+                  {/* 041: municipal taxes are left out of non-occupancy charges */}
+                  <label className="flex items-center gap-1.5 text-slate-400 mt-1 cursor-pointer">
+                    <input type="checkbox" checked={!!r.is_municipal_tax} onChange={() => toggleMunicipal(r)} />
+                    Municipal tax (no non-occupancy charge on this)
+                  </label>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
                   <button onClick={() => toggleRule(r)} title={r.is_active ? 'Pause rule' : 'Activate rule'} className="text-slate-400 hover:text-sky-300 cursor-pointer">

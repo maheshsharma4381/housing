@@ -7,10 +7,12 @@ import { Banner } from './Banner';
 import { REQUEST_STATUS_LABELS, missingRequired, pendingDays, pendingTone, PENDING_NOTE, type ChecklistItem } from '../lib/requests';
 import { openNocLetter, openRequestFile, uploadRequestFile } from '../lib/request-files';
 import { whatsappLink } from '../lib/messages';
+import { formatMobile } from '../lib/mobile';
 
 export interface RequestRow {
   id: string; society_id: string; unit_id: string; kind: string; status: string; applicant_id: string | null;
-  details: { purpose?: string; addressee?: string }; checklist: ChecklistItem[]; committee_note: string | null;
+  details: { purpose?: string; addressee?: string; tenant_name?: string; tenant_mobile?: string; tenant_email?: string | null; occupants?: number;
+    start_date?: string; end_date?: string; police_ref?: string | null; renews_id?: string | null }; checklist: ChecklistItem[]; committee_note: string | null;
   submitted_at: string; noc_type_id: string | null;
 }
 interface Doc { id: string; item_key: string; path: string; file_name: string | null }
@@ -19,7 +21,7 @@ interface Letter { id: string; number: string; issued_on: string; title: string;
 
 const ACTIONS: Record<string, string> = {
   submitted: 'Request sent', document_added: 'Document added', document_removed: 'Document removed', resubmitted: 'Sent again',
-  changes_asked: 'Committee asked for changes', approved: 'Approved', rejected: 'Declined', withdrawn: 'Withdrawn',
+  changes_asked: 'Committee asked for changes', approved: 'Approved', rejected: 'Declined', withdrawn: 'Withdrawn', tenancy_ended: 'Tenant moved out',
 };
 const when = (iso: string) => new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
@@ -83,6 +85,14 @@ export const RequestDetail: React.FC<{
           <div className="text-[11px] text-slate-400">Flat {flatLabel}{applicantName ? ` · ${applicantName}` : ''}</div>
           <h3 className="text-sm font-bold text-white">{title}</h3>
           {request.details.purpose && <div className="text-slate-300">Purpose: {request.details.purpose}</div>}
+          {request.kind === 'tenancy' && (
+            <div className="text-slate-300 space-y-0.5 mt-1">
+              <div>Tenant: {request.details.tenant_name} · {formatMobile(request.details.tenant_mobile ?? '')}{request.details.tenant_email ? ` · ${request.details.tenant_email}` : ''}</div>
+              <div>Agreement {request.details.start_date} to {request.details.end_date} · {request.details.occupants} {request.details.occupants === 1 ? 'person' : 'people'}</div>
+              {request.details.police_ref && <div>Police reference: {request.details.police_ref}</div>}
+              {request.details.renews_id && <div className="text-slate-400">Renews the current tenancy</div>}
+            </div>
+          )}
           {request.details.addressee && <div className="text-slate-400">To: {request.details.addressee}</div>}
         </div>
         <div className="text-right">
