@@ -1,4 +1,4 @@
-# Autonomous run report (Phases 3–10)
+# Autonomous run report (Phases 3–11A)
 
 The product owner asked on 2026-11-05: "pura project complete kar do… dont wait for me, u decide the best" and "pure project ko proper test karna, bugs clear karna".
 
@@ -484,12 +484,50 @@ Asked for on 2026-11-23 ("haan teeno bana do"). Spec `docs/superpowers/specs/202
 - Two residents adding the same new mobile at the same moment get a raw error.
 - The polls list shows "No polls yet" on a load error.
 
+## Phase 11A — flat requests and NOC letters (migration 040)
+
+Asked for on 2026-11-24 ("haan, NOC se shuru karo"). Design `docs/superpowers/specs/2026-11-24-flat-changes-design.md` (11B tenancy, 11C shifting, 11D sale and transfer come next), plan `docs/superpowers/plans/2026-11-24-phase-11a-noc.md`.
+
+**Built**
+- **One request system** for NOC now and tenancy, shifting and transfer later: request, documents per checklist item (private `request-files` bucket, PDF or image, 10 MB), status, dated history, "Pending N days" (amber at 25 days for NOCs: a NOC must be decided within one month).
+- **Seven NOC types** per society, editable by the committee (name, letter text, who signs, documents to ask for, "tenants can ask", in use): sale, home loan, leave and licence, electricity meter, passport / address proof, gas connection, repairs. The committee can add its own types.
+- **Residents** (Requests tab): ask for a NOC with a purpose and addressee, add the documents, withdraw, send again after changes, open the letter. Tenants can ask only for types marked for tenants (passport and gas by default).
+- **Committee** (Society → Requests & NOCs; Approvals shows how many wait): the letter as it will be issued today, with warnings; the share certificate number of the flat; Approve, Ask for changes, Decline.
+- **Letters:** numbered `NOC/2026-27/001` per society per financial year; the flat's owners, society name, registration number, address, share certificate number and the dues line filled in ("As per the society's accounts in Sahvaas, there are no dues outstanding as on …"); printed or saved as PDF from the browser; shared on WhatsApp; kept in the **NOC register**.
+
+**Final review fixes** (fresh Opus reviewer; each with a failing test first)
+1. A letter asked for by the secretary on someone's behalf, or by a tenant, named that person as the flat's member. The letter now names the flat's owners; residence letters name who asked; an applicant who has left the flat gets no letter.
+2. "No dues" could be certified when opening balances were never entered. The line now says "As per the society's accounts in Sahvaas", and the committee is warned before approving.
+3. A buyer could read the seller's requests and documents. Owners now see only what was asked since they became owners.
+4. Text typed by the applicant (addressee, purpose) could become a paragraph of the signed letter. Both are single lines now, and the committee always sees the letter before approving.
+5. A committee member opening Requests in the resident view saw the whole society's requests. It now shows only their own.
+
+**Rulings**
+1. No draft status; a request goes to the committee when created, and documents are added after.
+2. The letter is stored as text and printed from the browser; no PDF file is made on the server.
+3. NOC fees wait for 11C (they need a one-off charge to a flat).
+4. A committee member who owns a flat asks for their own NOC from the resident view.
+
+**Deferred minors**
+- The NOC register has no "issued by" column and shows dates as YYYY-MM-DD.
+- Removing a document, or a failed attach, leaves the file in storage.
+- A document record does not check that the file exists.
+- Letters print "Registration No. —" when the society has none; the address can end in ", ".
+- Reprinting an old letter uses today's letterhead.
+- An applicant in a deactivated society can still withdraw or upload.
+- The financial-year restart is tested on the numbering helper, not inside the approval.
+- New functions are callable by anon (each refuses without a login).
+- Two custom NOC types added at the same moment can clash.
+- Requests of a switched-off type show "NOC request"; the inbox loads the latest 300; no note field when sending again.
+
+**Before using it:** ask the society's legal adviser to read the seven letter texts (Society → Requests & NOCs → NOC letters), and record share certificate numbers on the request screen.
+
 ## What you need to do next
 
-1. **Apply migration 039** (027 to 038 are already applied live):
-   - `bun run db:migrate` (dry run: the list should say only 039);
+1. **Apply migrations 039 and 040** (027 to 038 are already applied live):
+   - `bun run db:migrate` (dry run: the list should say 039 and 040);
    - then `bun run db:migrate --apply`.
-2. **Push** when you are happy. GitHub has everything up to Phase 8 (pushed on 2026-11-05); Phase 9, Phase 10 and the Gate Lite plan are on local `main` only.
+2. **Push** when you are happy. GitHub has everything up to Phase 8 (pushed on 2026-11-05); Phase 9, Phase 10, Phase 11A and the Gate Lite and Phase 11 plans are on local `main` only.
 3. **Environment and Supabase settings:**
    - **3A push:** `SUPABASE_SERVICE_ROLE_KEY`, the VAPID keys, `CRON_SECRET`, and the two database settings.
    - **3C mobile login, when WhatsApp is approved:** the Phone provider with "Confirm phone" on, the Send SMS hook, `SEND_SMS_HOOK_SECRET`, the WhatsApp/MSG91 keys, the SMS rate limit, then `NEXT_PUBLIC_PHONE_LOGIN=1`.
