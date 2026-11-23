@@ -239,3 +239,196 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 GRANT EXECUTE ON FUNCTION public.create_tenancy_request(UUID, JSONB) TO authenticated;
+
+-- ============================================================================
+-- 3. APPROVAL, RENEWAL AND ENDING
+-- ============================================================================
+-- The tenancy an approved request makes: a renewal replaces the one it names and keeps its invite; a new tenant
+-- gets a resident_tenant invite unless a tenant on the flat already has that mobile
+CREATE OR REPLACE FUNCTION public.approve_tenancy(p_r flat_requests)
+RETURNS UUID AS $$
+DECLARE
+    d JSONB := p_r.details;
+    v_old tenancies%ROWTYPE;
+    v_invite UUID;
+    v_id UUID;
+BEGIN
+    IF d ->> 'renews_id' IS NOT NULL THEN
+        SELECT * INTO v_old FROM tenancies WHERE id = (d ->> 'renews_id')::uuid AND unit_id = p_r.unit_id FOR UPDATE;
+        IF NOT FOUND OR v_old.status <> 'active' THEN
+            RAISE EXCEPTION 'The tenancy being renewed has already ended';
+        END IF;
+        UPDATE tenancies SET status = 'renewed' WHERE id = v_old.id;
+        v_invite := v_old.invite_id;
+    ELSE
+        IF EXISTS (SELECT 1 FROM tenancies WHERE unit_id = p_r.unit_id AND status = 'active') THEN
+            RAISE EXCEPTION 'This flat already has a tenant. End that tenancy or renew it.';
+        END IF;
+        IF NOT EXISTS (
+            SELECT 1 FROM society_memberships m
+            LEFT JOIN auth.users au ON au.id = m.user_id
+            LEFT JOIN profiles pr ON pr.id = m.user_id
+            WHERE m.unit_id = p_r.unit_id AND m.is_active AND m.role = 'resident_tenant'
+              AND (normalize_mobile(au.phone) = d ->> 'tenant_mobile' OR normalize_mobile(pr.phone) = d ->> 'tenant_mobile')) THEN
+            SELECT id INTO v_invite FROM member_invites
+            WHERE society_id = p_r.society_id AND unit_id = p_r.unit_id AND status = 'pending'
+              AND normalize_mobile(mobile) = d ->> 'tenant_mobile';
+            IF v_invite IS NULL THEN
+                INSERT INTO member_invites (society_id, email, mobile, full_name, role, unit_id, invited_by)
+                VALUES (p_r.society_id, d ->> 'tenant_email', d ->> 'tenant_mobile', d ->> 'tenant_name', 'resident_tenant',
+                        p_r.unit_id, auth.uid())
+                RETURNING id INTO v_invite;
+            END IF;
+        END IF;
+    END IF;
+    INSERT INTO tenancies (society_id, unit_id, request_id, tenant_name, tenant_mobile, tenant_email, occupants,
+                           start_date, end_date, police_ref, renews_id, invite_id)
+    VALUES (p_r.society_id, p_r.unit_id, p_r.id, d ->> 'tenant_name', d ->> 'tenant_mobile', d ->> 'tenant_email',
+            (d ->> 'occupants')::int, (d ->> 'start_date')::date, (d ->> 'end_date')::date, d ->> 'police_ref',
+            v_old.id, v_invite)
+    RETURNING id INTO v_id;
+    RETURN v_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+REVOKE ALL ON FUNCTION public.approve_tenancy(flat_requests) FROM PUBLIC, anon, authenticated;
+
+-- decide_request from 040, with the tenancy branch
+CREATE OR REPLACE FUNCTION public.decide_request(p_request_id UUID, p_decision TEXT, p_note TEXT)
+RETURNS JSONB AS $$
+DECLARE
+    v_r flat_requests%ROWTYPE;
+    v_type TEXT;
+    v_note TEXT := nullif(trim(coalesce(p_note, '')), '');
+    v_missing TEXT;
+    v_on DATE := (now() AT TIME ZONE 'Asia/Kolkata')::date;
+    v_doc JSONB;
+    v_seq INT;
+    v_letter UUID;
+    v_number TEXT;
+    v_tenancy UUID;
+BEGIN
+    SELECT * INTO v_r FROM flat_requests WHERE id = p_request_id FOR UPDATE;
+    IF NOT FOUND OR NOT is_society_admin(v_r.society_id) THEN
+        RAISE EXCEPTION 'Only the committee can decide requests';
+    END IF;
+    IF coalesce(p_decision, '') NOT IN ('approve', 'changes', 'reject') THEN
+        RAISE EXCEPTION 'Choose approve, changes or reject';
+    END IF;
+    IF v_r.status NOT IN ('submitted', 'changes_asked') THEN
+        RAISE EXCEPTION 'This request has already been decided';
+    END IF;
+    IF v_r.status = 'changes_asked' AND p_decision <> 'reject' THEN
+        RAISE EXCEPTION 'Wait for the applicant to send the changes';
+    END IF;
+    SELECT name INTO v_type FROM noc_types WHERE id = v_r.noc_type_id;
+    v_type := coalesce(v_type, CASE v_r.kind WHEN 'tenancy' THEN 'Tenant registration' ELSE initcap(v_r.kind) END);
+
+    IF p_decision = 'changes' THEN
+        IF length(coalesce(v_note, '')) NOT BETWEEN 3 AND 500 THEN
+            RAISE EXCEPTION 'Write what needs to change';
+        END IF;
+        UPDATE flat_requests SET status = 'changes_asked', committee_note = v_note WHERE id = p_request_id;
+        INSERT INTO request_events (request_id, actor, action, note) VALUES (p_request_id, auth.uid(), 'changes_asked', v_note);
+        PERFORM notify_users(v_r.society_id, ARRAY[v_r.applicant_id], 'request', 'Changes needed: ' || v_type, v_note, 'requests', p_request_id);
+        RETURN jsonb_build_object('status', 'changes_asked');
+    END IF;
+
+    IF p_decision = 'reject' THEN
+        IF length(coalesce(v_note, '')) NOT BETWEEN 3 AND 500 THEN
+            RAISE EXCEPTION 'Write the reason';
+        END IF;
+        UPDATE flat_requests SET status = 'rejected', committee_note = v_note, decided_at = now(), decided_by = auth.uid()
+        WHERE id = p_request_id;
+        INSERT INTO request_events (request_id, actor, action, note) VALUES (p_request_id, auth.uid(), 'rejected', v_note);
+        PERFORM notify_users(v_r.society_id, ARRAY[v_r.applicant_id], 'request',
+            CASE WHEN v_r.kind = 'noc' THEN 'NOC request declined: ' ELSE 'Request declined: ' END || v_type, v_note, 'requests', p_request_id);
+        RETURN jsonb_build_object('status', 'rejected');
+    END IF;
+
+    -- approve: every required document is there
+    SELECT c ->> 'label' INTO v_missing
+    FROM jsonb_array_elements(v_r.checklist) WITH ORDINALITY AS t(c, i)
+    WHERE coalesce((c ->> 'required')::boolean, false)
+      AND NOT EXISTS (SELECT 1 FROM request_documents d WHERE d.request_id = p_request_id AND d.item_key = c ->> 'key')
+    ORDER BY i LIMIT 1;
+    IF v_missing IS NOT NULL THEN
+        RAISE EXCEPTION 'Add "%" before approving', v_missing;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM society_memberships m WHERE m.unit_id = v_r.unit_id AND m.user_id = v_r.applicant_id AND m.is_active)
+       AND NOT EXISTS (SELECT 1 FROM society_memberships m WHERE m.society_id = v_r.society_id AND m.user_id = v_r.applicant_id
+                       AND m.is_active AND m.role IN ('society_admin', 'secretary', 'chairman', 'treasurer')) THEN
+        RAISE EXCEPTION 'The applicant is no longer a member of this flat';
+    END IF;
+    UPDATE flat_requests SET status = 'approved', committee_note = v_note, decided_at = now(), decided_by = auth.uid()
+    WHERE id = p_request_id;
+    INSERT INTO request_events (request_id, actor, action, note) VALUES (p_request_id, auth.uid(), 'approved', v_note);
+
+    -- 041: an approved tenant registration records the tenancy and invites the tenant
+    IF v_r.kind = 'tenancy' THEN
+        v_tenancy := approve_tenancy(v_r);
+        PERFORM notify_users(v_r.society_id, (
+            SELECT array_agg(DISTINCT x) FROM (
+                SELECT v_r.applicant_id AS x
+                UNION SELECT m.user_id FROM society_memberships m
+                WHERE m.unit_id = v_r.unit_id AND m.is_active
+                  AND m.role IN ('resident_owner', 'society_admin', 'secretary', 'chairman', 'treasurer', 'committee_member')
+            ) y WHERE x IS NOT NULL AND x <> auth.uid()
+        ), 'request', 'Tenant registered for flat ' || flat_label(v_r.unit_id), NULL, 'requests', p_request_id);
+        RETURN jsonb_build_object('status', 'approved', 'tenancy_id', v_tenancy);
+    END IF;
+
+    IF v_r.kind = 'noc' THEN
+        PERFORM 1 FROM societies WHERE id = v_r.society_id FOR UPDATE;  -- one number at a time per society
+        v_doc := render_noc(p_request_id, v_on);
+        SELECT coalesce(max(seq), 0) + 1 INTO v_seq FROM noc_letters WHERE society_id = v_r.society_id AND fy = fy_label(v_on);
+        v_number := 'NOC/' || fy_label(v_on) || '/' || lpad(v_seq::text, 3, '0');
+        INSERT INTO noc_letters (society_id, request_id, number, fy, seq, issued_on, type_name, title, body, signatory,
+                                 issued_to, flat_label, dues_amount, created_by)
+        VALUES (v_r.society_id, p_request_id, v_number, fy_label(v_on), v_seq, v_on, v_doc ->> 'type_name', v_doc ->> 'title',
+                v_doc ->> 'body', v_doc ->> 'signatory', v_doc ->> 'issued_to', v_doc ->> 'flat_label',
+                (v_doc ->> 'dues_amount')::numeric, auth.uid())
+        RETURNING id INTO v_letter;
+        PERFORM notify_users(v_r.society_id, ARRAY[v_r.applicant_id], 'request', 'NOC approved: ' || v_type, v_number, 'requests', p_request_id);
+        RETURN jsonb_build_object('status', 'approved', 'letter_id', v_letter, 'number', v_number);
+    END IF;
+
+    PERFORM notify_users(v_r.society_id, ARRAY[v_r.applicant_id], 'request', 'Request approved: ' || v_type, v_note, 'requests', p_request_id);
+    RETURN jsonb_build_object('status', 'approved');
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+GRANT EXECUTE ON FUNCTION public.decide_request(UUID, TEXT, TEXT) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.end_tenancy(p_tenancy_id UUID, p_end_date DATE)
+RETURNS VOID AS $$
+DECLARE
+    v_t tenancies%ROWTYPE;
+    v_end DATE := coalesce(p_end_date, (now() AT TIME ZONE 'Asia/Kolkata')::date);
+BEGIN
+    SELECT * INTO v_t FROM tenancies WHERE id = p_tenancy_id FOR UPDATE;
+    IF NOT FOUND OR NOT (is_society_admin(v_t.society_id)
+        OR (is_flat_owner(v_t.unit_id, auth.uid()) AND v_t.created_at >= current_ownership_since(v_t.unit_id))) THEN
+        RAISE EXCEPTION 'Only an owner of this flat or the committee can end the tenancy';
+    END IF;
+    IF v_t.status <> 'active' THEN
+        RAISE EXCEPTION 'This tenancy has already ended';
+    END IF;
+    -- a chosen date cannot come before the start; ending today a tenancy that has not started (a renewal) cancels it
+    IF p_end_date IS NOT NULL AND p_end_date < v_t.start_date THEN
+        RAISE EXCEPTION 'The end date cannot be before the tenancy started';
+    END IF;
+    UPDATE tenancies SET status = 'ended', ended_on = v_end WHERE id = p_tenancy_id;
+    -- the tenant leaves: their access to the flat ends, and an invite not yet accepted can no longer be
+    UPDATE society_memberships SET is_active = false
+    WHERE unit_id = v_t.unit_id AND role = 'resident_tenant' AND is_active;
+    UPDATE member_invites SET status = 'revoked'
+    WHERE unit_id = v_t.unit_id AND role = 'resident_tenant' AND status = 'pending';
+    IF v_t.request_id IS NOT NULL THEN
+        INSERT INTO request_events (request_id, actor, action, note)
+        VALUES (v_t.request_id, auth.uid(), 'tenancy_ended', to_char(v_end, 'DD Mon YYYY'));
+    END IF;
+    PERFORM notify_users(v_t.society_id, array_remove(society_managers(v_t.society_id), auth.uid()), 'tenancy',
+        'Tenancy of flat ' || flat_label(v_t.unit_id) || ' ended', v_t.tenant_name, 'requests', p_tenancy_id);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+GRANT EXECUTE ON FUNCTION public.end_tenancy(UUID, DATE) TO authenticated;

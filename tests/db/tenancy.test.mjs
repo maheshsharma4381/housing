@@ -132,3 +132,75 @@ test("the buyer of a let flat sees neither the seller's request nor the old tena
   await db.query('UPDATE tenancies SET status=$2 WHERE id=$1', [t, 'ended']);
   ids.buyer = buyer;
 });
+
+// ---------------------------------------------------------------- 3. approval, renewal, ending
+const addDocs = async (user, req, keys = ['agreement', 'police', 'tenant_id']) => {
+  for (const k of keys) await q(user, 'SELECT public.add_request_document($1,$2,$3,$4)', [req, k, `${ids.soc}/${req}/${k}.pdf`, `${k}.pdf`]);
+};
+const decide = (user, req, d = 'approve', note = null) => val(user, 'SELECT public.decide_request($1,$2,$3)', [req, d, note]);
+const tenancyOf = async (req) => (await db.query('SELECT * FROM tenancies WHERE request_id=$1', [req])).rows[0];
+const invites = async (unit) => (await db.query(`SELECT * FROM member_invites WHERE unit_id=$1 AND role='resident_tenant' ORDER BY created_at`, [unit])).rows;
+
+test('approval records the tenancy and invites the tenant', async () => {
+  await fails(decide(ids.sec, ids.req101), 'Add "Registered leave and licence agreement" before approving');
+  await addDocs(ids.owner, ids.req101);
+  const out = await decide(ids.sec, ids.req101);
+  assert.equal(out.status, 'approved');
+  const t = await tenancyOf(ids.req101);
+  assert.equal(t.status, 'active');
+  assert.equal(t.tenant_name, 'Tara Rao');
+  assert.equal(t.tenant_mobile, '919876511111');
+  assert.equal(out.tenancy_id, t.id);
+  const inv = await invites(ids.u101);
+  assert.equal(inv.length, 1);
+  assert.equal(inv[0].mobile, '919876511111');
+  assert.equal(inv[0].email, 'tara@mail.com');
+  assert.equal(inv[0].status, 'pending');
+  assert.equal(t.invite_id, inv[0].id);
+  const told = (await db.query(`SELECT user_id FROM notifications WHERE ref_id=$1 AND title='Tenant registered for flat 101'`, [ids.req101])).rows.map((n) => n.user_id);
+  assert.deepEqual(told, [ids.owner]);
+  ids.t101 = t.id;
+});
+
+test('a tenant already living there gets no second invite', async () => {
+  const tenant = await member('tom@ten.test', 'resident_tenant', ids.u103, 'Tom');
+  await db.query(`UPDATE auth.users SET phone='919876522222', phone_confirmed_at=now() WHERE id=$1`, [tenant]);
+  const r = await register(ids.owner3, ids.u103, { tenant_name: 'Tom', tenant_mobile: '9876522222', tenant_email: '' });
+  await addDocs(ids.owner3, r);
+  await decide(ids.sec, r);
+  assert.equal((await tenancyOf(r)).invite_id, null);
+  assert.equal((await invites(ids.u103)).length, 0);
+  ids.tom = tenant;
+  ids.t103 = (await tenancyOf(r)).id;
+});
+
+test('renewal keeps the tenant without a second invite', async () => {
+  const r = await register(ids.owner, ids.u101, { renews_id: ids.t101, start_date: isoDays(330), end_date: isoDays(660) });
+  await addDocs(ids.owner, r);
+  await decide(ids.sec, r);
+  const old = (await db.query('SELECT status FROM tenancies WHERE id=$1', [ids.t101])).rows[0];
+  assert.equal(old.status, 'renewed');
+  const t = await tenancyOf(r);
+  assert.equal(t.status, 'active');
+  assert.equal(t.renews_id, ids.t101);
+  assert.equal((await invites(ids.u101)).length, 1);
+  ids.t101b = t.id;
+});
+
+test('ending the tenancy removes the tenant', async () => {
+  const notice = await val(ids.sec, `INSERT INTO notices (society_id, title, content, published_by) VALUES ($1,'Water cut','No water on Sunday',$2) RETURNING id`, [ids.soc, ids.sec]);
+  assert.equal((await q(ids.tom, 'SELECT count(*)::int AS n FROM notices WHERE id=$1', [notice]))[0].n, 1);
+  await fails(q(ids.owner2, 'SELECT public.end_tenancy($1,NULL)', [ids.t103]), 'Only an owner of this flat or the committee can end the tenancy');
+  await fails(q(ids.committee, 'SELECT public.end_tenancy($1,NULL)', [ids.t103]), 'Only an owner of this flat or the committee can end the tenancy');
+  await fails(q(ids.owner3, 'SELECT public.end_tenancy($1,$2)', [ids.t103, isoDays(-400)]), 'The end date cannot be before the tenancy started');
+  await q(ids.owner3, 'SELECT public.end_tenancy($1,NULL)', [ids.t103]);
+  const t = (await db.query('SELECT status, ended_on FROM tenancies WHERE id=$1', [ids.t103])).rows[0];
+  assert.equal(t.status, 'ended');
+  assert.ok(t.ended_on);
+  assert.equal((await db.query(`SELECT is_active FROM society_memberships WHERE user_id=$1`, [ids.tom])).rows[0].is_active, false);
+  assert.equal((await q(ids.tom, 'SELECT count(*)::int AS n FROM notices WHERE id=$1', [notice]))[0].n, 0);
+  await fails(q(ids.owner3, 'SELECT public.end_tenancy($1,NULL)', [ids.t103]), 'This tenancy has already ended');
+  // a pending tenant invite of the flat is revoked when its tenancy ends
+  await q(ids.sec, 'SELECT public.end_tenancy($1,NULL)', [ids.t101b]);
+  assert.deepEqual((await invites(ids.u101)).map((i) => i.status), ['revoked']);
+});
