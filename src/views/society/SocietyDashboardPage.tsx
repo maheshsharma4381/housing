@@ -30,6 +30,7 @@ import { BillTypes } from '../../components/BillTypes';
 import { societyNav, societyTabFor, GROUP_LABELS, PHONE_BAR, type SocietyTab } from '../../lib/society-nav';
 import { HomeCards } from '../../components/HomeCards';
 import { PollsList } from '../../components/PollsList';
+import { StaffRegister } from '../../components/StaffRegister';
 import { PendingVendorBills } from '../../components/PendingVendorBills';
 import { PriorYearEditor } from '../../components/PriorYearEditor';
 import { YearLockPanel } from '../../components/YearLockPanel';
@@ -488,6 +489,11 @@ export const SocietyDashboardPage: React.FC = () => {
         {/* POLLS (Phase 10) */}
         {activeTab === 'polls' && activeSociety && (
           <PollsList societyId={activeSociety.id} isCommittee canManage={!readOnly} />
+        )}
+
+        {/* STAFF (Phase 10) */}
+        {activeTab === 'staff' && activeSociety && (
+          <StaffRegister societyId={activeSociety.id} isCommittee canManage={!readOnly} myUnitIds={[]} />
         )}
 
         {/* DOCUMENTS */}

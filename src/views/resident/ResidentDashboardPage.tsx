@@ -21,11 +21,13 @@ import {
   AlertCircle,
   FolderLock,
   Vote,
+  IdCard,
 } from 'lucide-react';
 import { SignOutMenu } from '../../components/SignOutMenu';
 import { FlatStatement } from '../../components/FlatStatement';
 import { PWAInstallButton } from '../../components/PWAInstallButton';
 import { PollsList } from '../../components/PollsList';
+import { StaffRegister } from '../../components/StaffRegister';
 
 const OUTSTANDING_STATUSES: Bill['status'][] = ['issued', 'partially_paid', 'overdue'];
 const UTR_PATTERN = /^\d{12}$/;
@@ -295,7 +297,7 @@ export const ResidentDashboardPage: React.FC = () => {
         )}
 
         {/* Navigation Tabs */}
-        <div className={`grid ${isOwner ? 'grid-cols-4 sm:grid-cols-7' : 'grid-cols-5'} gap-2 text-center text-xs`}>
+        <div className={`grid ${isOwner ? 'grid-cols-4 sm:grid-cols-8' : 'grid-cols-3 sm:grid-cols-6'} gap-2 text-center text-xs`}>
           <button
             onClick={() => setActiveTab('overview')}
             className={`p-2.5 rounded-xl border transition cursor-pointer ${
@@ -357,6 +359,18 @@ export const ResidentDashboardPage: React.FC = () => {
           >
             <Vote className="w-4 h-4 mx-auto mb-1" />
             <span>Polls</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('staff')}
+            className={`p-2.5 rounded-xl border transition cursor-pointer ${
+              activeTab === 'staff'
+                ? 'bg-sky-600/20 border-sky-500 text-sky-400 font-bold'
+                : 'bg-slate-900 border-slate-800 text-slate-400'
+            }`}
+          >
+            <IdCard className="w-4 h-4 mx-auto mb-1" />
+            <span>Staff</span>
           </button>
 
           <button
@@ -529,6 +543,11 @@ export const ResidentDashboardPage: React.FC = () => {
         {/* TAB 5: DOCUMENTS */}
         {activeTab === 'documents' && activeSociety && (
           <DocumentsVault societyId={activeSociety.id} canManage={false} />
+        )}
+
+        {activeTab === 'staff' && activeSociety && (
+          <StaffRegister societyId={activeSociety.id} isCommittee={false} canManage={false}
+            myUnitIds={flatMemberships.map(m => m.unit_id).filter((u): u is string => Boolean(u))} />
         )}
 
         {activeTab === 'polls' && activeSociety && (
