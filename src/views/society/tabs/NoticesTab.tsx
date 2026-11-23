@@ -6,6 +6,7 @@ import { Banner } from '../../../components/Banner';
 import { EmptyState } from '../../../components/EmptyState';
 import { Notice } from '../../../types/database';
 import { FileText, Pin, PinOff, Trash2, Send, Loader2 } from 'lucide-react';
+import { NoticeSeen } from '../../../components/NoticeSeen';
 
 const CATEGORIES: { value: Notice['category']; label: string }[] = [
   { value: 'general', label: 'General' },
@@ -150,6 +151,7 @@ export const NoticesTab: React.FC<NoticesTabProps> = ({ societyId, currentUserId
                 </div>
               </div>
               <p className="text-slate-300 whitespace-pre-line">{n.content}</p>
+              <NoticeSeen noticeId={n.id} />
             </div>
           ))}
         </div>

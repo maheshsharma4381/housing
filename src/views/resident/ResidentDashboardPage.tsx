@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase/client';
@@ -130,6 +130,16 @@ export const ResidentDashboardPage: React.FC = () => {
   useEffect(() => {
     loadResidentData();
   }, [loadResidentData]);
+
+  // Phase 10: notices shown on the Notices screen are recorded as seen, once each (never blocks reading)
+  const seenNotices = useRef(new Set<string>());
+  useEffect(() => {
+    if (activeTab !== 'notices' || !supabase) return;
+    const fresh = societyNotices.map(n => n.id).filter(id => !seenNotices.current.has(id));
+    if (fresh.length === 0) return;
+    fresh.forEach(id => seenNotices.current.add(id));
+    void supabase.rpc('mark_notices_seen', { p_notice_ids: fresh }).then(() => undefined, () => undefined);
+  }, [activeTab, societyNotices]);
 
   const outstandingBills = myBills.filter(b => OUTSTANDING_STATUSES.includes(b.status));
   // the newest bill that still counts (not a cancelled one)
