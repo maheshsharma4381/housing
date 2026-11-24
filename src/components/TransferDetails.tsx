@@ -1,7 +1,7 @@
 'use client';
 // Phase 11D: the sale part of a transfer request — the buyer, the deed, the flat's dues, and for the committee
 // the share certificate, the fees and the approval that runs the owner change.
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2, Share2 } from 'lucide-react';
 import { supabase } from '../lib/supabase/client';
 import { Banner } from './Banner';
@@ -21,6 +21,7 @@ export const TransferDetails: React.FC<{
   const [societyName, setSocietyName] = useState('');
   const [fees, setFees] = useState({ fee: '0', premium: '0' });
   const [form, setForm] = useState({ share_certificate_no: '', endorsed_on: '', transfer_date: '' });
+  const certTouched = useRef(false);   // a number the committee typed is never replaced by a reload
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,7 +37,7 @@ export const TransferDetails: React.FC<{
     setSocietyName((s as { name: string } | null)?.name ?? '');
     const st = set as { transfer_fee: number; transfer_premium: number } | null;
     if (st) setFees({ fee: String(st.transfer_fee), premium: String(st.transfer_premium) });
-    setForm(f => ({ ...f, share_certificate_no: d.share_certificate_no ?? (u as { share_certificate_no: string | null } | null)?.share_certificate_no ?? '' }));
+    if (!certTouched.current) setForm(f => ({ ...f, share_certificate_no: d.share_certificate_no ?? (u as { share_certificate_no: string | null } | null)?.share_certificate_no ?? '' }));
   }, [request.id, request.society_id, request.unit_id, open, canDecide, d.share_certificate_no]);
 
   useEffect(() => { void load(); }, [load]);
@@ -119,7 +120,7 @@ export const TransferDetails: React.FC<{
           {request.status === 'submitted' && (
             <div className="space-y-1.5">
               <div className="grid sm:grid-cols-3 gap-2">
-                <label className="text-slate-400">Share certificate No.<input value={form.share_certificate_no} maxLength={40} onChange={e => setForm({ ...form, share_certificate_no: e.target.value })} className={inputClass} /></label>
+                <label className="text-slate-400">Share certificate No.<input value={form.share_certificate_no} maxLength={40} onChange={e => { certTouched.current = true; setForm({ ...form, share_certificate_no: e.target.value }); }} className={inputClass} /></label>
                 <label className="text-slate-400">Endorsed on (blank: transfer date)<input type="date" value={form.endorsed_on} onChange={e => setForm({ ...form, endorsed_on: e.target.value })} className={inputClass} /></label>
                 <label className="text-slate-400">Transfer date (blank: today)<input type="date" value={form.transfer_date} onChange={e => setForm({ ...form, transfer_date: e.target.value })} className={inputClass} /></label>
               </div>

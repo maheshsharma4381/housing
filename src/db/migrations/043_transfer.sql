@@ -161,14 +161,16 @@ BEGIN
     IF v_email IS NOT NULL AND (position('@' IN v_email) < 2 OR length(v_email) > 160) THEN
         RAISE EXCEPTION 'Enter a valid email for the buyer';
     END IF;
-    -- the buyer is someone else: an owner's own mobile would hand the flat back to the seller
+    -- the buyer is someone else: an owner's own mobile or email would hand the flat back to the seller
+    -- (the invite is claimed by mobile or by email)
     IF EXISTS (
         SELECT 1 FROM society_memberships m
         LEFT JOIN auth.users au ON au.id = m.user_id
         LEFT JOIN profiles pr ON pr.id = m.user_id
         WHERE m.unit_id = p_unit_id AND m.is_active AND m.role <> 'resident_tenant'
-          AND (normalize_mobile(au.phone) = v_mobile OR normalize_mobile(pr.phone) = v_mobile)) THEN
-        RAISE EXCEPTION 'This mobile belongs to an owner of this flat';
+          AND (normalize_mobile(au.phone) = v_mobile OR normalize_mobile(pr.phone) = v_mobile
+               OR (v_email IS NOT NULL AND (lower(au.email) = v_email OR lower(pr.email) = v_email)))) THEN
+        RAISE EXCEPTION 'This mobile or email belongs to an owner of this flat';
     END IF;
     BEGIN
         v_deed := nullif(p_details ->> 'deed_date', '')::date;
@@ -187,6 +189,9 @@ BEGIN
     PERFORM 1 FROM units WHERE id = p_unit_id FOR UPDATE;   -- one open transfer per flat
     IF EXISTS (SELECT 1 FROM flat_requests WHERE unit_id = p_unit_id AND kind = 'transfer' AND status IN ('submitted', 'changes_asked')) THEN
         RAISE EXCEPTION 'A transfer request for this flat is already open';
+    END IF;
+    IF EXISTS (SELECT 1 FROM unit_ownerships WHERE unit_id = p_unit_id AND to_date IS NULL AND owner_user_id IS NULL) THEN
+        RAISE EXCEPTION 'This flat has an owner change waiting for the new owner to join';
     END IF;
 
     INSERT INTO flat_requests (society_id, unit_id, kind, applicant_id, details, checklist)
@@ -264,30 +269,53 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 GRANT EXECUTE ON FUNCTION public.bill_transfer_fees(UUID, NUMERIC, NUMERIC) TO authenticated;
 
--- cancel_bill (011) without the role check, and only for a bill nothing was paid on
+-- cancel_bill (011) without the role check. What was paid on the bill (a payment, or an advance the bill took on
+-- issue) goes back to the flat's advance first, so a sale that did not happen keeps none of the seller's money.
 CREATE OR REPLACE FUNCTION public.cancel_flat_charge(p_bill_id UUID, p_reason TEXT)
 RETURNS VOID AS $$
 DECLARE
     v_bill bills%ROWTYPE;
+    v_allocated NUMERIC;
+    v_left NUMERIC;
+    v_back NUMERIC;
+    v_adv RECORD;
 BEGIN
     SELECT * INTO v_bill FROM bills WHERE id = p_bill_id FOR UPDATE;
-    IF NOT FOUND OR v_bill.status = 'cancelled' OR v_bill.amount_paid > 0
-       OR EXISTS (SELECT 1 FROM payment_allocations WHERE bill_id = p_bill_id) THEN
+    IF NOT FOUND OR v_bill.status = 'cancelled' THEN
         RETURN;
     END IF;
-    UPDATE bills SET status = 'cancelled', balance_due = 0, updated_at = timezone('utc'::text, now()) WHERE id = p_bill_id;
+    IF v_bill.amount_paid > 0 THEN
+        SELECT coalesce(sum(amount), 0) INTO v_allocated FROM payment_allocations WHERE bill_id = p_bill_id;
+        -- the rest came from opening advances (ledger_apply_advance uses them first); put it back, newest first
+        v_left := greatest(v_bill.amount_paid - v_allocated, 0);
+        FOR v_adv IN SELECT id, amount - remaining AS used FROM opening_advances
+                     WHERE unit_id = v_bill.unit_id AND remaining < amount ORDER BY created_at DESC FOR UPDATE LOOP
+            EXIT WHEN v_left <= 0;
+            v_back := least(v_adv.used, v_left);
+            UPDATE opening_advances SET remaining = remaining + v_back WHERE id = v_adv.id;
+            v_left := v_left - v_back;
+        END LOOP;
+        DELETE FROM payment_allocations WHERE bill_id = p_bill_id;
+        PERFORM post_journal(v_bill.society_id, current_date, 'advance.returned', v_bill.id,
+            'Paid on bill ' || v_bill.bill_number || ' back to the flat''s advance: ' || p_reason,
+            jsonb_build_array(
+                jsonb_build_object('code', '1200', 'amount', v_bill.amount_paid, 'party', v_bill.unit_id::text),
+                jsonb_build_object('code', '2300', 'amount', -v_bill.amount_paid, 'party', v_bill.unit_id::text)));
+    END IF;
+    UPDATE bills SET status = 'cancelled', amount_paid = 0, balance_due = 0, updated_at = timezone('utc'::text, now()) WHERE id = p_bill_id;
     PERFORM ledger_reverse(v_bill.society_id, 'bill.issued', v_bill.id, 'bill.cancelled', current_date,
                            'Bill ' || v_bill.bill_number || ' cancelled: ' || p_reason);
     PERFORM ledger_reverse(v_bill.society_id, 'bill.late_fee', v_bill.id, 'bill.late_fee_cancelled', current_date,
                            'Late fee on bill ' || v_bill.bill_number || ' cancelled');
     INSERT INTO audit_logs (society_id, user_id, action, entity_type, entity_id, old_value, reason)
     VALUES (v_bill.society_id, auth.uid(), 'bill.cancelled', 'bill', p_bill_id::text,
-            jsonb_build_object('bill_number', v_bill.bill_number, 'total', v_bill.total_amount, 'status', v_bill.status), p_reason);
+            jsonb_build_object('bill_number', v_bill.bill_number, 'total', v_bill.total_amount, 'status', v_bill.status,
+                               'paid_back_to_advance', v_bill.amount_paid), p_reason);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 REVOKE ALL ON FUNCTION public.cancel_flat_charge(UUID, TEXT) FROM PUBLIC, anon, authenticated;
 
--- A withdrawn or rejected transfer takes its unpaid fee bill with it; a paid one stays (the committee refunds outside)
+-- A withdrawn or rejected transfer takes its fee bill with it; anything paid on it becomes the flat's advance
 CREATE OR REPLACE FUNCTION public.trg_transfer_closed_cancels_fees()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -435,10 +463,14 @@ BEGIN
         RAISE EXCEPTION 'The applicant is no longer a member of this flat';
     END IF;
     -- 043: a society can require the shifting booked first (a move-in for a tenant, a move-out for a sale)
+    -- A renewal is the same tenant staying, so no move. A sale needs the move-out approved: once the flat is sold
+    -- the seller is no longer a member and a booking still waiting could never be approved.
     IF v_r.kind IN ('tenancy', 'transfer')
+       AND NOT (v_r.kind = 'tenancy' AND v_r.details ->> 'renews_id' IS NOT NULL)
        AND coalesce((SELECT shifting_required FROM society_settings WHERE society_id = v_r.society_id), false)
        AND NOT EXISTS (SELECT 1 FROM flat_requests s
-                       WHERE s.unit_id = v_r.unit_id AND s.kind = 'shifting' AND s.status IN ('submitted', 'approved')
+                       WHERE s.unit_id = v_r.unit_id AND s.kind = 'shifting'
+                         AND s.status IN ('approved', CASE v_r.kind WHEN 'tenancy' THEN 'submitted' ELSE 'approved' END)
                          AND s.details ->> 'direction' = CASE v_r.kind WHEN 'tenancy' THEN 'in' ELSE 'out' END
                          AND s.submitted_at >= v_r.submitted_at - interval '60 days') THEN
         RAISE EXCEPTION 'Book the move-% shifting for this flat first', CASE v_r.kind WHEN 'tenancy' THEN 'in' ELSE 'out' END;
@@ -446,6 +478,10 @@ BEGIN
 
     -- 043: a transfer needs the fees billed, the original share certificate in hand and no dues
     IF v_r.kind = 'transfer' THEN
+        -- transfer_flat_owner would overwrite a change that waits for its new owner (2F's correction path)
+        IF EXISTS (SELECT 1 FROM unit_ownerships WHERE unit_id = v_r.unit_id AND to_date IS NULL AND owner_user_id IS NULL) THEN
+            RAISE EXCEPTION 'This flat has an owner change waiting for the new owner to join';
+        END IF;
         IF NOT v_r.details ? 'fees_billed_at' THEN
             RAISE EXCEPTION 'Bill the transfer fees first (₹0 if none)';
         END IF;
@@ -520,6 +556,9 @@ BEGIN
         v_xfer_date := coalesce((v_r.details ->> 'transfer_date')::date, current_date);
         v_xfer := transfer_flat_owner(v_r.unit_id, v_r.details ->> 'buyer_name', v_r.details ->> 'buyer_email',
                                       v_r.details ->> 'buyer_mobile', v_xfer_date);
+        -- a seller on the committee keeps the committee role but not the flat (transfer_flat_owner ends owner memberships only)
+        UPDATE society_memberships SET unit_id = NULL, updated_at = timezone('utc'::text, now())
+        WHERE unit_id = v_r.unit_id AND is_active AND role IN ('society_admin', 'secretary', 'chairman', 'treasurer', 'committee_member');
         SELECT coalesce(v_r.details ->> 'share_certificate_no', share_certificate_no) INTO v_cert FROM units WHERE id = v_r.unit_id;
         UPDATE units SET share_certificate_no = v_cert, updated_at = timezone('utc'::text, now()) WHERE id = v_r.unit_id;
         UPDATE flat_requests SET details = details || jsonb_strip_nulls(jsonb_build_object(

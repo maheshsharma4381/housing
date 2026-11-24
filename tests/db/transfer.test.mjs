@@ -129,7 +129,7 @@ test('application checks', async () => {
   await bad({ buyer_mobile: '12345' }, 'Mobile 12345 is not a valid number');
   await bad({ buyer_email: 'neha' }, 'Enter a valid email for the buyer');
   await db.query('UPDATE profiles SET phone=$2 WHERE id=$1', [ids.owner2, '9822222222']);
-  await bad({ buyer_mobile: '9822222222' }, 'This mobile belongs to an owner of this flat');
+  await bad({ buyer_mobile: '9822222222' }, 'This mobile or email belongs to an owner of this flat');
   await bad({ deed_date: '' }, 'Enter the sale deed date');
   await bad({ deed_date: isoDays(2) }, 'The sale deed date cannot be in the future');
   await bad({ deed_number: 'x'.repeat(41) }, 'The registration number can be up to 40 characters');
@@ -178,13 +178,13 @@ test('withdrawing cancels an unpaid fee bill', async () => {
   assert.equal(j.reduce((s, [, a]) => s + a, 0), 0);
 });
 
-test('a paid fee bill stays when the request is rejected', async () => {
+test('a paid fee bill goes back to the flat as advance when the request is rejected', async () => {
   const r = await apply(ids.owner2, ids.u102, { ...buyer, buyer_mobile: '9855555555', buyer_email: 'raj@buyer.test' });
   const bill = await billFees(ids.sec, r, 500, 0);
   await payAll(ids.owner2, ids.u102);
   await q(ids.sec, `SELECT public.decide_request($1,'reject','Buyer did not apply')`, [r]);
-  assert.equal((await db.query('SELECT status FROM bills WHERE id=$1', [bill])).rows[0].status, 'paid');
-  assert.equal(await dues(ids.u102), 0);
+  assert.equal((await db.query('SELECT status FROM bills WHERE id=$1', [bill])).rows[0].status, 'cancelled');
+  assert.equal(await dues(ids.u102), -500, 'the ₹500 paid is now advance');
 });
 
 // ---------------------------------------------------------------- 3. approval runs the owner change
@@ -295,7 +295,10 @@ test('with the gate on, a transfer needs a move-out booking', async () => {
   const s = await book(ids.owner4, ids.u104, 'out');
   await q(ids.sec, `SELECT public.decide_request($1,'reject','Wrong day')`, [s]);
   await fails(approve(ids.sec, ids.req104), 'Book the move-out shifting for this flat first');
-  await book(ids.owner4, ids.u104, 'out');
+  // a booking still waiting is not enough: once the flat is sold the seller could never get it approved
+  const out = await book(ids.owner4, ids.u104, 'out');
+  await fails(approve(ids.sec, ids.req104), 'Book the move-out shifting for this flat first');
+  await approve(ids.sec, out);
   assert.equal((await approve(ids.sec, ids.req104)).status, 'approved');
   await gate(false);
 });
@@ -303,10 +306,79 @@ test('with the gate on, a transfer needs a move-out booking', async () => {
 // ---------------------------------------------------------------- 5. what the screens read
 test('the request shows the flat dues while it is open', async () => {
   const r = await apply(ids.owner2, ids.u102, { ...buyer, buyer_mobile: '9877700009', buyer_email: 'zed@buyer.test' });
-  await billFees(ids.sec, r, 750, 0);
-  assert.equal(Number(await val(ids.sec, 'SELECT public.request_flat_dues($1)', [r])), 750);
-  assert.equal(Number(await val(ids.owner2, 'SELECT public.request_flat_dues($1)', [r])), 750);
+  await billFees(ids.sec, r, 750, 0);   // the flat's ₹500 advance pays part of it
+  assert.equal(Number(await val(ids.sec, 'SELECT public.request_flat_dues($1)', [r])), 250);
+  assert.equal(Number(await val(ids.owner2, 'SELECT public.request_flat_dues($1)', [r])), 250);
   assert.equal(await val(ids.owner4, 'SELECT public.request_flat_dues($1)', [r]), null, 'another flat sees nothing');
   await q(ids.owner2, 'SELECT public.withdraw_request($1)', [r]);
   assert.equal(await val(ids.owner2, 'SELECT public.request_flat_dues($1)', [r]), null, 'a closed request shows nothing');
+});
+
+// ---------------------------------------------------------------- final review fixes
+const advance = async (unit) => -(await dues(unit));
+const payExtra = async (user, unit, amount) => {
+  payNo += 1;
+  const p = await val(user, `INSERT INTO payments (society_id, unit_id, user_id, payment_number, amount, transaction_reference_utr, status)
+    VALUES ($1,$2,$3,$4,$5,$6,'pending_verification') RETURNING id`, [ids.soc, unit, user, `PAY-TR-${payNo}`, amount, String(625219500000 + payNo)]);
+  await q(ids.sec, 'SELECT public.verify_payment($1, true)', [p]);
+};
+
+test('a withdrawn sale gives back the advance its fees took', async () => {
+  await payExtra(ids.owner2, ids.u102, 2000);
+  const before = await advance(ids.u102);
+  assert.ok(before >= 2000);
+  await db.query(`INSERT INTO opening_advances (society_id, unit_id, amount, remaining, as_of) VALUES ($1,$2,300,300,current_date - 30)`, [ids.soc, ids.u102]);
+  const r = await apply(ids.owner2, ids.u102, { ...buyer, buyer_mobile: '9877700011', buyer_email: 'adv@buyer.test' });
+  const bill = await billFees(ids.sec, r, 500, 1000);
+  const b = (await db.query('SELECT status, amount_paid::numeric p FROM bills WHERE id=$1', [bill])).rows[0];
+  assert.deepEqual([b.status, Number(b.p)], ['paid', 1500], 'the advance paid the fees');
+  await q(ids.owner2, 'SELECT public.withdraw_request($1)', [r]);
+  const after = (await db.query('SELECT status, amount_paid::numeric p, balance_due::numeric d FROM bills WHERE id=$1', [bill])).rows[0];
+  assert.deepEqual([after.status, Number(after.p), Number(after.d)], ['cancelled', 0, 0]);
+  assert.equal(await advance(ids.u102), before, 'the payment is back as advance');
+  assert.equal(Number((await db.query('SELECT remaining::numeric r FROM opening_advances WHERE unit_id=$1', [ids.u102])).rows[0].r), 300);
+  assert.equal((await db.query('SELECT count(*)::int n FROM payment_allocations WHERE bill_id=$1', [bill])).rows[0].n, 0);
+  const j = await journalFor('advance.returned', bill);
+  assert.deepEqual(j, [['1200', 1500], ['2300', -1500]], 'everything paid goes back to advances received');
+  await db.query('DELETE FROM opening_advances WHERE unit_id=$1', [ids.u102]);
+});
+
+test("the buyer's email cannot be an owner's", async () => {
+  await fails(apply(ids.owner2, ids.u102, { ...buyer, buyer_mobile: '9877700012', buyer_email: 'BINA@transfer.test' }),
+    'This mobile or email belongs to an owner of this flat');
+});
+
+test('a committee member who sells loses the flat', async () => {
+  const r = await apply(ids.committee, ids.u103, { ...buyer, buyer_mobile: '9877700013', buyer_email: 'cmb@buyer.test' });
+  await billFees(ids.sec, r, 0, 0);
+  await addDocs(ids.committee, r);
+  await handover(ids.sec, r, { certificate_received: true });
+  assert.equal((await approve(ids.sec, r)).status, 'approved');
+  const m = (await db.query(`SELECT role, unit_id, is_active FROM society_memberships WHERE user_id=$1`, [ids.committee])).rows[0];
+  assert.deepEqual([m.role, m.unit_id, m.is_active], ['committee_member', null, true], 'still on the committee, without the flat');
+  await fails(apply(ids.committee, ids.u103, { ...buyer, buyer_mobile: '9877700014' }), 'Only an owner of this flat can apply for a transfer');
+});
+
+test('a renewal needs no move-in booking', async () => {
+  await gate(true);
+  const t = (await db.query(`SELECT id, tenant_mobile FROM tenancies WHERE unit_id=$1 AND status='active'`, [ids.u102])).rows[0];
+  await db.query(`UPDATE flat_requests SET status='withdrawn' WHERE unit_id=$1 AND kind='shifting'`, [ids.u102]);
+  const r = await val(ids.owner2, 'SELECT public.create_tenancy_request($1,$2)', [ids.u102, JSON.stringify({
+    tenant_name: 'Ravi Kumar', tenant_mobile: t.tenant_mobile, occupants: 2, start_date: isoDays(0), end_date: isoDays(330), police_ref: 'PNA/2026/9', renews_id: t.id })]);
+  await tenancyDocs(ids.owner2, r);
+  assert.equal((await approve(ids.sec, r)).status, 'approved');
+  await gate(false);
+});
+
+test('a sale waits while an earlier owner change waits for its owner', async () => {
+  // A-104 was sold to Om, who has not joined yet
+  await fails(apply(ids.sec, ids.u104, { ...buyer, buyer_mobile: '9877700015' }), 'This flat has an owner change waiting for the new owner to join');
+  // an owner change recorded on the Owner change screen while a request is open
+  ids.uB101 = (await db.query(`SELECT u.id FROM units u JOIN wings w ON w.id=u.wing_id WHERE u.society_id=$1 AND u.unit_number='101' AND w.name='B'`, [ids.soc])).rows[0].id;
+  const r = await apply(ids.sec, ids.uB101, { ...buyer, buyer_mobile: '9877700016' });
+  await billFees(ids.sec, r, 0, 0);
+  await addDocs(ids.sec, r);
+  await handover(ids.sec, r, { certificate_received: true });
+  await q(ids.sec, `SELECT public.transfer_flat_owner($1,'Other Buyer',NULL,'9877700017',current_date)`, [ids.uB101]);
+  await fails(approve(ids.sec, r), 'This flat has an owner change waiting for the new owner to join');
 });
