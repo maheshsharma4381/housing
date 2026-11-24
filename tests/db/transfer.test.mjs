@@ -261,3 +261,41 @@ test("the buyer cannot read the seller's papers", async () => {
   assert.equal((await q(ids.buyer, 'SELECT count(*)::int n FROM request_documents WHERE request_id=$1', [ids.req]))[0].n, 0);
   assert.equal((await q(ids.buyer, 'SELECT count(*)::int n FROM flat_requests WHERE id=$1', [ids.req]))[0].n, 0);
 });
+
+// ---------------------------------------------------------------- 4. shifting before tenancy or transfer
+const tenancy = (user, unit, mobile) => val(user, 'SELECT public.create_tenancy_request($1,$2)', [unit, JSON.stringify({
+  tenant_name: 'Ravi Kumar', tenant_mobile: mobile, occupants: 2, start_date: isoDays(0), end_date: isoDays(330), police_ref: 'PNA/2026/9' })]);
+const tenancyDocs = async (user, r) => {
+  for (const k of ['agreement', 'police', 'tenant_id']) await q(user, 'SELECT public.add_request_document($1,$2,$3,$4)', [r, k, `${ids.soc}/${r}/${k}.pdf`, `${k}.pdf`]);
+};
+const book = (user, unit, direction) => val(user, 'SELECT public.create_shifting_request($1,$2)', [unit, JSON.stringify({ direction, date: isoDays(1), time: '10:00', vehicle: '' })]);
+const gate = (on) => q(ids.sec, 'SELECT public.set_transfer_settings($1,$2)', [ids.soc, JSON.stringify({ shifting_required: on })]);
+
+test('the shifting gate is off by default', async () => {
+  const r = await tenancy(ids.owner4, ids.u104, '9877700001');
+  await tenancyDocs(ids.owner4, r);
+  assert.equal((await approve(ids.sec, r)).status, 'approved');
+});
+
+test('with the gate on, a tenancy needs a move-in booking', async () => {
+  await gate(true);
+  const r = await tenancy(ids.owner2, ids.u102, '9877700002');
+  await tenancyDocs(ids.owner2, r);
+  await fails(approve(ids.sec, r), 'Book the move-in shifting for this flat first');
+  await book(ids.owner2, ids.u102, 'out');
+  await fails(approve(ids.sec, r), 'Book the move-in shifting for this flat first');
+  await book(ids.owner2, ids.u102, 'in');
+  assert.equal((await approve(ids.sec, r)).status, 'approved');
+});
+
+test('with the gate on, a transfer needs a move-out booking', async () => {
+  await addDocs(ids.owner4, ids.req104);
+  await handover(ids.sec, ids.req104, { certificate_received: true });
+  await fails(approve(ids.sec, ids.req104), 'Book the move-out shifting for this flat first');
+  const s = await book(ids.owner4, ids.u104, 'out');
+  await q(ids.sec, `SELECT public.decide_request($1,'reject','Wrong day')`, [s]);
+  await fails(approve(ids.sec, ids.req104), 'Book the move-out shifting for this flat first');
+  await book(ids.owner4, ids.u104, 'out');
+  assert.equal((await approve(ids.sec, ids.req104)).status, 'approved');
+  await gate(false);
+});

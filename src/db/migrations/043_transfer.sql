@@ -356,7 +356,7 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 GRANT EXECUTE ON FUNCTION public.save_transfer_handover(UUID, JSONB) TO authenticated;
 
--- decide_request from 042, with the transfer branch (its checks run before the status changes)
+-- decide_request from 042, with the shifting gate and the transfer branch (their checks run before the status changes)
 CREATE OR REPLACE FUNCTION public.decide_request(p_request_id UUID, p_decision TEXT, p_note TEXT)
 RETURNS JSONB AS $$
 DECLARE
@@ -434,6 +434,16 @@ BEGIN
                        AND m.is_active AND m.role IN ('society_admin', 'secretary', 'chairman', 'treasurer')) THEN
         RAISE EXCEPTION 'The applicant is no longer a member of this flat';
     END IF;
+    -- 043: a society can require the shifting booked first (a move-in for a tenant, a move-out for a sale)
+    IF v_r.kind IN ('tenancy', 'transfer')
+       AND coalesce((SELECT shifting_required FROM society_settings WHERE society_id = v_r.society_id), false)
+       AND NOT EXISTS (SELECT 1 FROM flat_requests s
+                       WHERE s.unit_id = v_r.unit_id AND s.kind = 'shifting' AND s.status IN ('submitted', 'approved')
+                         AND s.details ->> 'direction' = CASE v_r.kind WHEN 'tenancy' THEN 'in' ELSE 'out' END
+                         AND s.submitted_at >= v_r.submitted_at - interval '60 days') THEN
+        RAISE EXCEPTION 'Book the move-% shifting for this flat first', CASE v_r.kind WHEN 'tenancy' THEN 'in' ELSE 'out' END;
+    END IF;
+
     -- 043: a transfer needs the fees billed, the original share certificate in hand and no dues
     IF v_r.kind = 'transfer' THEN
         IF NOT v_r.details ? 'fees_billed_at' THEN
