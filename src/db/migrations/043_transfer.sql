@@ -302,3 +302,242 @@ DROP TRIGGER IF EXISTS trg_transfer_closed_cancels_fees ON flat_requests;
 CREATE TRIGGER trg_transfer_closed_cancels_fees AFTER UPDATE OF status ON flat_requests
     FOR EACH ROW WHEN (NEW.kind = 'transfer' AND NEW.status IN ('withdrawn', 'rejected') AND OLD.status IS DISTINCT FROM NEW.status)
     EXECUTE FUNCTION public.trg_transfer_closed_cancels_fees();
+
+-- ============================================================================
+-- 3. APPROVAL RUNS THE OWNER CHANGE
+-- ============================================================================
+-- The committee's part before approving: the original share certificate received, its number, the endorsement
+-- and transfer dates (each key optional; the transfer date defaults to the approval day)
+CREATE OR REPLACE FUNCTION public.save_transfer_handover(p_request_id UUID, p_details JSONB)
+RETURNS VOID AS $$
+DECLARE
+    v_r flat_requests%ROWTYPE;
+    v_add JSONB := '{}'::jsonb;
+    v_cert TEXT;
+    v_date DATE;
+BEGIN
+    v_r := open_transfer_for_committee(p_request_id);
+    IF p_details ? 'certificate_received' THEN
+        v_add := v_add || jsonb_build_object('certificate_received', coalesce((p_details ->> 'certificate_received')::boolean, false));
+    END IF;
+    IF p_details ? 'share_certificate_no' THEN
+        v_cert := nullif(trim(coalesce(p_details ->> 'share_certificate_no', '')), '');
+        IF length(coalesce(v_cert, '')) > 40 THEN
+            RAISE EXCEPTION 'The share certificate number can be up to 40 characters';
+        END IF;
+        v_add := v_add || jsonb_build_object('share_certificate_no', v_cert);
+    END IF;
+    IF p_details ? 'endorsed_on' THEN
+        BEGIN
+            v_date := nullif(p_details ->> 'endorsed_on', '')::date;
+        EXCEPTION WHEN others THEN
+            RAISE EXCEPTION 'Enter the endorsement date';
+        END;
+        v_add := v_add || jsonb_build_object('endorsed_on', v_date);
+    END IF;
+    IF p_details ? 'transfer_date' THEN
+        BEGIN
+            v_date := nullif(p_details ->> 'transfer_date', '')::date;
+        EXCEPTION WHEN others THEN
+            RAISE EXCEPTION 'Enter the transfer date';
+        END;
+        IF v_date > current_date THEN   -- the day transfer_flat_owner checks against
+            RAISE EXCEPTION 'The transfer date cannot be in the future';
+        END IF;
+        v_add := v_add || jsonb_build_object('transfer_date', v_date);
+    END IF;
+    -- a key sent empty is removed, so the default applies again
+    UPDATE flat_requests SET details = jsonb_strip_nulls(details || v_add) WHERE id = p_request_id;
+    IF coalesce((v_add ->> 'certificate_received')::boolean, false)
+       AND NOT coalesce((v_r.details ->> 'certificate_received')::boolean, false) THEN
+        INSERT INTO request_events (request_id, actor, action) VALUES (p_request_id, auth.uid(), 'certificate_received');
+    END IF;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+GRANT EXECUTE ON FUNCTION public.save_transfer_handover(UUID, JSONB) TO authenticated;
+
+-- decide_request from 042, with the transfer branch (its checks run before the status changes)
+CREATE OR REPLACE FUNCTION public.decide_request(p_request_id UUID, p_decision TEXT, p_note TEXT)
+RETURNS JSONB AS $$
+DECLARE
+    v_r flat_requests%ROWTYPE;
+    v_type TEXT;
+    v_note TEXT := nullif(trim(coalesce(p_note, '')), '');
+    v_missing TEXT;
+    v_on DATE := (now() AT TIME ZONE 'Asia/Kolkata')::date;
+    v_doc JSONB;
+    v_seq INT;
+    v_letter UUID;
+    v_number TEXT;
+    v_tenancy UUID;
+    v_set society_settings%ROWTYPE;
+    v_charge NUMERIC;
+    v_deposit NUMERIC;
+    v_bill UUID;
+    v_shifting UUID;
+    v_dues NUMERIC;
+    v_xfer JSONB;
+    v_xfer_date DATE;
+    v_cert TEXT;
+    v_told UUID[];
+BEGIN
+    SELECT * INTO v_r FROM flat_requests WHERE id = p_request_id FOR UPDATE;
+    IF NOT FOUND OR NOT is_society_admin(v_r.society_id) THEN
+        RAISE EXCEPTION 'Only the committee can decide requests';
+    END IF;
+    IF coalesce(p_decision, '') NOT IN ('approve', 'changes', 'reject') THEN
+        RAISE EXCEPTION 'Choose approve, changes or reject';
+    END IF;
+    IF v_r.status NOT IN ('submitted', 'changes_asked') THEN
+        RAISE EXCEPTION 'This request has already been decided';
+    END IF;
+    IF v_r.status = 'changes_asked' AND p_decision <> 'reject' THEN
+        RAISE EXCEPTION 'Wait for the applicant to send the changes';
+    END IF;
+    SELECT name INTO v_type FROM noc_types WHERE id = v_r.noc_type_id;
+    v_type := coalesce(v_type, CASE v_r.kind WHEN 'tenancy' THEN 'Tenant registration' WHEN 'shifting' THEN 'Shifting' ELSE initcap(v_r.kind) END);
+
+    IF p_decision = 'changes' THEN
+        IF length(coalesce(v_note, '')) NOT BETWEEN 3 AND 500 THEN
+            RAISE EXCEPTION 'Write what needs to change';
+        END IF;
+        UPDATE flat_requests SET status = 'changes_asked', committee_note = v_note WHERE id = p_request_id;
+        INSERT INTO request_events (request_id, actor, action, note) VALUES (p_request_id, auth.uid(), 'changes_asked', v_note);
+        PERFORM notify_users(v_r.society_id, ARRAY[v_r.applicant_id], 'request', 'Changes needed: ' || v_type, v_note, 'requests', p_request_id);
+        RETURN jsonb_build_object('status', 'changes_asked');
+    END IF;
+
+    IF p_decision = 'reject' THEN
+        IF length(coalesce(v_note, '')) NOT BETWEEN 3 AND 500 THEN
+            RAISE EXCEPTION 'Write the reason';
+        END IF;
+        UPDATE flat_requests SET status = 'rejected', committee_note = v_note, decided_at = now(), decided_by = auth.uid()
+        WHERE id = p_request_id;
+        INSERT INTO request_events (request_id, actor, action, note) VALUES (p_request_id, auth.uid(), 'rejected', v_note);
+        PERFORM notify_users(v_r.society_id, ARRAY[v_r.applicant_id], 'request',
+            CASE WHEN v_r.kind = 'noc' THEN 'NOC request declined: ' ELSE 'Request declined: ' END || v_type, v_note, 'requests', p_request_id);
+        RETURN jsonb_build_object('status', 'rejected');
+    END IF;
+
+    -- approve: every required document is there
+    SELECT c ->> 'label' INTO v_missing
+    FROM jsonb_array_elements(v_r.checklist) WITH ORDINALITY AS t(c, i)
+    WHERE coalesce((c ->> 'required')::boolean, false)
+      AND NOT EXISTS (SELECT 1 FROM request_documents d WHERE d.request_id = p_request_id AND d.item_key = c ->> 'key')
+    ORDER BY i LIMIT 1;
+    IF v_missing IS NOT NULL THEN
+        RAISE EXCEPTION 'Add "%" before approving', v_missing;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM society_memberships m WHERE m.unit_id = v_r.unit_id AND m.user_id = v_r.applicant_id AND m.is_active)
+       AND NOT EXISTS (SELECT 1 FROM society_memberships m WHERE m.society_id = v_r.society_id AND m.user_id = v_r.applicant_id
+                       AND m.is_active AND m.role IN ('society_admin', 'secretary', 'chairman', 'treasurer')) THEN
+        RAISE EXCEPTION 'The applicant is no longer a member of this flat';
+    END IF;
+    -- 043: a transfer needs the fees billed, the original share certificate in hand and no dues
+    IF v_r.kind = 'transfer' THEN
+        IF NOT v_r.details ? 'fees_billed_at' THEN
+            RAISE EXCEPTION 'Bill the transfer fees first (₹0 if none)';
+        END IF;
+        IF NOT coalesce((v_r.details ->> 'certificate_received')::boolean, false) THEN
+            RAISE EXCEPTION 'Tick that the original share certificate is received';
+        END IF;
+        v_dues := flat_dues_on(v_r.unit_id, greatest(v_on, current_date));
+        IF v_dues > 0 THEN
+            RAISE EXCEPTION 'Clear dues of % before the transfer', inr_text(v_dues);
+        END IF;
+    END IF;
+
+    UPDATE flat_requests SET status = 'approved', committee_note = v_note, decided_at = now(), decided_by = auth.uid()
+    WHERE id = p_request_id;
+    INSERT INTO request_events (request_id, actor, action, note) VALUES (p_request_id, auth.uid(), 'approved', v_note);
+
+    -- 041: an approved tenant registration records the tenancy and invites the tenant
+    IF v_r.kind = 'tenancy' THEN
+        v_tenancy := approve_tenancy(v_r);
+        PERFORM notify_users(v_r.society_id, (
+            SELECT array_agg(DISTINCT x) FROM (
+                SELECT v_r.applicant_id AS x
+                UNION SELECT m.user_id FROM society_memberships m
+                WHERE m.unit_id = v_r.unit_id AND m.is_active
+                  AND m.role IN ('resident_owner', 'society_admin', 'secretary', 'chairman', 'treasurer', 'committee_member')
+            ) y WHERE x IS NOT NULL AND x <> auth.uid()
+        ), 'request', 'Tenant registered for flat ' || flat_label(v_r.unit_id), NULL, 'requests', p_request_id);
+        RETURN jsonb_build_object('status', 'approved', 'tenancy_id', v_tenancy);
+    END IF;
+
+    -- 042: an approved shifting bills the society's charge and refundable deposit for that direction
+    IF v_r.kind = 'shifting' THEN
+        SELECT * INTO v_set FROM society_settings WHERE society_id = v_r.society_id;
+        v_charge := coalesce(CASE v_r.details ->> 'direction' WHEN 'in' THEN v_set.move_in_charge ELSE v_set.move_out_charge END, 0);
+        v_deposit := coalesce(CASE v_r.details ->> 'direction' WHEN 'in' THEN v_set.move_in_deposit ELSE v_set.move_out_deposit END, 0);
+        v_bill := charge_flat(v_r.unit_id, jsonb_build_array(
+            jsonb_build_object('rule_key', 'shifting_charge', 'amount', v_charge,
+                'description', 'Shifting charges (' || CASE v_r.details ->> 'direction' WHEN 'in' THEN 'moving in' ELSE 'moving out' END || ')'),
+            jsonb_build_object('rule_key', 'shifting_deposit', 'amount', v_deposit, 'description', 'Shifting deposit (refundable)')),
+            greatest(v_on + 7, (v_r.details ->> 'date')::date));
+        INSERT INTO shiftings (society_id, unit_id, request_id, direction, shift_date, shift_time, vehicle,
+                               charge_amount, deposit_amount, bill_id, deposit_status)
+        VALUES (v_r.society_id, v_r.unit_id, p_request_id, v_r.details ->> 'direction', (v_r.details ->> 'date')::date,
+                (v_r.details ->> 'time')::time, nullif(v_r.details ->> 'vehicle', ''), v_charge, v_deposit, v_bill,
+                CASE WHEN v_deposit > 0 THEN 'held' ELSE 'none' END)
+        RETURNING id INTO v_shifting;
+        PERFORM notify_users(v_r.society_id, (
+            SELECT array_agg(DISTINCT x) FROM (
+                SELECT v_r.applicant_id AS x
+                UNION SELECT m.user_id FROM society_memberships m
+                WHERE m.unit_id = v_r.unit_id AND m.is_active
+                  AND m.role IN ('resident_owner', 'society_admin', 'secretary', 'chairman', 'treasurer', 'committee_member')
+            ) y WHERE x IS NOT NULL AND x <> auth.uid()
+        ), 'request', 'Shifting approved for flat ' || flat_label(v_r.unit_id) || ' on '
+                      || to_char((v_r.details ->> 'date')::date, 'DD Mon YYYY'), NULL, 'requests', p_request_id);
+        RETURN jsonb_build_object('status', 'approved', 'shifting_id', v_shifting, 'bill_id', v_bill);
+    END IF;
+
+    -- 043: an approved transfer runs the owner change (Phase 2F) and records the share certificate
+    IF v_r.kind = 'transfer' THEN
+        -- told before the change: notifications go to active members, and the seller's owners stop being ones
+        SELECT array_agg(DISTINCT x) INTO v_told FROM (
+            SELECT v_r.applicant_id AS x
+            UNION SELECT m.user_id FROM society_memberships m
+            WHERE m.unit_id = v_r.unit_id AND m.is_active
+              AND m.role IN ('resident_owner', 'society_admin', 'secretary', 'chairman', 'treasurer', 'committee_member')
+            UNION SELECT unnest(society_managers(v_r.society_id))
+        ) y WHERE x IS NOT NULL AND x <> auth.uid();
+        PERFORM notify_users(v_r.society_id, v_told, 'request', 'Transfer approved for flat ' || flat_label(v_r.unit_id),
+                             NULL, 'requests', p_request_id);
+        -- current_date, the day transfer_flat_owner checks against
+        v_xfer_date := coalesce((v_r.details ->> 'transfer_date')::date, current_date);
+        v_xfer := transfer_flat_owner(v_r.unit_id, v_r.details ->> 'buyer_name', v_r.details ->> 'buyer_email',
+                                      v_r.details ->> 'buyer_mobile', v_xfer_date);
+        SELECT coalesce(v_r.details ->> 'share_certificate_no', share_certificate_no) INTO v_cert FROM units WHERE id = v_r.unit_id;
+        UPDATE units SET share_certificate_no = v_cert, updated_at = timezone('utc'::text, now()) WHERE id = v_r.unit_id;
+        UPDATE flat_requests SET details = details || jsonb_strip_nulls(jsonb_build_object(
+                'transfer_date', v_xfer_date,
+                'endorsed_on', coalesce((v_r.details ->> 'endorsed_on')::date, v_xfer_date),
+                'share_certificate_no', v_cert,
+                'ownership_id', v_xfer -> 'ownership_id', 'invite_id', v_xfer -> 'invite_id'))
+        WHERE id = p_request_id;
+        RETURN jsonb_build_object('status', 'approved', 'ownership_id', v_xfer -> 'ownership_id', 'invite_id', v_xfer -> 'invite_id');
+    END IF;
+
+    IF v_r.kind = 'noc' THEN
+        PERFORM 1 FROM societies WHERE id = v_r.society_id FOR UPDATE;  -- one number at a time per society
+        v_doc := render_noc(p_request_id, v_on);
+        SELECT coalesce(max(seq), 0) + 1 INTO v_seq FROM noc_letters WHERE society_id = v_r.society_id AND fy = fy_label(v_on);
+        v_number := 'NOC/' || fy_label(v_on) || '/' || lpad(v_seq::text, 3, '0');
+        INSERT INTO noc_letters (society_id, request_id, number, fy, seq, issued_on, type_name, title, body, signatory,
+                                 issued_to, flat_label, dues_amount, created_by)
+        VALUES (v_r.society_id, p_request_id, v_number, fy_label(v_on), v_seq, v_on, v_doc ->> 'type_name', v_doc ->> 'title',
+                v_doc ->> 'body', v_doc ->> 'signatory', v_doc ->> 'issued_to', v_doc ->> 'flat_label',
+                (v_doc ->> 'dues_amount')::numeric, auth.uid())
+        RETURNING id INTO v_letter;
+        PERFORM notify_users(v_r.society_id, ARRAY[v_r.applicant_id], 'request', 'NOC approved: ' || v_type, v_number, 'requests', p_request_id);
+        RETURN jsonb_build_object('status', 'approved', 'letter_id', v_letter, 'number', v_number);
+    END IF;
+
+    PERFORM notify_users(v_r.society_id, ARRAY[v_r.applicant_id], 'request', 'Request approved: ' || v_type, v_note, 'requests', p_request_id);
+    RETURN jsonb_build_object('status', 'approved');
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+GRANT EXECUTE ON FUNCTION public.decide_request(UUID, TEXT, TEXT) TO authenticated;

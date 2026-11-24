@@ -40,6 +40,8 @@ before(async () => {
   ids.tenant = await member('tara@transfer.test', 'resident_tenant', ids.u101, 'Tara Rao');
   ids.committee = await member('cm@transfer.test', 'committee_member', ids.u103, 'Committee Member');
   ids.owner4 = await member('dev@transfer.test', 'resident_owner', ids.u104, 'Dev Kale');
+  // the seller's period, as joining makes it (attach_flat_owner)
+  await db.query(`INSERT INTO unit_ownerships (society_id, unit_id, owner_user_id, owner_name, from_date) VALUES ($1,$2,$3,'Asha Patil', current_date - 400)`, [ids.soc, ids.u101, ids.owner]);
 });
 
 // ---------------------------------------------------------------- 1. ledgers, settings, checklist
@@ -183,4 +185,79 @@ test('a paid fee bill stays when the request is rejected', async () => {
   await q(ids.sec, `SELECT public.decide_request($1,'reject','Buyer did not apply')`, [r]);
   assert.equal((await db.query('SELECT status FROM bills WHERE id=$1', [bill])).rows[0].status, 'paid');
   assert.equal(await dues(ids.u102), 0);
+});
+
+// ---------------------------------------------------------------- 3. approval runs the owner change
+const REQUIRED = ['notice', 'membership', 'deed', 'index2', 'buyer_id', 'buyer_photo', 'buyer_pan'];
+const addDocs = async (user, req) => {
+  for (const k of REQUIRED) await q(user, 'SELECT public.add_request_document($1,$2,$3,$4)', [req, k, `${ids.soc}/${req}/${k}.pdf`, `${k}.pdf`]);
+};
+const approve = (user, r) => q(user, `SELECT public.decide_request($1,'approve',NULL) AS r`, [r]).then((x) => x[0].r);
+const handover = (user, r, o) => q(user, 'SELECT public.save_transfer_handover($1,$2)', [r, JSON.stringify(o)]);
+const today = async () => (await db.query('SELECT current_date::text d')).rows[0].d;
+
+test('the committee records the share certificate', async () => {
+  await fails(handover(ids.owner, ids.req, { certificate_received: true }), 'Only the committee can do this');
+  await fails(handover(ids.committee, ids.req, { certificate_received: true }), 'Only the committee can do this');
+  await fails(handover(ids.sec, ids.req, { share_certificate_no: 'x'.repeat(41) }), 'The share certificate number can be up to 40 characters');
+  await fails(handover(ids.sec, ids.req, { transfer_date: isoDays(3) }), 'The transfer date cannot be in the future');
+  await handover(ids.sec, ids.req, { share_certificate_no: ' SC-17 ' });
+  const d = await details(ids.req);
+  assert.equal(d.share_certificate_no, 'SC-17');
+  assert.equal(d.certificate_received, undefined);
+});
+
+test('approval waits for the fees, the certificate and the dues', async () => {
+  // fees first, on a request where they were never billed
+  const r = await apply(ids.owner2, ids.u102, { ...buyer, buyer_mobile: '9866666666', buyer_email: 'sam@buyer.test' });
+  await addDocs(ids.owner2, r);
+  await fails(approve(ids.sec, r), 'Bill the transfer fees first (₹0 if none)');
+  await q(ids.owner2, 'SELECT public.withdraw_request($1)', [r]);
+
+  await fails(approve(ids.sec, ids.req), 'Add "Seller\'s notice of transfer (society form)" before approving');
+  await addDocs(ids.owner, ids.req);
+  await fails(approve(ids.sec, ids.req), 'Tick that the original share certificate is received');
+  await handover(ids.sec, ids.req, { certificate_received: true });
+  const ev = (await db.query(`SELECT count(*)::int n FROM request_events WHERE request_id=$1 AND action='certificate_received'`, [ids.req])).rows[0].n;
+  assert.equal(ev, 1);
+  await handover(ids.sec, ids.req, { certificate_received: true });
+  assert.equal((await db.query(`SELECT count(*)::int n FROM request_events WHERE request_id=$1 AND action='certificate_received'`, [ids.req])).rows[0].n, 1);
+  await fails(approve(ids.sec, ids.req), 'Clear dues of ₹20,500 before the transfer');
+});
+
+test('a refused approval changes nothing', async () => {
+  assert.equal((await db.query('SELECT status FROM flat_requests WHERE id=$1', [ids.req])).rows[0].status, 'submitted');
+  const m = (await db.query(`SELECT is_active FROM society_memberships WHERE user_id=$1 AND unit_id=$2`, [ids.owner, ids.u101])).rows[0];
+  assert.equal(m.is_active, true);
+  assert.equal((await db.query(`SELECT count(*)::int n FROM member_invites WHERE unit_id=$1 AND role='resident_owner'`, [ids.u101])).rows[0].n, 0);
+});
+
+test('approval transfers the flat', async () => {
+  await payAll(ids.owner, ids.u101);
+  const res = await approve(ids.sec, ids.req);
+  assert.equal(res.status, 'approved');
+  assert.ok(res.ownership_id && res.invite_id);
+  const m = (await db.query(`SELECT is_active FROM society_memberships WHERE user_id=$1 AND unit_id=$2 AND role='resident_owner'`, [ids.owner, ids.u101])).rows[0];
+  assert.equal(m.is_active, false);
+  const own = (await db.query(`SELECT owner_name, owner_mobile, from_date::text f FROM unit_ownerships WHERE unit_id=$1 AND to_date IS NULL`, [ids.u101])).rows[0];
+  assert.deepEqual([own.owner_name, own.owner_mobile, own.f], ['Neha Joshi', '919876543210', await today()]);
+  const inv = (await db.query(`SELECT id, mobile, email, status FROM member_invites WHERE unit_id=$1 AND role='resident_owner'`, [ids.u101])).rows;
+  assert.deepEqual(inv.map((i) => [i.id, i.mobile, i.email, i.status]), [[res.invite_id, '919876543210', 'neha@buyer.test', 'pending']]);
+  assert.equal((await db.query('SELECT share_certificate_no FROM units WHERE id=$1', [ids.u101])).rows[0].share_certificate_no, 'SC-17');
+  const d = await details(ids.req);
+  assert.deepEqual([d.transfer_date, d.endorsed_on, d.share_certificate_no, d.ownership_id, d.invite_id],
+    [await today(), await today(), 'SC-17', res.ownership_id, res.invite_id]);
+  assert.equal((await q(ids.owner, 'SELECT count(*)::int n FROM flat_requests WHERE id=$1', [ids.req]))[0].n, 1);
+  assert.equal((await q(ids.sec, 'SELECT jsonb_array_length(public.flat_owner_periods($1)) AS n', [ids.u101]))[0].n, 2);
+  const n = (await db.query(`SELECT user_id FROM notifications WHERE ref_id=$1 AND title='Transfer approved for flat A-101'`, [ids.req])).rows.map((x) => x.user_id);
+  assert.ok(n.includes(ids.owner));
+});
+
+test("the buyer cannot read the seller's papers", async () => {
+  ids.buyer = await createUser(db, 'neha@buyer.test', { fullName: 'Neha Joshi' });
+  await asUser(db, ids.buyer, (tx) => tx.query('SELECT public.claim_my_invites()'));
+  assert.equal((await db.query(`SELECT is_active FROM society_memberships WHERE user_id=$1 AND unit_id=$2 AND role='resident_owner'`, [ids.buyer, ids.u101])).rows[0].is_active, true);
+  assert.equal(await val(ids.buyer, 'SELECT public.can_see_request($1)', [ids.req]), false);
+  assert.equal((await q(ids.buyer, 'SELECT count(*)::int n FROM request_documents WHERE request_id=$1', [ids.req]))[0].n, 0);
+  assert.equal((await q(ids.buyer, 'SELECT count(*)::int n FROM flat_requests WHERE id=$1', [ids.req]))[0].n, 0);
 });
