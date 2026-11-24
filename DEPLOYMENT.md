@@ -10,11 +10,11 @@ Sections 1–5 are for a new project. To update a project that is already live, 
 1. Create a project in region **ap-south-1 (Mumbai)**, so data stays in India and latency is low.
 2. **Run the migrations.** Put the *Session pooler* URI (Project Settings → Database → Connection string) in `.env.local` as `SUPABASE_DB_URL`. Never commit it, and never put it in Vercel. Then run:
    ```bash
-   bun run db:migrate            # dry run: lists every pending file (001 … 043)
+   bun run db:migrate            # dry run: lists every pending file (001 … 044)
    bun run db:migrate --apply    # applies them in order, one transaction each
    ```
    - Applied files are recorded in `public._sahvaas_migrations`, so the next run applies only new files.
-   - Instead of the script, you can paste `src/db/migrations/ALL_MIGRATIONS_CONSOLIDATED.sql` into the SQL Editor once. After that, mark it as applied with `node scripts/db-migrate.mjs --baseline 043` so later runs skip those files.
+   - Instead of the script, you can paste `src/db/migrations/ALL_MIGRATIONS_CONSOLIDATED.sql` into the SQL Editor once. After that, mark it as applied with `node scripts/db-migrate.mjs --baseline 044` so later runs skip those files.
    - **Never re-run an old numbered file on a live database.** Later files redefine functions, and an old file would put back the old version.
    - ✅ Check, in the Table editor: `societies`, `bills`, `ledger_entries`, `flat_requests`, `tenancies` and `shiftings` exist.
    - ✅ Check, in Storage: four private buckets, `society-files`, `ad-creatives`, `staff-files` and `request-files`.
@@ -108,12 +108,15 @@ Sections 1–5 are for a new project. To update a project that is already live, 
    | `SAHVAAS_GATEWAY_SECRET` | random 32+ characters | save the **same** value in Platform → Billing & Plans → Online payments (only its hash is stored) |
 
    Never put real keys in `.env.example`; it is committed. `SUPABASE_DB_URL` stays on your machine (and as a CI secret if you ever automate migrations). It is not a Vercel variable.
-3. **Let the database call the push sender.** Run this once in the SQL Editor, using your domain and the same `CRON_SECRET`:
+3. **Let the database call the push sender.** Do this only after the variables above are deployed: a run without the VAPID keys uses up the waiting notifications, and they never reach phones. Save two secrets in Supabase Vault, once, from the SQL Editor. Replace the `<…>` parts with the real values:
    ```sql
-   alter database postgres set app.push_url = 'https://<your-domain>/api/push/send-pending';
-   alter database postgres set app.cron_secret = '<CRON_SECRET>';
+   select vault.create_secret('https://<your-domain>/api/push/send-pending', 'sahvaas_push_url');
+   select vault.create_secret('<the CRON_SECRET from Vercel>', 'sahvaas_cron_secret');
    ```
-   Until both are set, the `sahvaas-push` job does nothing and notifications show only inside the app.
+   - The `sahvaas-push` job (migration 044) reads both every 5 minutes. Until they are saved it does nothing, and notifications show only inside the app.
+   - Hosted Supabase does not allow `alter database … set app.push_url`, so use Vault.
+   - To change a value later: `select vault.update_secret((select id from vault.secrets where name = 'sahvaas_push_url'), 'https://…');`
+   - ✅ Check: after 5 minutes, `select status_code, content from net._http_response order by created desc limit 3;` shows `200` with `{"subscriptions":…,"sent":…}`.
 4. Domains: add your domain and point DNS as Vercel shows. HTTPS is automatic.
 5. ✅ Check: `https://<your-domain>/` loads, and the response headers include `X-Frame-Options: DENY`.
 
@@ -143,8 +146,8 @@ Sections 1–5 are for a new project. To update a project that is already live, 
 ## 6. Updating a live project
 
 1. Pull `main` and run `bun run db:migrate`. It lists only the files not yet applied.
-   - As of 2026-11-24, the live database is at 038, so the list should be **039, 040, 041, 042 and 043**.
-   - 039 is Phase 10 (notice reads, polls, staff register). 040–043 are Phase 11: NOC letters, tenants, shifting, sale and transfer.
+   - As of 2026-11-24, the live database is at 038, so the list should be **039, 040, 041, 042, 043 and 044**.
+   - 039 is Phase 10 (notice reads, polls, staff register). 040–043 are Phase 11: NOC letters, tenants, shifting, sale and transfer. 044 moves the push job's settings to Vault.
 2. Run `bun run db:migrate --apply` **before** Vercel deploys the new code, or the new screens will open without their tables.
 3. Check that `cron.job` lists `sahvaas-tenancy-reminders` (added by 041) and that Storage has `staff-files` and `request-files`.
 4. Check new Vercel variables against section 3 (for example `SUPABASE_SERVICE_ROLE_KEY`, the VAPID keys and `CRON_SECRET` for push).

@@ -637,6 +637,10 @@ Asked for on 2026-11-24 ("haan, 11D transfer shuru karo"). Plan `docs/superpower
 
 **Before using it:** have the CA or legal adviser confirm the fee and premium your bye-laws allow (the ₹25,000 cap and the ₹500 fee come from secondary sources).
 
+## Fix — phone notifications on hosted Supabase (migration 044)
+
+On 2026-11-24 the database settings step for push failed on Supabase: `permission denied to set parameter "app.push_url"`. Hosted Supabase does not let projects set custom `app.*` database settings. Migration 044 reschedules the `sahvaas-push` job to read the push URL and `CRON_SECRET` from Supabase Vault (`sahvaas_push_url`, `sahvaas_cron_secret`), and still falls back to the `app.*` settings where they are allowed. DEPLOYMENT.md section 3, step 3 has the two `vault.create_secret` lines. Gate Lite moves to migration 045.
+
 ## What you need to do next
 
 1. **Apply migrations 039 to 043** (027 to 038 are already applied live):
