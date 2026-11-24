@@ -551,3 +551,16 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 GRANT EXECUTE ON FUNCTION public.decide_request(UUID, TEXT, TEXT) TO authenticated;
+
+-- ============================================================================
+-- 4. WHAT THE SCREENS READ
+-- ============================================================================
+-- The flat's dues on an open request, the figure the approval checks (the seller and the committee see it)
+CREATE OR REPLACE FUNCTION public.request_flat_dues(p_request_id UUID)
+RETURNS NUMERIC AS $$
+    SELECT flat_dues_on(r.unit_id, greatest((now() AT TIME ZONE 'Asia/Kolkata')::date, current_date))
+    FROM flat_requests r
+    WHERE r.id = p_request_id AND r.status IN ('submitted', 'changes_asked') AND can_see_request(r.id)
+$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
+REVOKE ALL ON FUNCTION public.request_flat_dues(UUID) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.request_flat_dues(UUID) TO authenticated;

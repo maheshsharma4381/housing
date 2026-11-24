@@ -12,11 +12,16 @@ import { formatMobile } from '../lib/mobile';
 import { formatINR } from '../lib/inr';
 import { DEPOSIT_LABELS } from '../lib/shifting';
 import { Link } from '../router/RouterContext';
+import { TransferDetails } from './TransferDetails';
 
 export interface RequestRow {
   id: string; society_id: string; unit_id: string; kind: string; status: string; applicant_id: string | null;
   details: { purpose?: string; addressee?: string; direction?: string; date?: string; time?: string; vehicle?: string; tenant_name?: string; tenant_mobile?: string; tenant_email?: string | null; occupants?: number;
-    start_date?: string; end_date?: string; police_ref?: string | null; renews_id?: string | null }; checklist: ChecklistItem[]; committee_note: string | null;
+    start_date?: string; end_date?: string; police_ref?: string | null; renews_id?: string | null;
+    // 11D transfer
+    buyer_name?: string; buyer_mobile?: string; buyer_email?: string; deed_date?: string; deed_number?: string; fee?: number; premium?: number;
+    fee_bill_id?: string | null; fees_billed_at?: string; certificate_received?: boolean; share_certificate_no?: string; endorsed_on?: string;
+    transfer_date?: string; invite_id?: string }; checklist: ChecklistItem[]; committee_note: string | null;
   submitted_at: string; noc_type_id: string | null;
 }
 interface Doc { id: string; item_key: string; path: string; file_name: string | null }
@@ -26,6 +31,7 @@ interface Letter { id: string; number: string; issued_on: string; title: string;
 const ACTIONS: Record<string, string> = {
   submitted: 'Request sent', document_added: 'Document added', document_removed: 'Document removed', resubmitted: 'Sent again',
   changes_asked: 'Committee asked for changes', approved: 'Approved', rejected: 'Declined', withdrawn: 'Withdrawn', tenancy_ended: 'Tenant moved out', deposit_refunded: 'Deposit refunded', renewal_cancelled: 'Renewal cancelled',
+  fees_billed: 'Transfer fees billed', certificate_received: 'Original share certificate received',
 };
 const when = (iso: string) => new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
@@ -135,6 +141,9 @@ export const RequestDetail: React.FC<{
             </div>
           )}
           {request.details.addressee && <div className="text-slate-400">To: {request.details.addressee}</div>}
+          {request.kind === 'transfer' && (
+            <div className="mt-1"><TransferDetails request={request} flatLabel={flatLabel} canDecide={canDecide} missingDocs={missing.length} onChanged={() => { void load(); onChanged(); }} /></div>
+          )}
         </div>
         <div className="text-right">
           <div className={`font-semibold ${request.status === 'approved' ? 'text-emerald-300' : request.status === 'changes_asked' ? 'text-amber-300' : request.status === 'rejected' ? 'text-rose-300' : 'text-sky-300'}`}>
@@ -223,7 +232,8 @@ export const RequestDetail: React.FC<{
           <div className="flex flex-wrap gap-2">
             {request.status === 'submitted' && (
               <>
-                <button disabled={busy !== null || missing.length > 0} onClick={() => run('approve', async () => {
+                {/* a transfer is approved from its own panel, after the certificate, fees and dues */}
+                {request.kind !== 'transfer' && <button disabled={busy !== null || missing.length > 0} onClick={() => run('approve', async () => {
                   await rpc('decide_request', { p_request_id: request.id, p_decision: 'approve', p_note: note }); setNote('');
                   // 11B: the tenant's invite goes by email when there is one; WhatsApp is offered below
                   if (request.kind === 'tenancy' && supabase) {
@@ -232,7 +242,7 @@ export const RequestDetail: React.FC<{
                     if (row?.invite_id && row.tenant_email) await notify('member_invite', row.invite_id);
                   }
                 })}
-                  className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold disabled:opacity-50 cursor-pointer">{busy === 'approve' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Approve'}</button>
+                  className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold disabled:opacity-50 cursor-pointer">{busy === 'approve' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Approve'}</button>}
                 <button disabled={busy !== null} onClick={() => run('changes', async () => { await rpc('decide_request', { p_request_id: request.id, p_decision: 'changes', p_note: note }); setNote(''); })}
                   className="px-3 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold disabled:opacity-50 cursor-pointer">Ask for changes</button>
               </>

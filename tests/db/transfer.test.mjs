@@ -299,3 +299,14 @@ test('with the gate on, a transfer needs a move-out booking', async () => {
   assert.equal((await approve(ids.sec, ids.req104)).status, 'approved');
   await gate(false);
 });
+
+// ---------------------------------------------------------------- 5. what the screens read
+test('the request shows the flat dues while it is open', async () => {
+  const r = await apply(ids.owner2, ids.u102, { ...buyer, buyer_mobile: '9877700009', buyer_email: 'zed@buyer.test' });
+  await billFees(ids.sec, r, 750, 0);
+  assert.equal(Number(await val(ids.sec, 'SELECT public.request_flat_dues($1)', [r])), 750);
+  assert.equal(Number(await val(ids.owner2, 'SELECT public.request_flat_dues($1)', [r])), 750);
+  assert.equal(await val(ids.owner4, 'SELECT public.request_flat_dues($1)', [r]), null, 'another flat sees nothing');
+  await q(ids.owner2, 'SELECT public.withdraw_request($1)', [r]);
+  assert.equal(await val(ids.owner2, 'SELECT public.request_flat_dues($1)', [r]), null, 'a closed request shows nothing');
+});
