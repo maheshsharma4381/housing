@@ -593,12 +593,56 @@ Asked for on 2026-11-24 ("haan, 11C shifting shuru karo"). Plan `docs/superpower
 - Two open bookings of the same kind for one flat are allowed.
 - System charges and shifting settings could be changed by writing to the tables directly (the screens never do).
 
+## Phase 11D — sale and transfer (migration 043)
+
+Asked for on 2026-11-24 ("haan, 11D transfer shuru karo"). Plan `docs/superpowers/plans/2026-11-24-phase-11d-transfer.md`.
+
+**Built**
+- **Transfer this flat** (owner, Requests tab): the buyer's name, mobile (and email if any), the sale deed date and registration number. The request asks for the society's transfer documents: the seller's notice, the buyer's membership application, the sale deed, Index II, the bank NOC (optional), the buyer's ID, photo and PAN, and the nomination (optional). The committee can change the list.
+- **Committee, on the request:**
+  - ticks "Original share certificate received";
+  - bills the transfer fee (default ₹500) and premium (default ₹0, at most ₹25,000), prefilled from the settings and editable for each sale, for example ₹0 premium within the family. They go to the new income ledgers "Transfer fees" and "Transfer premium";
+  - sees the flat's dues. **Approve transfer** stays off until the fees are billed, the certificate is ticked and the dues are ₹0 ("Clear dues of ₹X before the transfer").
+- **On approval** the Phase 2F owner change runs:
+  - the seller's access ends, and a seller on the committee keeps the committee role but not the flat;
+  - the buyer is invited by mobile (and email), with a WhatsApp button;
+  - the share certificate number and endorsement date are recorded;
+  - the buyer never sees the seller's papers;
+  - the seller's statement for their period stays available.
+- **Withdrawn or declined:** the fee bill is cancelled, and anything already paid on it goes back to the flat's advance.
+- **Sale settings** (Requests & NOCs → Sale settings): the fee, the premium, and "Require a shifting booking first". The shifting rule means a move-in before a new tenant is approved (a renewal needs none) and an approved move-out before a sale is approved.
+
+**Final review fixes** (fresh Opus reviewer; each with a failing test first where it is in the database)
+1. If the flat had an advance, the fee bill took it automatically, and a withdrawn sale kept it. Now everything paid on the fee bill comes back as advance.
+2. The buyer's email could be the seller's own (or a co-owner's), which handed the flat back to them. It is checked now.
+3. A seller who was on the committee kept the flat after the sale. Not any more.
+4. With the shifting rule on, a tenancy renewal asked for a move-in booking. A renewal needs none now.
+5. A move-out booking that was still waiting satisfied the rule but could never be approved after the sale. A sale now needs the move-out approved.
+6. A second sale could overwrite an earlier owner change still waiting for its buyer to join. It is refused now.
+7. A share certificate number the committee typed was put back to the old one after ticking the certificate box. It is kept now.
+
+**Rulings**
+1. The committee bills the fees from the request; approval needs that step, even at ₹0.
+2. The transfer date is the approval day unless the committee enters an earlier one. It uses the server's date, the same one the owner change checks.
+3. A withdrawn or declined sale returns what was paid on the fee bill to the flat's advance, so the committee refunds it or it pays the next bill.
+4. The Phase 2F "Owner change" screen still works without the dues check (for inheritance and corrections).
+5. One buyer per sale. A second joint buyer is added later.
+
+**Deferred minors**
+- The fee and premium caps are enforced by the screens and the billing, not by the table itself.
+- The Approve button can show as on while the dues figure is still loading (the database still refuses).
+- The endorsement date is not checked against the transfer date.
+- The sale form and another form can be open at once on the Requests tab.
+- No tests yet for flats with two owners.
+
+**Before using it:** have the CA or legal adviser confirm the fee and premium your bye-laws allow (the ₹25,000 cap and the ₹500 fee come from secondary sources).
+
 ## What you need to do next
 
-1. **Apply migrations 039 to 042** (027 to 038 are already applied live):
-   - `bun run db:migrate` (dry run: the list should say 039, 040, 041 and 042);
+1. **Apply migrations 039 to 043** (027 to 038 are already applied live):
+   - `bun run db:migrate` (dry run: the list should say 039, 040, 041, 042 and 043);
    - then `bun run db:migrate --apply`.
-2. **Push** when you are happy. GitHub has everything up to Phase 8 (pushed on 2026-11-05); Phase 9, Phase 10, Phase 11A–11C and the Gate Lite and Phase 11 plans are on local `main` only.
+2. **Push** when you are happy. GitHub has everything up to Phase 8 (pushed on 2026-11-05); Phase 9, Phase 10, Phase 11A–11D and the Gate Lite and Phase 11 plans are on local `main` only.
 3. **Environment and Supabase settings:**
    - **3A push:** `SUPABASE_SERVICE_ROLE_KEY`, the VAPID keys, `CRON_SECRET`, and the two database settings.
    - **3C mobile login, when WhatsApp is approved:** the Phone provider with "Confirm phone" on, the Send SMS hook, `SEND_SMS_HOOK_SECRET`, the WhatsApp/MSG91 keys, the SMS rate limit, then `NEXT_PUBLIC_PHONE_LOGIN=1`.
