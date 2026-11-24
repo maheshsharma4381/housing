@@ -48,7 +48,7 @@ test('a society starts with the tenant document list', async () => {
   assert.deepEqual(c.map((x) => [x.key, x.required]), [['agreement', true], ['police', true], ['tenant_id', true], ['tenant_photo', false], ['undertaking', false]]);
   assert.equal(c[0].label, 'Registered leave and licence agreement');
   assert.equal((await checklist(ids.soc2)).length, 5);
-  assert.equal((await q(ids.owner, `SELECT count(*)::int AS n FROM request_checklists WHERE society_id=$1`, [ids.soc]))[0].n, 1);
+  assert.equal((await q(ids.owner, `SELECT count(*)::int AS n FROM request_checklists WHERE society_id=$1`, [ids.soc]))[0].n, 2); // tenancy and (043) transfer
   assert.equal((await q(ids.outsider, `SELECT count(*)::int AS n FROM request_checklists WHERE society_id=$1`, [ids.soc]))[0].n, 0);
 });
 
