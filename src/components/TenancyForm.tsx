@@ -5,6 +5,7 @@ import { Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase/client';
 import { Banner } from './Banner';
 import { tenancyDraftError, type TenancyDraft } from '../lib/tenancy';
+import { PHONE_LOGIN_ON } from '../lib/phone-login';
 
 export const TenancyForm: React.FC<{
   unitId: string; flatLabel: string; renews?: { id: string; tenant_name: string; tenant_mobile: string; tenant_email: string | null; occupants: number; end_date: string } | null;
@@ -38,7 +39,7 @@ export const TenancyForm: React.FC<{
       <div className="grid grid-cols-2 gap-2">
         <input value={d.tenant_mobile} onChange={e => setD({ ...d, tenant_mobile: e.target.value })} inputMode="tel" placeholder="Tenant's mobile" readOnly={!!renews}
           title={renews ? 'A renewal is for the same tenant. To change the tenant, end this tenancy and register the new one.' : undefined} className={inputClass} />
-        <input value={d.tenant_email} onChange={e => setD({ ...d, tenant_email: e.target.value })} type="email" placeholder="Email (optional)" className={inputClass} />
+        <input value={d.tenant_email} onChange={e => setD({ ...d, tenant_email: e.target.value })} type="email" placeholder={PHONE_LOGIN_ON ? 'Email (optional)' : 'Email (optional, needed to join Sahvaas)'} className={inputClass} />
       </div>
       <div className="grid grid-cols-3 gap-2">
         <label className="text-slate-400">Agreement from<input type="date" value={d.start_date} onChange={e => setD({ ...d, start_date: e.target.value })} className={`${inputClass} mt-1`} /></label>

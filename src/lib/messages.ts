@@ -1,5 +1,6 @@
 import { formatINR } from './inr.ts';
 import { formatMobile } from './mobile.ts';
+import { PHONE_LOGIN_ON } from './phone-login.ts';
 
 /**
  * Message templates shared by WhatsApp share links and transactional email.
@@ -10,11 +11,13 @@ export interface InviteMessageInput {
   societyName: string;
   inviteeName?: string | null;
   role: string;
-  /** an invite names an email, a mobile (3C), or both; the mobile wins in the message */
+  /** an invite names an email, a mobile (3C), or both; the mobile wins in the message while mobile login is on */
   email?: string | null;
   mobile?: string | null;
   appUrl: string;
   flat?: string | null;
+  /** mobile login is switched on; defaults to NEXT_PUBLIC_PHONE_LOGIN */
+  phoneLogin?: boolean;
 }
 
 export interface BillMessageInput {
@@ -44,11 +47,15 @@ const fmtDate = (iso: string) => {
 };
 
 export function inviteText(i: InviteMessageInput): string {
+  const phoneLogin = i.phoneLogin ?? PHONE_LOGIN_ON;
   return [
     greet(i.inviteeName),
     `${i.societyName} has invited you to Sahvaas as ${i.role}${i.flat ? ` for flat ${i.flat}` : ''}.`,
-    i.mobile
-      ? `Log in with your mobile ${formatMobile(i.mobile)} at ${i.appUrl}/login and accept the invitation.`
+    i.mobile && (phoneLogin || !i.email)
+      ? phoneLogin
+        ? `Log in with your mobile ${formatMobile(i.mobile)} at ${i.appUrl}/login and accept the invitation.`
+        // a mobile alone is no way in until mobile login is on: the office re-sends the invite to their email
+        : `Sign up at ${i.appUrl}/signup, then send the email you used to your society office so they can add you.`
       : `Sign up with ${i.email} at ${i.appUrl}/signup, verify your email and accept the invitation.`,
   ].join('\n');
 }

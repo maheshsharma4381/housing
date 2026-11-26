@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { transferDraftError, transferFeeError, transferBlocker, TRANSFER_WARNING } from '../../src/lib/transfer.ts';
 
 test('application checks', () => {
-  const ok = { buyer_name: 'Neha Joshi', buyer_mobile: '98765 43210', buyer_email: '', deed_date: '2026-11-20', deed_number: '' };
+  const ok = { buyer_name: 'Neha Joshi', buyer_mobile: '98765 43210', buyer_email: 'neha@x.in', deed_date: '2026-11-20', deed_number: '' };
   const today = '2026-11-25';
   assert.equal(transferDraftError(ok, today), null);
   assert.equal(transferDraftError({ ...ok, buyer_name: ' N ' }, today), "Enter the buyer's name");
@@ -16,6 +16,15 @@ test('application checks', () => {
   assert.equal(transferDraftError({ ...ok, deed_date: '2026-11-26' }, today), 'The sale deed date cannot be in the future');
   assert.equal(transferDraftError({ ...ok, deed_date: today }, today), null);
   assert.equal(transferDraftError({ ...ok, deed_number: 'x'.repeat(41) }, today), 'The registration number can be up to 40 characters');
+});
+
+test('while mobile login is off, the buyer needs an email to join with', () => {
+  const ok = { buyer_name: 'Neha Joshi', buyer_mobile: '98765 43210', buyer_email: '', deed_date: '2026-11-20', deed_number: '' };
+  const today = '2026-11-25';
+  assert.equal(transferDraftError(ok, today, false), "Enter the buyer's email: they join Sahvaas with it");
+  assert.equal(transferDraftError({ ...ok, buyer_email: 'neha@x.in' }, today, false), null);
+  assert.equal(transferDraftError(ok, today, true), null, 'with mobile login on, the mobile is enough');
+  assert.equal(transferDraftError(ok, today), "Enter the buyer's email: they join Sahvaas with it", 'mobile login is off by default');
 });
 
 test('fee checks', () => {

@@ -93,7 +93,7 @@ export const ProfessionalsTab: React.FC<ProfessionalsTabProps> = ({ societyId, c
     const emailed = email.trim() ? await notify('professional_invite', created.id) : null;
     setBusy(null);
     setError(null);
-    setNotice(mobileDigits
+    setNotice(mobileDigits && PHONE_LOGIN_ON
       ? `Invite saved. ${formatMobile(mobileDigits)} logs in at Sahvaas with this mobile and accepts the invitation (valid 30 days).`
       : `Invite saved.${describeNotify(emailed, 'person')} ${email.trim()} signs up at Sahvaas with this email, verifies it and accepts the invitation (valid 30 days).`);
     setEmail('');
@@ -153,7 +153,7 @@ export const ProfessionalsTab: React.FC<ProfessionalsTabProps> = ({ societyId, c
         <div className="font-bold text-white text-sm flex items-center gap-2"><UserPlus className="w-4 h-4 text-amber-400" /> Invite a Professional</div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <input inputMode="tel" value={mobile} onChange={e => setMobile(e.target.value)} placeholder="Mobile, e.g. 98765 43210" aria-label="Mobile" className={inputClass} />
-          <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder={mobile.trim() ? 'Email (optional)' : 'ca@firm.in'} aria-label="Email" className={inputClass} />
+          <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder={mobile.trim() && PHONE_LOGIN_ON ? 'Email (optional)' : 'ca@firm.in'} aria-label="Email" className={inputClass} />
           <select value={role} onChange={e => { const r = e.target.value as ProfessionalRole; setRole(r); setPerms(ROLE_PRESETS[r]); }} className={inputClass}>
             {PROFESSIONAL_ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
           </select>

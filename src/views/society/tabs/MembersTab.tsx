@@ -140,7 +140,7 @@ export const MembersTab: React.FC<MembersTabProps> = ({ societyId, societyName, 
     const emailed = email.trim() ? await notify('member_invite', created.id) : null;
     setSending(false);
     setNotice(
-      mobileDigits
+      mobileDigits && PHONE_LOGIN_ON
         ? `Invite saved for ${formatMobile(mobileDigits)}. They log in with this mobile and tap Accept on the invitation. Use "WhatsApp" below to send them the link.`
         : `Invite saved for ${email.trim()}.${describeNotify(emailed, 'person')} ` +
           'They sign up at Sahvaas with this email, verify it and tap Accept on the invitation. Use "WhatsApp" below to send them the link.'
@@ -214,7 +214,7 @@ export const MembersTab: React.FC<MembersTabProps> = ({ societyId, societyName, 
             <input inputMode="tel" value={mobile} onChange={e => setMobile(e.target.value)} placeholder="98765 43210" className={inputClass} />
           </label>
           <label className="space-y-1">
-            <span className="block text-slate-400 font-medium">Email {mobile.trim() ? '(optional)' : ''}</span>
+            <span className="block text-slate-400 font-medium">Email {mobile.trim() && PHONE_LOGIN_ON ? '(optional)' : ''}</span>
             <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="resident@gmail.com" className={inputClass} />
           </label>
           <label className="space-y-1">

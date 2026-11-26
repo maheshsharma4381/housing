@@ -14,8 +14,26 @@ test('invite text mentions the exact email to sign up with', () => {
 });
 
 test('an invite by mobile says to log in with that mobile', () => {
-  const t = inviteText({ societyName: 'Palm Heights', role: 'Committee Member', mobile: '919811122222', appUrl: 'https://app.sahvaas.in' });
+  const t = inviteText({ societyName: 'Palm Heights', role: 'Committee Member', mobile: '919811122222', appUrl: 'https://app.sahvaas.in', phoneLogin: true });
   assert.match(t, /Log in with your mobile \+91 98111 22222 at https:\/\/app\.sahvaas\.in\/login and accept the invitation\./);
+});
+
+test('while mobile login is off, an invite with a mobile and an email says to sign up with the email', () => {
+  const t = inviteText({ societyName: 'Palm Heights', role: 'Treasurer', mobile: '919811122222', email: 't@x.in', appUrl: 'https://app.sahvaas.in', phoneLogin: false });
+  assert.match(t, /Sign up with t@x\.in at https:\/\/app\.sahvaas\.in\/signup/);
+  assert.doesNotMatch(t, /mobile/i);
+});
+
+test('while mobile login is off, an invite with only a mobile asks for an email instead of a mobile login', () => {
+  const t = inviteText({ societyName: 'Palm Heights', role: 'Resident (Owner)', mobile: '919811122222', appUrl: 'https://app.sahvaas.in', flat: 'A-1', phoneLogin: false });
+  assert.doesNotMatch(t, /Log in with your mobile/);
+  assert.match(t, /Sign up at https:\/\/app\.sahvaas\.in\/signup/);
+  assert.match(t, /send the email you used to your society office/);
+});
+
+test('mobile login is off unless NEXT_PUBLIC_PHONE_LOGIN is 1, so the default invite says to sign up with the email', () => {
+  const t = inviteText({ societyName: 'Palm Heights', role: 'Treasurer', mobile: '919811122222', email: 't@x.in', appUrl: 'https://app.sahvaas.in' });
+  assert.match(t, /Sign up with t@x\.in/);
 });
 
 test('whatsapp links normalise Indian numbers and fall back to the contact picker', () => {

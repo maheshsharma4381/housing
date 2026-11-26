@@ -5,6 +5,7 @@ import { Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase/client';
 import { Banner } from './Banner';
 import { transferDraftError, type TransferDraft } from '../lib/transfer';
+import { PHONE_LOGIN_ON } from '../lib/phone-login';
 
 const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
 
@@ -28,12 +29,12 @@ export const TransferForm: React.FC<{ unitId: string; flatLabel: string; onDone:
   return (
     <div className="p-4 rounded-2xl bg-slate-900 border border-sky-500/40 space-y-2 text-xs">
       <div className="font-bold text-white text-sm">Transfer flat {flatLabel} to a buyer</div>
-      <p className="text-slate-400">The committee approves the transfer once the documents are in, the original share certificate is handed over and the flat has no dues. The buyer then joins with their mobile number.</p>
+      <p className="text-slate-400">The committee approves the transfer once the documents are in, the original share certificate is handed over and the flat has no dues. The buyer then joins with their {PHONE_LOGIN_ON ? 'mobile number' : 'email'}.</p>
       <Banner tone="error">{error}</Banner>
       <input value={d.buyer_name} onChange={e => setD({ ...d, buyer_name: e.target.value })} maxLength={120} placeholder="Buyer's full name (as on the sale deed)" className={inputClass} />
       <div className="grid sm:grid-cols-2 gap-2">
         <input value={d.buyer_mobile} onChange={e => setD({ ...d, buyer_mobile: e.target.value })} maxLength={20} inputMode="tel" placeholder="Buyer's mobile" className={inputClass} />
-        <input value={d.buyer_email} onChange={e => setD({ ...d, buyer_email: e.target.value })} maxLength={160} type="email" placeholder="Buyer's email (optional)" className={inputClass} />
+        <input value={d.buyer_email} onChange={e => setD({ ...d, buyer_email: e.target.value })} maxLength={160} type="email" placeholder={PHONE_LOGIN_ON ? "Buyer's email (optional)" : "Buyer's email (they join with it)"} className={inputClass} />
       </div>
       <div className="grid sm:grid-cols-2 gap-2">
         <label className="text-slate-400">Sale deed date<input type="date" value={d.deed_date} max={today()} onChange={e => setD({ ...d, deed_date: e.target.value })} className={`${inputClass} mt-1`} /></label>
