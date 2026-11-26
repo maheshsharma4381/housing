@@ -9,7 +9,7 @@ const d = (iso: string | null) => (iso ? new Date(`${iso}T00:00:00`).toLocaleDat
 
 /** Printable Sahvaas tax invoice (white sheet, prints on its own). */
 export const InvoiceView: React.FC<{ invoice: PlatformInvoice }> = ({ invoice: inv }) => (
-  <article className="bg-white text-slate-900 rounded-2xl p-6 space-y-4 text-xs print:rounded-none print:p-0">
+  <article className="palette-native bg-white text-slate-900 rounded-2xl p-6 space-y-4 text-xs print:rounded-none print:p-0">
     <header className="flex flex-wrap justify-between gap-4 border-b border-slate-200 pb-3">
       <div>
         <div className="text-lg font-extrabold">{inv.seller.name || 'Sahvaas'}</div>

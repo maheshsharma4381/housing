@@ -274,7 +274,7 @@ export const ResidentDashboardPage: React.FC = () => {
           {outstandingTotal > 0 ? (
             <button
               onClick={() => setShowPayModal(true)}
-              className="px-4 py-2.5 rounded-xl bg-white text-sky-950 font-bold text-xs shadow-md active:scale-95 transition cursor-pointer"
+              className="palette-native px-4 py-2.5 rounded-xl bg-white text-sky-950 font-bold text-xs shadow-md active:scale-95 transition cursor-pointer"
             >
               Pay via UPI
             </button>
@@ -584,7 +584,7 @@ export const ResidentDashboardPage: React.FC = () => {
             </p>
 
             {upiLink ? (
-              <div className="p-3 bg-white rounded-xl text-slate-950 flex flex-col items-center justify-center gap-1">
+              <div className="palette-native p-3 bg-white rounded-xl text-slate-950 flex flex-col items-center justify-center gap-1">
                 <QRCodeSVG value={upiLink} size={160} />
                 <span className="font-mono text-[11px] text-slate-800 font-bold mt-1">
                   {societySettings?.upi_id}

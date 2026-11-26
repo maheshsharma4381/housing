@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import { Inter } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '../context/AuthContext';
 import { RouterProvider } from '../router/RouterContext';
@@ -7,8 +8,10 @@ import { NamePrompt } from '../components/NamePrompt';
 import { AddMobilePrompt } from '../components/AddMobilePrompt';
 import { ServiceWorkerRegister } from '../components/ServiceWorkerRegister';
 
+const inter = Inter({ subsets: ['latin'], display: 'swap', variable: '--font-inter' });
+
 export const viewport: Viewport = {
-  themeColor: '#0284c7',
+  themeColor: '#2563eb',
   width: 'device-width',
   initialScale: 1,
 };
@@ -23,8 +26,8 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    // 'black': the page starts below the status bar (translucent would put the header under the clock and notch)
-    statusBarStyle: 'black',
+    // 'default': a light status bar; the page starts below it (translucent would put the header under the clock and notch)
+    statusBarStyle: 'default',
     title: 'Sahvaas',
   },
   icons: {
@@ -40,8 +43,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
-      <body className="bg-slate-950 text-slate-100 antialiased selection:bg-sky-500 selection:text-white min-h-screen flex flex-col font-sans">
+    <html lang="en" className={inter.variable}>
+      {/* palette-bridge: screens not redesigned yet still use the old dark palette (globals.css) */}
+      <body className="palette-bridge bg-canvas text-fg antialiased selection:bg-brand-soft min-h-screen flex flex-col font-sans">
         <RouterProvider>
           <AuthProvider>
             <div className="flex-1 flex flex-col">

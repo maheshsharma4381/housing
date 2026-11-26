@@ -115,7 +115,7 @@ export const ReceiptPage: React.FC<{ paymentId: string }> = ({ paymentId }) => {
           </div>
         </div>
 
-        <div className="bg-white text-slate-900 rounded-2xl print:rounded-none p-8 shadow-xl print:shadow-none space-y-6 text-sm">
+        <div className="palette-native bg-white text-slate-900 rounded-2xl print:rounded-none p-8 shadow-xl print:shadow-none space-y-6 text-sm">
           <header className="text-center border-b border-slate-200 pb-4 space-y-1">
             <h1 className="text-xl font-bold">{s?.name}</h1>
             {s?.registration_number && <div className="text-xs text-slate-500">Reg. No. {s.registration_number}</div>}

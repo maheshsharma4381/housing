@@ -73,10 +73,17 @@ import {
   Vote,
   IdCard,
   FileSignature,
+  Plus,
 } from 'lucide-react';
 import { SignOutMenu, LogoutEverywhereButton } from '../../components/SignOutMenu';
 import { nextSetupStep, type SetupStatus } from '../../lib/setup';
 import { PWAInstallButton } from '../../components/PWAInstallButton';
+import { Logo, LogoMark } from '../../components/ui/Logo';
+import { Button, IconButton, buttonClass } from '../../components/ui/Button';
+import { Card, CardHeader } from '../../components/ui/Card';
+import { Badge } from '../../components/ui/Badge';
+import { PageHeader } from '../../components/ui/PageHeader';
+import { cn } from '../../components/ui/cn';
 
 type Tab = SocietyTab;
 
@@ -89,6 +96,37 @@ const ICONS: Record<SocietyTab, React.ComponentType<{ className?: string }>> = {
 
 // List screens fetch the latest N rows; totals come from society_summary() (no API row cap)
 const LIST_LIMIT = 500;
+
+/** Writes ?tab= without a navigation; Home is the bare /society. */
+function writeTabToUrl(tab: string) {
+  const url = new URL(window.location.href);
+  if (tab === 'home') url.searchParams.delete('tab');
+  else url.searchParams.set('tab', tab);
+  window.history.replaceState(window.history.state, '', url);
+}
+
+const SETUP_LABELS: Record<string, string> = {
+  society: 'add the society details', flats: 'add your flats', maintenance: 'set the maintenance charge',
+  upi: "add the society's UPI ID so residents can pay", owners: 'add flat owners',
+};
+
+const initials = (name?: string | null) => (name ?? '').trim().split(/\s+/).slice(0, 2).map(w => w[0] ?? '').join('') || 'Me';
+
+const PHONE_LABELS: Partial<Record<SocietyTab, string>> = { home: 'Home', billing: 'Bills', payments: 'Payments', complaints: 'Complaints' };
+
+/** "Good morning" by the device clock; set after mount so the server render does not guess the hour. */
+function useGreeting() {
+  const [g, setG] = useState<{ hello: string; today: string }>({ hello: 'Welcome back', today: '' });
+  useEffect(() => {
+    const now = new Date();
+    const h = now.getHours();
+    setG({
+      hello: h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening',
+      today: now.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' }),
+    });
+  }, []);
+  return g;
+}
 
 interface SocietySummary {
   units: number; members: number; billed: number; collected: number; outstanding: number; overdue_flats: number;
@@ -117,6 +155,7 @@ export const SocietyDashboardPage: React.FC = () => {
   const NAV_ITEMS = societyNav({ isAccountant }).map(item => ({ ...item, icon: ICONS[item.id] }));
 
   const [activeTab, setActiveTab] = useState<Tab>('home');
+  const greeting = useGreeting();
   // Flats & residents (spec 9.3): flats, members and owner change on one screen
   const [flatsView, setFlatsView] = useState<'flats' | 'members'>('flats');
   const [showMore, setShowMore] = useState(false);
@@ -196,6 +235,13 @@ export const SocietyDashboardPage: React.FC = () => {
     else if (tab === 'flats') setFlatsView('flats');
     setActiveTab(tab === 'members' ? 'flats' : tab);
     setShowMore(false);
+    // the URL keeps your place: refresh, back and a shared link open this screen (brief section 7)
+    writeTabToUrl(tab);
+  };
+
+  const showFlatsView = (v: 'flats' | 'members') => {
+    setFlatsView(v);
+    writeTabToUrl(v);
   };
 
   // A notification's link names a screen; residents' "bills" is the committee's Maintenance Billing
@@ -233,23 +279,22 @@ export const SocietyDashboardPage: React.FC = () => {
   const pendingApprovalCount = summary?.pending_expenses ?? expenses.filter(e => e.status === 'pending_approval').length;
   const pendingPayments = summary?.pending_payments ?? 0;
 
+  const approvalsBadge = approvalsCount + pendingApprovalCount;
+  const badgeFor = (id: Tab) => id === 'approvals' ? approvalsBadge : id === 'expenses' ? pendingApprovalCount : id === 'payments' ? pendingPayments : 0;
+  const activeLabel = NAV_ITEMS.find(i => i.id === activeTab)?.label ?? 'Home';
+
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col md:flex-row pb-20 md:pb-0">
-      {/* Top App Bar (Mobile & Desktop) */}
-      <div className="md:hidden sticky top-0 z-30 bg-slate-900/95 backdrop-blur-md px-4 py-3 border-b border-slate-800 flex items-center justify-between">
-        <div>
-          <div className="text-[11px] font-bold text-sky-400 uppercase tracking-wide truncate max-w-[180px]">
-            {activeSociety?.name || 'Society Portal'}
-          </div>
-          <div className="text-xs font-medium text-white flex items-center gap-1.5">
-            <span>{profile?.full_name}</span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-sky-500/20 text-sky-300 font-mono capitalize">
-              {roleName}
-            </span>
+    <div className="min-h-screen bg-canvas text-fg flex flex-col md:flex-row pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-0 text-sm">
+      {/* Phone top bar */}
+      <div className="md:hidden sticky top-0 z-30 bg-surface/95 backdrop-blur-md px-4 py-2.5 border-b border-border flex items-center justify-between gap-3 print:hidden">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <LogoMark size={32} />
+          <div className="min-w-0">
+            <div className="text-[15px] font-semibold text-fg truncate">{activeSociety?.name || 'Society'}</div>
+            <div className="text-xs text-fg-subtle capitalize truncate">{roleName}</div>
           </div>
         </div>
-
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           {/* the installable app (spec: the PWA is the mobile app) */}
           <PWAInstallButton />
           <NotificationBell onOpen={openFromNotification} />
@@ -259,168 +304,167 @@ export const SocietyDashboardPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Desktop Sidebar */}
-      <aside className="hidden md:flex w-64 bg-slate-900 border-r border-slate-800 p-4 shrink-0 flex-col justify-between print:hidden">
-        <div className="space-y-6">
-          <div className="px-2 space-y-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-sky-400">
-              Operations Center
-            </span>
-            <h2 className="text-base font-bold text-white truncate">
-              {activeSociety?.name || 'My Society'}
-            </h2>
-            <div className="text-xs text-slate-400">
-              Role: <strong className="text-sky-300 capitalize">{roleName}</strong>
-            </div>
+      {/* Desktop sidebar */}
+      <aside className="hidden md:flex w-[248px] shrink-0 flex-col gap-5 bg-surface border-r border-border px-3 py-5 print:hidden md:sticky md:top-0 md:h-screen md:overflow-y-auto">
+        <div className="px-2"><Logo /></div>
 
-            <div className="pt-2 flex items-center gap-2">
-              <div className="flex-1 min-w-0"><WorkspaceSelector /></div>
-              <NotificationBell onOpen={openFromNotification} align="left" />
-            </div>
+        <div className="px-1 space-y-2">
+          <div className="px-2">
+            <div className="font-semibold text-fg truncate">{activeSociety?.name || 'My society'}</div>
+            <div className="text-xs text-fg-subtle capitalize">{roleName}</div>
           </div>
-
-          <nav className="space-y-1">
-            {NAV_ITEMS.map((tab, index) => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
-              // a heading where each group starts: Money, Society, Settings (and Accounts for the Accountant)
-              const firstOfGroup = tab.group !== 'top' && NAV_ITEMS[index - 1]?.group !== tab.group;
-              return (
-                <React.Fragment key={tab.id}>
-                {firstOfGroup && <div className="px-3 pt-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">{GROUP_LABELS[tab.group]}</div>}
-                <button
-                  onClick={() => goTo(tab.id)}
-                  className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition cursor-pointer ${
-                    isActive 
-                      ? 'bg-sky-600 text-white shadow-sm' 
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <Icon className="w-4 h-4" />
-                    <span>{tab.label}</span>
-                  </div>
-                  {tab.id === 'approvals' && (approvalsCount + pendingApprovalCount) > 0 && (
-                    <span className="w-5 h-5 rounded-full bg-amber-500 text-slate-950 font-bold text-[10px] flex items-center justify-center">
-                      {approvalsCount + pendingApprovalCount}
-                    </span>
-                  )}
-                  {tab.id === 'expenses' && pendingApprovalCount > 0 && (
-                    <span className="w-5 h-5 rounded-full bg-amber-500 text-slate-950 font-bold text-[10px] flex items-center justify-center">
-                      {pendingApprovalCount}
-                    </span>
-                  )}
-                  {tab.id === 'payments' && pendingPayments > 0 && (
-                    <span className="w-5 h-5 rounded-full bg-amber-500 text-slate-950 font-bold text-[10px] flex items-center justify-center">
-                      {pendingPayments}
-                    </span>
-                  )}
-                </button>
-                </React.Fragment>
-              );
-            })}
-          </nav>
+          <WorkspaceSelector />
         </div>
 
-        <div className="pt-4 border-t border-slate-800 space-y-2 text-xs">
-          <div className="truncate text-slate-400 font-mono text-[11px]">{contactText(profile)}</div>
-          <button
-            onClick={() => logout()}
-            className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-rose-400 font-medium cursor-pointer transition"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-            <span>Sign Out</span>
-          </button>
+        <nav aria-label="Society" className="flex-1 flex flex-col gap-0.5">
+          {NAV_ITEMS.map((tab, index) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            const badge = badgeFor(tab.id);
+            // a heading where each group starts: Money, Society, Settings (and Accounts for the Accountant)
+            const firstOfGroup = tab.group !== 'top' && NAV_ITEMS[index - 1]?.group !== tab.group;
+            return (
+              <React.Fragment key={tab.id}>
+                {firstOfGroup && <div className="px-3 pt-4 pb-1 text-xs font-medium text-fg-subtle">{GROUP_LABELS[tab.group]}</div>}
+                <button
+                  onClick={() => goTo(tab.id)}
+                  aria-current={isActive ? 'page' : undefined}
+                  className={cn(
+                    'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition duration-150 cursor-pointer text-left',
+                    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
+                    isActive ? 'bg-brand-soft text-brand-ink font-semibold' : 'text-fg-muted font-medium hover:bg-surface-muted hover:text-fg',
+                  )}
+                >
+                  <Icon className="w-5 h-5 shrink-0" />
+                  <span className="flex-1 truncate">{tab.label}</span>
+                  {badge > 0 && (
+                    <span className="min-w-5 h-5 px-1.5 rounded-full bg-warning-soft text-warning text-xs font-semibold flex items-center justify-center tabular-nums">{badge}</span>
+                  )}
+                </button>
+              </React.Fragment>
+            );
+          })}
+        </nav>
+
+        <div className="pt-4 border-t border-border space-y-2 px-1">
+          <div className="flex items-center gap-2.5 px-2">
+            <span className="w-8 h-8 shrink-0 rounded-full bg-surface-muted text-fg-muted text-xs font-semibold flex items-center justify-center uppercase">
+              {initials(profile?.full_name)}
+            </span>
+            <div className="min-w-0">
+              <div className="text-sm font-medium text-fg truncate">{profile?.full_name || 'My profile'}</div>
+              <div className="text-xs text-fg-subtle truncate">{contactText(profile)}</div>
+            </div>
+          </div>
+          <Button variant="ghost" size="sm" className="w-full justify-start text-danger hover:text-danger" leftIcon={<LogOut className="w-4 h-4" />} onClick={() => logout()}>
+            Sign out
+          </Button>
           <LogoutEverywhereButton />
         </div>
       </aside>
 
+      <div className="flex-1 min-w-0 flex flex-col">
+        {/* Desktop top bar */}
+        <header className="hidden md:flex sticky top-0 z-20 h-16 items-center justify-between gap-4 px-6 lg:px-8 bg-surface/95 backdrop-blur-md border-b border-border print:hidden">
+          <div className="text-[13px] text-fg-subtle flex items-center gap-2 min-w-0">
+            <span className="truncate">{activeSociety?.name}</span>
+            <span aria-hidden="true">/</span>
+            <span className="text-fg font-medium truncate">{activeLabel}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <PWAInstallButton />
+            <NotificationBell onOpen={openFromNotification} />
+          </div>
+        </header>
+
       {/* Main Content Workspace */}
-      <main className="flex-1 p-4 md:p-6 lg:p-8 max-w-5xl mx-auto w-full">
+      <main className="flex-1 w-full max-w-[1200px] mx-auto px-4 py-5 md:px-6 md:py-6 lg:px-8 lg:py-8">
         {readOnly && (
-          <div className="mb-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200">
+          <div role="note" className="mb-4 p-3 rounded-xl bg-warning-soft border border-warning/20 text-[13px] text-warning">
             <strong>Read-only committee access.</strong> As a Committee Member you can view everything, but issuing bills, verifying payments,
             approving expenses and publishing notices need the Secretary, Treasurer, Chairman or Society Admin.
           </div>
         )}
         {planBanner && activeTab !== 'plan' && (
-          <button onClick={() => goTo('plan')} className={`mb-4 w-full text-left p-3 rounded-xl border text-xs cursor-pointer print:hidden ${
-            planBanner.tone === 'rose' ? 'bg-rose-500/10 border-rose-500/30 text-rose-200'
-              : planBanner.tone === 'sky' ? 'bg-sky-500/10 border-sky-500/30 text-sky-200' : 'bg-amber-500/10 border-amber-500/30 text-amber-200'
-          }`}>
+          <button onClick={() => goTo('plan')} className={cn('mb-4 w-full text-left p-3 rounded-xl border text-[13px] cursor-pointer print:hidden',
+            planBanner.tone === 'rose' ? 'bg-danger-soft border-danger/20 text-danger'
+              : planBanner.tone === 'sky' ? 'bg-info-soft border-info/20 text-info' : 'bg-warning-soft border-warning/20 text-warning',
+          )}>
             {planBanner.text} <span className="underline font-semibold">See plans →</span>
           </button>
         )}
 
-        {/* TAB 1: OPERATIONS FEED */}
+        {/* HOME */}
         {activeTab === 'home' && (
           <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-xl font-bold text-white tracking-tight">Home</h1>
-                <p className="text-xs text-slate-400">
-                  {activeSociety?.name}
-                </p>
-              </div>
+            <PageHeader
+              title={greeting.hello}
+              description={[activeSociety?.name, greeting.today].filter(Boolean).join(' · ')}
+              actions={
+                <>
+                  <IconButton label="Refresh" onClick={loadSocietyData}>
+                    <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin')} />
+                  </IconButton>
+                  {!readOnly && <Button variant="secondary" onClick={() => goTo('payments')}>Record payment</Button>}
+                  {!readOnly && <Button onClick={() => goTo('billing')} leftIcon={<Plus className="w-4 h-4" />}>Issue bills</Button>}
+                </>
+              }
+            />
 
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={loadSocietyData}
-                  className="p-2 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 cursor-pointer"
-                  title="Refresh"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-                </button>
-              </div>
-            </div>
-
-            {/* Getting started checklist */}
-            {!loading && setupNext && (
-              <a href="/setup" className="block p-4 rounded-2xl bg-sky-500/5 border border-sky-500/30 hover:border-sky-500 space-y-1">
-                <div className="text-xs font-bold text-sky-300 uppercase tracking-wider">Finish setting up your society</div>
-                <div className="text-xs text-slate-300 flex items-center gap-1">
-                  Next: {setupNext === 'upi' ? 'UPI' : setupNext} <ChevronRight className="w-3.5 h-3.5 text-sky-400" />
-                </div>
-              </a>
-            )}
-
-            {/* Home cards (spec 9.4) */}
-            {activeSociety && <HomeCards societyId={activeSociety.id} canManage={!readOnly} onOpen={goTo} />}
-
-            {/* Pinned Notices */}
-            {notices.length > 0 ? (
-              <div className="space-y-3">
-                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                  Recent Announcements
-                </h3>
-                {notices.slice(0, 3).map(n => (
-                  <div key={n.id} className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-1.5 text-xs">
-                    <div className="flex items-center justify-between text-[11px] text-slate-400">
-                      <span className="font-semibold text-sky-400">{n.category}</span>
-                      <span className="font-mono">{new Date(n.published_at).toLocaleDateString()}</span>
-                    </div>
-                    <h4 className="font-bold text-white text-sm">{n.title}</h4>
-                    <p className="text-slate-300 leading-relaxed">{n.content}</p>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <EmptyState
-                icon={FileText}
-                title="Notice Board is Clean"
-                description="Publish circulars or AGM announcements to broadcast to all members on their phones."
+            {/* Home cards (spec 9.4): KPIs and what needs you */}
+            {activeSociety && (
+              <HomeCards
+                societyId={activeSociety.id}
+                canManage={!readOnly}
+                onOpen={goTo}
+                aside={!loading && setupNext ? (
+                  <Card className="p-5 space-y-3">
+                    <h2 className="text-base font-semibold">Finish setting up</h2>
+                    <p className="text-fg-muted">Next: {SETUP_LABELS[setupNext] ?? setupNext}.</p>
+                    <a href="/setup" className={buttonClass('secondary', 'sm')}>Continue setup <ChevronRight className="w-4 h-4" /></a>
+                  </Card>
+                ) : null}
               />
             )}
+
+            {/* Latest notices */}
+            <Card>
+              <CardHeader title="Latest notices" actions={<Button variant="link" size="sm" onClick={() => goTo('notices')}>All notices</Button>} />
+              {notices.length > 0 ? (
+                <ul className="divide-y divide-border">
+                  {notices.slice(0, 3).map(n => (
+                    <li key={n.id} className="px-4 sm:px-5 py-4 space-y-1">
+                      <div className="flex items-center gap-2 text-xs text-fg-subtle">
+                        <Badge tone="brand">{n.category}</Badge>
+                        <span>{new Date(n.published_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                      </div>
+                      <h3 className="font-semibold text-fg">{n.title}</h3>
+                      <p className="text-fg-muted leading-relaxed line-clamp-2">{n.content}</p>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <EmptyState
+                  icon={FileText}
+                  title="No notices yet"
+                  description="Residents see notices on their phone and get a notification. Post the first one, like the water tank cleaning date."
+                  actionText={readOnly ? undefined : 'Post a notice'}
+                  onAction={readOnly ? undefined : () => goTo('notices')}
+                  bare
+                />
+              )}
+            </Card>
           </div>
         )}
 
-        {/* TAB 2: FLATS */}
+        {/* FLATS & RESIDENTS */}
         {activeTab === 'flats' && activeSociety && (
           <div className="space-y-4">
-            <div className="inline-flex rounded-xl bg-slate-900 border border-slate-800 p-1 text-xs">
+            <div role="tablist" aria-label="Flats and residents" className="inline-flex rounded-lg bg-surface-muted p-1 text-sm">
               {(['flats', 'members'] as const).map(v => (
-                <button key={v} onClick={() => setFlatsView(v)}
-                  className={`px-4 py-1.5 rounded-lg font-semibold cursor-pointer ${flatsView === v ? 'bg-sky-600 text-white' : 'text-slate-400 hover:text-white'}`}>
+                <button key={v} role="tab" aria-selected={flatsView === v} onClick={() => showFlatsView(v)}
+                  className={cn('px-4 h-8 rounded-md font-medium cursor-pointer transition duration-150',
+                    flatsView === v ? 'bg-surface text-fg shadow-card' : 'text-fg-muted hover:text-fg')}>
                   {v === 'flats' ? 'Flats' : 'Members'}
                 </button>
               ))}
@@ -440,7 +484,6 @@ export const SocietyDashboardPage: React.FC = () => {
             )}
           </div>
         )}
-
         {/* SETTINGS */}
         {activeTab === 'settings' && activeSociety && (
           <SettingsTab societyId={activeSociety.id} />
@@ -554,65 +597,68 @@ export const SocietyDashboardPage: React.FC = () => {
         {activeTab === 'billtypes' && activeSociety && isAccountant && <BillTypes societyId={activeSociety.id} canManage />}
         {activeTab === 'opening' && activeSociety && isAccountant && <OpeningBalanceEditor societyId={activeSociety.id} canManage />}
       </main>
+      </div>
 
-      {/* Mobile Bottom Navigation Bar */}
-      <nav className="md:hidden print:hidden fixed bottom-0 left-0 right-0 z-30 bg-slate-900/95 backdrop-blur-md border-t border-slate-800 px-2 py-1.5 flex items-center justify-around text-[10px] text-slate-400">
-        {(PHONE_BAR.map(id => ({
-          id,
-          label: id === 'home' ? 'Home' : id === 'billing' ? 'Bills' : id === 'payments' ? (pendingPayments > 0 ? `Verify (${pendingPayments})` : 'Payments') : 'Complaints',
-          icon: id === 'home' ? Home : id === 'billing' ? CreditCard : id === 'payments' ? QrCode : MessageSquare,
-        })) as { id: Tab; label: string; icon: React.ComponentType<{ className?: string }> }[]).map(item => {
-          const Icon = item.icon;
-          const isActive = activeTab === item.id && !showMore;
+      {/* Phone bottom bar: Home · Bills · Payments · Complaints · More */}
+      <nav aria-label="Society" className="md:hidden print:hidden fixed bottom-0 left-0 right-0 z-30 bg-surface/95 backdrop-blur-md border-t border-border px-1 pt-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom))] grid grid-cols-5">
+        {PHONE_BAR.map(id => {
+          const Icon = ICONS[id];
+          const isActive = activeTab === id && !showMore;
+          const badge = badgeFor(id);
           return (
             <button
-              key={item.id}
-              onClick={() => goTo(item.id)}
-              className={`flex flex-col items-center gap-1 py-1 px-2 rounded-lg cursor-pointer ${
-                isActive ? 'text-sky-400 font-bold' : 'text-slate-400'
-              }`}
+              key={id}
+              onClick={() => goTo(id)}
+              aria-current={isActive ? 'page' : undefined}
+              className={cn('relative min-h-12 flex flex-col items-center justify-center gap-0.5 rounded-lg text-[11px] cursor-pointer',
+                isActive ? 'text-brand font-semibold' : 'text-fg-subtle font-medium')}
             >
-              <Icon className="w-4 h-4" />
-              <span>{item.label}</span>
+              <Icon className="w-[22px] h-[22px]" />
+              <span>{PHONE_LABELS[id]}</span>
+              {badge > 0 && (
+                <span className="absolute top-0.5 left-1/2 ml-2 min-w-4 h-4 px-1 rounded-full bg-danger-solid text-on-brand text-[10px] font-semibold flex items-center justify-center">{badge}</span>
+              )}
             </button>
           );
         })}
         <button
           onClick={() => setShowMore(v => !v)}
           aria-expanded={showMore}
-          className={`flex flex-col items-center gap-1 py-1 px-2 rounded-lg cursor-pointer ${showMore ? 'text-sky-400 font-bold' : 'text-slate-400'}`}
+          className={cn('min-h-12 flex flex-col items-center justify-center gap-0.5 rounded-lg text-[11px] cursor-pointer',
+            showMore ? 'text-brand font-semibold' : 'text-fg-subtle font-medium')}
         >
-          <Menu className="w-4 h-4" />
+          <Menu className="w-[22px] h-[22px]" />
           <span>More</span>
         </button>
       </nav>
 
-      {/* Mobile "More" sheet: every module reachable on a phone */}
+      {/* Phone "More" sheet: every module reachable on a phone */}
       {showMore && (
-        <div className="md:hidden fixed inset-0 z-20 bg-black/60" onClick={() => setShowMore(false)}>
+        <div className="md:hidden fixed inset-0 z-20 bg-fg/40" onClick={() => setShowMore(false)}>
           <div
-            className="absolute bottom-14 left-0 right-0 max-h-[70vh] overflow-y-auto rounded-t-3xl bg-slate-900 border-t border-slate-800 p-4 grid grid-cols-3 gap-2"
+            role="dialog"
+            aria-label="All screens"
+            className="absolute bottom-[calc(3.75rem+env(safe-area-inset-bottom))] left-0 right-0 max-h-[70vh] overflow-y-auto rounded-t-2xl bg-surface border-t border-border shadow-pop px-3 pt-2 pb-3"
             onClick={e => e.stopPropagation()}
           >
+            <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-border-strong" aria-hidden="true" />
             {NAV_ITEMS.filter(item => !PHONE_BAR.includes(item.id)).map((item, index, list) => {
               const Icon = item.icon;
               const heading = item.group !== 'top' && list[index - 1]?.group !== item.group ? GROUP_LABELS[item.group] : null;
-              const badge = item.id === 'payments' ? pendingPayments : item.id === 'expenses' ? pendingApprovalCount : item.id === 'approvals' ? approvalsCount + pendingApprovalCount : 0;
+              const badge = badgeFor(item.id);
               return (
                 <React.Fragment key={item.id}>
-                {heading && <div className="col-span-3 pt-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">{heading}</div>}
-                <button
-                  onClick={() => goTo(item.id)}
-                  className={`relative flex flex-col items-center gap-1.5 p-3 rounded-2xl text-[11px] text-center cursor-pointer ${
-                    activeTab === item.id ? 'bg-sky-600 text-white' : 'bg-slate-950 text-slate-300'
-                  }`}
-                >
-                  <Icon className="w-5 h-5" />
-                  <span className="leading-tight">{item.label}</span>
-                  {badge > 0 && (
-                    <span className="absolute top-1.5 right-1.5 min-w-4 h-4 px-1 rounded-full bg-amber-500 text-slate-950 font-bold text-[9px] flex items-center justify-center">{badge}</span>
-                  )}
-                </button>
+                  {heading && <div className="px-3 pt-3 pb-1 text-xs font-medium text-fg-subtle">{heading}</div>}
+                  <button
+                    onClick={() => goTo(item.id)}
+                    className={cn('w-full min-h-12 flex items-center gap-3 px-3 rounded-lg text-left text-[15px] cursor-pointer',
+                      activeTab === item.id ? 'bg-brand-soft text-brand-ink font-semibold' : 'text-fg font-medium active:bg-surface-muted')}
+                  >
+                    <Icon className="w-5 h-5 text-fg-muted" />
+                    <span className="flex-1">{item.label}</span>
+                    {badge > 0 && <span className="min-w-5 h-5 px-1.5 rounded-full bg-warning-soft text-warning text-xs font-semibold flex items-center justify-center">{badge}</span>}
+                    <ChevronRight className="w-4 h-4 text-fg-subtle" />
+                  </button>
                 </React.Fragment>
               );
             })}

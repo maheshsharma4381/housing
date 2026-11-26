@@ -1,1 +1,229 @@
 @import "tailwindcss";
+
+/* dark mode follows a .dark class on <html>, never the OS setting (light is the default) */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---------- Design tokens (docs/UI_REDESIGN_BRIEF.md section 5) ---------- */
+:root {
+  --canvas: #f6f7f9;
+  --surface: #ffffff;
+  --surface-muted: #f1f3f6;
+  --border: #e4e7ec;
+  --border-strong: #cdd3dc;
+  --fg: #101828;
+  --fg-muted: #475467;
+  --fg-subtle: #667085;
+  --brand: #2563eb;
+  --brand-hover: #1d4ed8;
+  --brand-soft: #eff4ff;
+  --brand-ink: #1e40af;
+  --on-brand: #ffffff;
+  --success: #067647;
+  --success-soft: #ecfdf3;
+  --success-solid: #12b76a;
+  --warning: #b54708;
+  --warning-soft: #fffaeb;
+  --warning-solid: #f79009;
+  --danger: #b42318;
+  --danger-soft: #fef3f2;
+  --danger-solid: #f04438;
+  --info: #175cd3;
+  --info-soft: #eff8ff;
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-pop: 0 12px 24px -6px rgba(16, 24, 40, 0.12), 0 4px 8px -4px rgba(16, 24, 40, 0.06);
+}
+
+.dark {
+  --canvas: #0b0f17;
+  --surface: #111722;
+  --surface-muted: #182030;
+  --border: #232c3b;
+  --border-strong: #2e3a4d;
+  --fg: #e6e9ef;
+  --fg-muted: #a3acba;
+  --fg-subtle: #8a94a6;
+  --brand-soft: rgba(37, 99, 235, 0.12);
+  --brand-ink: #93b4ff;
+  --success-soft: rgba(18, 183, 106, 0.12);
+  --warning-soft: rgba(247, 144, 9, 0.12);
+  --danger-soft: rgba(240, 68, 56, 0.12);
+  --info-soft: rgba(46, 144, 250, 0.12);
+}
+
+@theme inline {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-ink: var(--brand-ink);
+  /* text on solid brand, success or danger fills */
+  --color-on-brand: var(--on-brand);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-success-solid: var(--success-solid);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-solid: var(--warning-solid);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-solid: var(--danger-solid);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+
+  --shadow-card: var(--shadow-card);
+  --shadow-pop: var(--shadow-pop);
+}
+
+@theme {
+  /* 12px body text was too small: every old text-xs reads at 13px until its screen is redesigned */
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.25rem;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-feature-settings: "cv11", "ss01";
+}
+
+/* amounts, counts and dates line up in columns */
+.tabular-nums,
+table {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---------- Bridge for screens not redesigned yet ----------
+   The old screens were drawn dark (white text on slate-900). Until each one moves to the tokens above,
+   their palette is re-pointed here so they read as the light theme. Delete this block in Phase 8. */
+.palette-bridge {
+  --color-white: #101828;
+  --color-slate-50: #101828;
+  --color-slate-100: #101828;
+  --color-slate-200: #1d2939;
+  --color-slate-300: #344054;
+  --color-slate-400: #475467;
+  --color-slate-500: #667085;
+  --color-slate-600: #98a2b3;
+  --color-slate-700: #cdd3dc;
+  --color-slate-800: #e4e7ec;
+  --color-slate-900: #ffffff;
+  --color-slate-950: #f6f7f9;
+
+  --color-sky-100: #172554;
+  --color-sky-200: #1e3a8a;
+  --color-sky-300: #1e40af;
+  --color-sky-400: #1d4ed8;
+  --color-sky-500: #1d4ed8;
+  --color-sky-600: #2563eb;
+  --color-sky-700: #1d4ed8;
+  --color-sky-800: #dbe6fe;
+  --color-sky-900: #eff4ff;
+  --color-sky-950: #f5f8ff;
+
+  --color-emerald-100: #054f31;
+  --color-emerald-200: #05603a;
+  --color-emerald-300: #067647;
+  --color-emerald-400: #067647;
+  --color-emerald-500: #039855;
+  --color-emerald-600: #067647;
+  --color-emerald-700: #05603a;
+  --color-emerald-800: #05603a;
+  --color-emerald-900: #ecfdf3;
+  --color-emerald-950: #f6fef9;
+
+  --color-amber-100: #7a2e0e;
+  --color-amber-200: #93370d;
+  --color-amber-300: #b54708;
+  --color-amber-400: #b54708;
+  --color-amber-500: #f79009;
+  --color-amber-600: #dc6803;
+  --color-amber-700: #b54708;
+  --color-amber-800: #93370d;
+  --color-amber-900: #fffaeb;
+  --color-amber-950: #fffcf5;
+
+  --color-rose-100: #7a271a;
+  --color-rose-200: #912018;
+  --color-rose-300: #b42318;
+  --color-rose-400: #d92d20;
+  --color-rose-500: #f04438;
+  --color-rose-600: #d92d20;
+  --color-rose-700: #b42318;
+  --color-rose-900: #fef3f2;
+  --color-rose-950: #fffbfa;
+
+  --color-purple-200: #53389e;
+  --color-purple-300: #6941c6;
+  --color-purple-400: #7f56d9;
+  --color-purple-500: #7f56d9;
+  --color-purple-600: #6941c6;
+  --color-purple-700: #53389e;
+  --color-purple-900: #f4f3ff;
+  --color-purple-950: #faf9ff;
+  --color-violet-200: #53389e;
+  --color-violet-300: #6941c6;
+  --color-violet-400: #7f56d9;
+  --color-violet-500: #7f56d9;
+  --color-violet-600: #6941c6;
+  --color-violet-700: #53389e;
+  --color-violet-900: #f4f3ff;
+  --color-violet-950: #faf9ff;
+  --color-indigo-400: #444ce7;
+}
+
+/* white text stays white on solid buttons and badges */
+.palette-bridge :is(
+  .bg-sky-500, .bg-sky-600, .bg-sky-700, .bg-emerald-500, .bg-emerald-600, .bg-rose-500, .bg-rose-600, .bg-rose-700,
+  .bg-amber-600, .bg-purple-500, .bg-purple-600, .bg-violet-500, .bg-violet-600, .bg-indigo-600,
+  [class*="from-sky-"], [class*="from-emerald-"], [class*="from-purple-"], [class*="from-violet-"], [class*="from-amber-"]
+) {
+  --color-white: #ffffff;
+}
+/* dark text on bright badges */
+.palette-bridge :is(.bg-amber-400, .bg-amber-500, .bg-emerald-400, .bg-sky-400) {
+  --color-slate-950: #101828;
+  --color-slate-900: #101828;
+}
+
+/* Paper (bills, receipts, invoices, QR codes): drawn on white with Tailwind's own colours */
+.palette-native {
+  --color-white: #ffffff;
+  --color-slate-50: oklch(98.4% 0.003 247.858);
+  --color-slate-100: oklch(96.8% 0.007 247.896);
+  --color-slate-200: oklch(92.9% 0.013 255.508);
+  --color-slate-300: oklch(86.9% 0.022 252.894);
+  --color-slate-400: oklch(70.4% 0.04 256.788);
+  --color-slate-500: oklch(55.4% 0.046 257.417);
+  --color-slate-600: oklch(44.6% 0.043 257.281);
+  --color-slate-700: oklch(37.2% 0.044 257.287);
+  --color-slate-800: oklch(27.9% 0.041 260.031);
+  --color-slate-900: oklch(20.8% 0.042 265.755);
+  --color-slate-950: oklch(12.9% 0.042 264.695);
+  --color-sky-950: oklch(29.3% 0.066 243.157);
+  --color-emerald-100: oklch(95% 0.052 163.051);
+  --color-emerald-700: oklch(50.8% 0.118 165.612);
+  --color-emerald-800: oklch(43.2% 0.095 166.913);
+  --color-amber-100: oklch(96.2% 0.059 95.617);
+  --color-amber-800: oklch(47.3% 0.137 46.201);
+  --color-rose-600: oklch(58.6% 0.253 17.585);
+}
