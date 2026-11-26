@@ -405,7 +405,7 @@ export const SocietyDashboardPage: React.FC = () => {
                   <IconButton label="Refresh" onClick={loadSocietyData}>
                     <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin')} />
                   </IconButton>
-                  {!readOnly && <Button variant="secondary" onClick={() => goTo('payments')}>Record payment</Button>}
+                  {!readOnly && <Button variant="secondary" onClick={() => goTo('payments')}>Verify payments</Button>}
                   {!readOnly && <Button onClick={() => goTo('billing')} leftIcon={<Plus className="w-4 h-4" />}>Issue bills</Button>}
                 </>
               }
@@ -557,7 +557,8 @@ export const SocietyDashboardPage: React.FC = () => {
         )}
 
         {activeTab === 'approvals' && activeSociety && (
-          <div className="space-y-8">
+          <div className="space-y-6">
+            <PageHeader title="Approvals" description="Everything that waits for a committee decision, in one place." />
             <RequestsWaiting societyId={activeSociety.id} onOpen={() => goTo('requests')} />
             <PendingVendorBills societyId={activeSociety.id} currentUserId={user?.id} canDecide={!readOnly} onDecided={loadSocietyData} />
             <JoinRequests societyId={activeSociety.id} units={units} canDecide={!readOnly} onDecided={loadSocietyData} />

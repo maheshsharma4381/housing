@@ -128,7 +128,7 @@ export const HomeCards: React.FC<{ societyId: string; canManage: boolean; onOpen
   const toneCls = { warning: 'bg-warning-soft text-warning', info: 'bg-info-soft text-info', danger: 'bg-danger-soft text-danger', neutral: 'bg-surface-muted text-fg-muted' };
   const quick: { label: string; Icon: React.ComponentType<{ className?: string }>; tab: SocietyTab }[] = [
     { label: 'Issue bills', Icon: CreditCard, tab: 'billing' },
-    { label: 'Record payment', Icon: QrCode, tab: 'payments' },
+    { label: 'Verify payments', Icon: QrCode, tab: 'payments' },
     { label: 'Add vendor bill', Icon: Receipt, tab: 'expenses' },
     { label: 'Post notice', Icon: Megaphone, tab: 'notices' },
   ];

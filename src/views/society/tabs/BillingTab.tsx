@@ -7,9 +7,16 @@ import { describeNotify, notify } from '../../../lib/notify';
 import { EmptyState } from '../../../components/EmptyState';
 import { RuleFlats } from '../../../components/RuleFlats';
 import { Bill, BillingRule, BillStatus, GenerateBillsResult, Unit } from '../../../types/database';
-import {
-  CreditCard, Plus, Trash2, AlertCircle, CheckCircle2, Loader2, Eye, Send, Clock, Power,
-} from 'lucide-react';
+import { CreditCard, Plus, Trash2, CheckCircle2, Eye, Send, Clock, Power, Check, Search } from 'lucide-react';
+import { Banner } from '../../../components/Banner';
+import { PageHeader } from '../../../components/ui/PageHeader';
+import { StatCard } from '../../../components/ui/StatCard';
+import { Card, CardHeader, CardFooter } from '../../../components/ui/Card';
+import { Button, IconButton } from '../../../components/ui/Button';
+import { Badge, type BadgeTone } from '../../../components/ui/Badge';
+import { Field, fieldClass } from '../../../components/ui/Field';
+import { cn } from '../../../components/ui/cn';
+import { confirmDialog, promptDialog, toast } from '../../../components/ui/feedback';
 
 interface BillingTabProps {
   societyId: string;
@@ -37,14 +44,7 @@ const DEFAULT_CREDIT_ACCOUNTS: CreditAccount[] = [
 ];
 interface ChartLedgerRow { code: string; name: string; nature: string; is_active: boolean }
 
-const STATUS_STYLES: Record<BillStatus, string> = {
-  draft: 'bg-slate-800 text-slate-300',
-  issued: 'bg-sky-500/10 text-sky-300',
-  partially_paid: 'bg-amber-500/10 text-amber-300',
-  paid: 'bg-emerald-500/10 text-emerald-300',
-  overdue: 'bg-rose-500/10 text-rose-300',
-  cancelled: 'bg-slate-800 text-slate-500',
-};
+const fmtDate = (iso: string) => new Date(`${iso.slice(0, 10)}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 
 function monthBounds(month: string) {
   const [y, m] = month.split('-').map(Number);
@@ -67,8 +67,11 @@ export const BillingTab: React.FC<BillingTabProps> = ({ societyId, bills, totals
   const [working, setWorking] = useState<'preview' | 'generate' | 'late' | null>(null);
 
   const [statusFilter, setStatusFilter] = useState<BillStatus | 'all'>('all');
+  const [search, setSearch] = useState('');
+  const [showAdd, setShowAdd] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  // success goes to a toast; errors stay on the page
+  const setNotice = (msg: string | null) => { if (msg) toast.success(msg); };
 
   const unitNumber = (id: string) => units.find(u => u.id === id)?.unit_number ?? '—';
   const unitTypes = useMemo(() => [...new Set(units.map(u => u.unit_type))].sort(), [units]);
@@ -94,10 +97,7 @@ export const BillingTab: React.FC<BillingTabProps> = ({ societyId, bills, totals
     loadRules();
   }, [loadRules]);
 
-  const showError = (msg: string) => {
-    setNotice(null);
-    setError(msg);
-  };
+  const showError = (msg: string) => setError(msg);
 
   // ----- Rules -----
   const addRule = async (e: React.FormEvent) => {
@@ -121,6 +121,8 @@ export const BillingTab: React.FC<BillingTabProps> = ({ societyId, bills, totals
     if (insErr) return showError(insErr.message);
     setDraft(EMPTY_RULE);
     setError(null);
+    setShowAdd(false);
+    toast.success('Charge added. It is included from the next bills you issue.');
     loadRules();
   };
 
@@ -139,7 +141,7 @@ export const BillingTab: React.FC<BillingTabProps> = ({ societyId, bills, totals
   };
 
   const deleteRule = async (rule: BillingRule) => {
-    if (!supabase || !window.confirm(`Delete rule "${rule.name}"? Existing bills are not affected.`)) return;
+    if (!supabase || !(await confirmDialog({ title: `Delete the charge "${rule.name}"?`, body: 'Bills already issued are not affected. Future bills will not include it.', confirmText: 'Delete charge', tone: 'danger' }))) return;
     const { error: delErr } = await supabase.from('billing_rules').delete().eq('id', rule.id);
     if (delErr) return showError(delErr.message);
     loadRules();
@@ -168,7 +170,6 @@ export const BillingTab: React.FC<BillingTabProps> = ({ societyId, bills, totals
     const result = data as GenerateBillsResult;
     if (dryRun) {
       setPreview(result);
-      setNotice(null);
     } else {
       setPreview(null);
       const emailed = result.cycle_id ? await notify('bills_issued', result.cycle_id) : null;
@@ -199,7 +200,11 @@ export const BillingTab: React.FC<BillingTabProps> = ({ societyId, bills, totals
   // Wrong bill? Cancel it (reverses the ledger entry); bills with payments cannot be cancelled
   const cancelBill = async (b: Bill) => {
     if (!supabase) return;
-    const reason = window.prompt(`Cancel bill ${b.bill_number} for flat ${unitNumber(b.unit_id)}? Enter the reason:`, 'Wrong amount');
+    const reason = await promptDialog({
+      title: `Cancel bill ${b.bill_number} for flat ${unitNumber(b.unit_id)}?`,
+      body: 'The bill is cancelled and its ledger entry is reversed.',
+      label: 'Reason', defaultValue: 'Wrong amount', minLength: 3, confirmText: 'Cancel bill', cancelText: 'Keep bill', tone: 'danger',
+    });
     if (!reason?.trim()) return;
     setWorking('late');
     const { error: rpcErr } = await supabase.rpc('cancel_bill', { p_bill_id: b.id, p_reason: reason.trim() });
@@ -218,233 +223,325 @@ export const BillingTab: React.FC<BillingTabProps> = ({ societyId, bills, totals
   );
   const totals = totalsOverride ?? listTotals;
 
-  const inputClass = 'w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-sky-500';
   const activeRules = rules.filter(r => r.is_active);
+  const ruleLine = (r: BillingRule) => [
+    r.calculation_type === 'per_sqft' ? `${formatINR(r.rate)} per sq.ft carpet` : `${formatINR(r.rate)} per flat`,
+    Number(r.tax_rate_percent) > 0 ? `${r.tax_rate_percent}% GST` : 'no GST',
+    r.applies_to_unit_type ? `${r.applies_to_unit_type} only` : null,
+  ].filter(Boolean).join(' · ');
+
+  const q = search.trim().toLowerCase();
+  const shownBills = filteredBills.filter(b => !q || unitNumber(b.unit_id).toLowerCase().includes(q) || b.bill_number.toLowerCase().includes(q));
+  const countOf = (st: BillStatus) => bills.filter(b => b.status === st).length;
+  const filters: { id: BillStatus | 'all'; label: string; n: number }[] = [
+    { id: 'all', label: 'All', n: bills.length },
+    { id: 'issued', label: 'Due', n: countOf('issued') },
+    { id: 'partially_paid', label: 'Part paid', n: countOf('partially_paid') },
+    { id: 'overdue', label: 'Overdue', n: countOf('overdue') },
+    { id: 'paid', label: 'Paid', n: countOf('paid') },
+  ];
+  const canCancel = (b: Bill) => Number(b.amount_paid) === 0 && !b.is_opening_balance && (b.status === 'issued' || b.status === 'overdue');
+  const step = preview ? 2 : 1;
 
   return (
-    <div className="space-y-6 text-xs">
-      <div>
-        <h2 className="text-lg font-bold text-white">Maintenance Billing</h2>
-        <p className="text-slate-400">Set charges once, then issue every month&apos;s bills in one click.</p>
+    <div className="space-y-6">
+      <PageHeader
+        title="Maintenance bills"
+        description="Set the charges once, then issue every month's bills in one go."
+        actions={
+          <Button variant="secondary" onClick={applyLateFees} loading={working === 'late'} leftIcon={<Clock className="w-4 h-4" />}
+            title="Mark bills past their due date as overdue and add the late fee from Society settings">
+            Apply late fees
+          </Button>
+        }
+      />
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+        <StatCard label="Total billed" value={formatINR(totals.billed)} sub={`${bills.filter(b => b.status !== 'cancelled').length} bills`} />
+        <StatCard label="Collected" value={formatINR(totals.collected)} tone="success" />
+        <StatCard label="Outstanding" value={formatINR(totals.due)} tone={totals.due > 0 ? 'warning' : 'default'} />
       </div>
 
-      {error && (
-        <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 flex items-start gap-2">
-          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" /> <span>{error}</span>
-        </div>
-      )}
-      {notice && (
-        <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 flex items-start gap-2">
-          <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" /> <span>{notice}</span>
-        </div>
-      )}
+      <Banner tone="error">{error}</Banner>
 
-      {/* Summary */}
-      <div className="grid grid-cols-3 gap-3">
-        {[
-          { label: 'Total Billed', value: totals.billed, cls: 'text-white' },
-          { label: 'Collected', value: totals.collected, cls: 'text-emerald-400' },
-          { label: 'Outstanding', value: totals.due, cls: 'text-amber-400' },
-        ].map(s => (
-          <div key={s.label} className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
-            <div className="text-slate-400">{s.label}</div>
-            <div className={`text-base font-bold ${s.cls}`}>{formatINR(s.value)}</div>
+      <div className="grid gap-4 lg:grid-cols-5 items-start">
+        {/* Issue bills: month → check → issue (brief J2) */}
+        <Card className="lg:col-span-3">
+          <div className="px-4 sm:px-5 py-4 border-b border-border space-y-3">
+            <h2 className="text-base font-semibold">Issue monthly bills</h2>
+            <ol aria-label="Steps" className="flex items-center gap-2 text-[13px]">
+              {['Month', 'Check', 'Issue'].map((label, i) => {
+                const n = i + 1;
+                const done = n < step;
+                const current = n === step;
+                return (
+                  <React.Fragment key={label}>
+                    {i > 0 && <li aria-hidden="true" className="w-6 h-px bg-border-strong" />}
+                    <li aria-current={current ? 'step' : undefined} className={cn('flex items-center gap-1.5 font-medium', done ? 'text-success' : current ? 'text-brand-ink' : 'text-fg-subtle')}>
+                      <span className={cn('w-5 h-5 rounded-full flex items-center justify-center text-xs',
+                        done ? 'bg-success-soft' : current ? 'bg-brand text-on-brand' : 'bg-surface-muted')}>
+                        {done ? <Check className="w-3 h-3" /> : n}
+                      </span>
+                      {label}
+                    </li>
+                  </React.Fragment>
+                );
+              })}
+            </ol>
           </div>
-        ))}
-      </div>
-
-      {/* Rules */}
-      <section className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
-        <div className="font-bold text-white text-sm">1. Charges (Billing Rules)</div>
-        {rules.length > 0 && (
-          <div className="divide-y divide-slate-800 rounded-xl border border-slate-800">
-            {rules.map(r => (
-              <div key={r.id} className={`p-3 flex items-center justify-between gap-3 ${r.is_active ? '' : 'opacity-50'}`}>
-                <div className="min-w-0">
-                  <div className="font-semibold text-white truncate">{r.name}</div>
-                  <div className="text-slate-400">
-                    {r.calculation_type === 'per_sqft' ? `${formatINR(r.rate)} / sq.ft carpet` : `${formatINR(r.rate)} per flat`}
-                    {Number(r.tax_rate_percent) > 0 && ` + ${r.tax_rate_percent}% GST`}
-                    {r.applies_to_unit_type && ` • only ${r.applies_to_unit_type}`}
-                    {` • → ${creditLabel(r.account_code)}`}
-                  </div>
-                  <RuleFlats ruleId={r.id} selected={!!r.applies_to_selected} units={units} canManage onChanged={loadRules} />
-                  {/* 041: municipal taxes are left out of non-occupancy charges */}
-                  <label className="flex items-center gap-1.5 text-slate-400 mt-1 cursor-pointer">
-                    <input type="checkbox" checked={!!r.is_municipal_tax} onChange={() => toggleMunicipal(r)} />
-                    Municipal tax (no non-occupancy charge on this)
-                  </label>
-                </div>
-                <div className="flex items-center gap-3 shrink-0">
-                  <button onClick={() => toggleRule(r)} title={r.is_active ? 'Pause rule' : 'Activate rule'} className="text-slate-400 hover:text-sky-300 cursor-pointer">
-                    <Power className="w-4 h-4" />
-                  </button>
-                  <button onClick={() => deleteRule(r)} title="Delete rule" className="text-slate-500 hover:text-rose-400 cursor-pointer">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <form onSubmit={addRule} className="grid grid-cols-2 sm:grid-cols-7 gap-2 items-end">
-          <label className="col-span-2 space-y-1">
-            <span className="block text-slate-400">Charge name</span>
-            <input value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} placeholder="Maintenance charges" className={inputClass} />
-          </label>
-          <label className="space-y-1">
-            <span className="block text-slate-400">Basis</span>
-            <select value={draft.calculation_type} onChange={e => setDraft({ ...draft, calculation_type: e.target.value as RuleDraft['calculation_type'] })} className={inputClass}>
-              <option value="flat_per_unit">Per flat</option>
-              <option value="per_sqft">Per sq.ft</option>
-            </select>
-          </label>
-          <label className="space-y-1">
-            <span className="block text-slate-400">Rate (₹)</span>
-            <input type="number" min={0} step="0.01" value={draft.rate || ''} onChange={e => setDraft({ ...draft, rate: Number(e.target.value) })} className={inputClass} />
-          </label>
-          <label className="space-y-1">
-            <span className="block text-slate-400">GST %</span>
-            <select value={draft.tax_rate_percent} onChange={e => setDraft({ ...draft, tax_rate_percent: Number(e.target.value) })} className={inputClass}>
-              <option value={0}>0%</option>
-              <option value={18}>18%</option>
-            </select>
-          </label>
-          <label className="space-y-1">
-            <span className="block text-slate-400">Flat type</span>
-            <select value={draft.applies_to_unit_type ?? ''} onChange={e => setDraft({ ...draft, applies_to_unit_type: e.target.value })} className={inputClass}>
-              <option value="">All flats</option>
-              {unitTypes.map(t => <option key={t} value={t}>{t} only</option>)}
-            </select>
-          </label>
-          <label className="space-y-1">
-            <span className="block text-slate-400">Credit to</span>
-            <select value={draft.account_code} onChange={e => setDraft({ ...draft, account_code: e.target.value })} className={inputClass}>
-              {creditAccounts.map(a => <option key={a.code} value={a.code}>{a.label}</option>)}
-            </select>
-          </label>
-          <button type="submit" disabled={savingRule} className="col-span-2 sm:col-span-7 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50">
-            {savingRule ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-            <span>Add Charge</span>
-          </button>
-        </form>
-        <p className="text-[11px] text-slate-500">
-          GST applies only if your society is GST-registered and a member&apos;s monthly contribution exceeds ₹7,500 — confirm with your CA.
-        </p>
-      </section>
-
-      {/* Generate */}
-      <section className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
-        <div className="font-bold text-white text-sm">2. Issue Monthly Bills</div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 items-end">
-          <label className="space-y-1">
-            <span className="block text-slate-400">Billing month</span>
-            <input type="month" value={month} onChange={e => { setMonth(e.target.value); setPreview(null); }} className={inputClass} />
-          </label>
-          <label className="space-y-1">
-            <span className="block text-slate-400">Due on day</span>
-            <input type="number" min={1} max={28} value={dueDay} onChange={e => { setDueDay(Number(e.target.value)); setPreview(null); }} className={inputClass} />
-          </label>
-          <button
-            onClick={() => runGenerate(true)}
-            disabled={working !== null || activeRules.length === 0}
-            className="py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-          >
-            {working === 'preview' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Eye className="w-3.5 h-3.5" />}
-            <span>Preview</span>
-          </button>
-          <button
-            onClick={() => runGenerate(false)}
-            disabled={working !== null || !preview || preview.bills === 0}
-            className="py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-          >
-            {working === 'generate' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-            <span>Issue Bills</span>
-          </button>
-        </div>
-        {activeRules.length === 0 && <p className="text-amber-300">Add at least one active charge above to issue bills.</p>}
-
-        {preview && (
-          <div className="space-y-2">
-            <div className="text-slate-300">
-              <strong className="text-white">{preview.cycle_name}</strong>: {preview.bills} bills totalling{' '}
-              <strong className="text-white">{formatINR(preview.total_amount)}</strong>
+          <div className="p-4 sm:p-5 space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Billing month">
+                <input type="month" value={month} onChange={e => { setMonth(e.target.value); setPreview(null); }} className={fieldClass} />
+              </Field>
+              <Field label="Due on day" hint="Of the same month, 1 to 28">
+                <input type="number" inputMode="numeric" min={1} max={28} value={dueDay} onChange={e => { setDueDay(Number(e.target.value)); setPreview(null); }} className={fieldClass} />
+              </Field>
             </div>
-            {preview.skipped_units.length > 0 && (
-              <div className="p-3 rounded-xl bg-amber-500/5 border border-amber-500/20 text-amber-300">
-                {preview.skipped_units.length} flats skipped (no bill):{' '}
-                {preview.skipped_units.slice(0, 20).map(s => `${s.unit_number} (${s.reason})`).join(', ')}
-                {preview.skipped_units.length > 20 && '…'}
-                <div className="text-slate-400 mt-1">Invite the owner of each flat in Members to bill them.</div>
+
+            {activeRules.length === 0 && (
+              <div className="p-3 rounded-lg bg-warning-soft text-warning text-[13px]">Add at least one active charge to issue bills.</div>
+            )}
+
+            {preview && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-3 gap-3 p-4 rounded-xl bg-canvas border border-border">
+                  <div><div className="text-xs text-fg-muted">Bills</div><div className="text-xl font-semibold tabular-nums">{preview.bills}</div></div>
+                  <div><div className="text-xs text-fg-muted">Period</div><div className="text-sm font-semibold mt-1">{preview.cycle_name}</div></div>
+                  <div><div className="text-xs text-fg-muted">Total</div><div className="text-xl font-semibold tabular-nums">{formatINR(preview.total_amount)}</div></div>
+                </div>
+                {preview.skipped_units.length > 0 ? (
+                  <div className="p-3 rounded-lg bg-warning-soft text-warning text-[13px] space-y-1">
+                    <div className="font-semibold">{preview.skipped_units.length} flats get no bill</div>
+                    <div>
+                      {preview.skipped_units.slice(0, 20).map(s => `${s.unit_number} (${s.reason})`).join(', ')}
+                      {preview.skipped_units.length > 20 && '…'}
+                    </div>
+                    <div className="text-fg-muted">Invite the owner of each flat in Flats &amp; residents to bill them.</div>
+                  </div>
+                ) : (
+                  <p className="flex items-center gap-2 text-[13px] text-success"><CheckCircle2 className="w-4 h-4" aria-hidden="true" /> Every flat gets a bill. No flat is left out.</p>
+                )}
+                <details className="rounded-lg border border-border">
+                  <summary className="px-3 py-2 text-[13px] font-medium text-fg-muted cursor-pointer">See flat-wise amounts</summary>
+                  <div className="max-h-56 overflow-y-auto border-t border-border">
+                    <table className="w-full text-left text-[13px]">
+                      <thead className="bg-surface-muted text-fg-muted sticky top-0">
+                        <tr><th className="px-3 py-2 font-medium">Flat</th><th className="px-3 py-2 font-medium text-right">Charges</th><th className="px-3 py-2 font-medium text-right">GST</th><th className="px-3 py-2 font-medium text-right">Total</th></tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {preview.preview.map(p => (
+                          <tr key={`${p.wing}-${p.unit_number}`}>
+                            <td className="px-3 py-2 font-medium">{p.unit_number}</td>
+                            <td className="px-3 py-2 text-right">{formatINR(p.subtotal)}</td>
+                            <td className="px-3 py-2 text-right">{formatINR(p.tax)}</td>
+                            <td className="px-3 py-2 text-right font-semibold">{formatINR(p.total)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
+                <p className="text-[13px] text-fg-muted">Residents see the bills at once and get a notification.</p>
               </div>
             )}
-            <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-800">
-              <table className="w-full text-left">
-                <thead className="bg-slate-950 text-slate-400 sticky top-0">
-                  <tr><th className="p-2">Flat</th><th className="p-2 text-right">Charges</th><th className="p-2 text-right">GST</th><th className="p-2 text-right">Total</th></tr>
+          </div>
+          <CardFooter>
+            {preview ? (
+              <>
+                <Button variant="secondary" onClick={() => setPreview(null)}>Change month</Button>
+                <Button onClick={() => runGenerate(false)} loading={working === 'generate'} disabled={working !== null || preview.bills === 0} leftIcon={<Send className="w-4 h-4" />}>
+                  Issue {preview.bills} bills
+                </Button>
+              </>
+            ) : (
+              <Button onClick={() => runGenerate(true)} loading={working === 'preview'} disabled={working !== null || activeRules.length === 0} leftIcon={<Eye className="w-4 h-4" />}>
+                Check the bills
+              </Button>
+            )}
+          </CardFooter>
+        </Card>
+
+        {/* Charges (billing rules) */}
+        <Card className="lg:col-span-2">
+          <CardHeader title="Charges" description="What every flat pays each month"
+            actions={<Button variant="secondary" size="sm" onClick={() => setShowAdd(v => !v)} leftIcon={showAdd ? undefined : <Plus className="w-4 h-4" />}>{showAdd ? 'Close' : 'Add charge'}</Button>} />
+          {rules.length === 0 && !showAdd && (
+            <p className="px-5 py-6 text-fg-muted">No charges yet. Add the monthly maintenance charge to start billing.</p>
+          )}
+          <ul className="divide-y divide-border">
+            {rules.map(r => (
+              <li key={r.id} className={cn('px-4 sm:px-5 py-4 space-y-2', !r.is_active && 'opacity-60')}>
+                <div className="flex items-start gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-fg">{r.name}</div>
+                    <div className="text-[13px] text-fg-muted">{ruleLine(r)}</div>
+                    <div className="text-xs text-fg-subtle">Goes to: {creditLabel(r.account_code)}</div>
+                  </div>
+                  <Badge tone={r.is_active ? 'success' : 'neutral'}>{r.is_active ? 'Active' : 'Paused'}</Badge>
+                  <IconButton variant="ghost" size="sm" label={r.is_active ? `Pause ${r.name}` : `Activate ${r.name}`} onClick={() => toggleRule(r)} className="w-8 h-8">
+                    <Power className="w-4 h-4" />
+                  </IconButton>
+                  <IconButton variant="ghost" size="sm" label={`Delete ${r.name}`} onClick={() => deleteRule(r)} className="w-8 h-8 text-danger hover:text-danger">
+                    <Trash2 className="w-4 h-4" />
+                  </IconButton>
+                </div>
+                <RuleFlats ruleId={r.id} selected={!!r.applies_to_selected} units={units} canManage onChanged={loadRules} />
+                {/* 041: municipal taxes are left out of non-occupancy charges */}
+                <label className="flex items-center gap-2 text-[13px] text-fg-muted cursor-pointer">
+                  <input type="checkbox" checked={!!r.is_municipal_tax} onChange={() => toggleMunicipal(r)} className="w-4 h-4 accent-brand" />
+                  Municipal tax (no non-occupancy charge on this)
+                </label>
+              </li>
+            ))}
+          </ul>
+
+          {showAdd && (
+            <form onSubmit={addRule} className="px-4 sm:px-5 py-4 border-t border-border space-y-3">
+              <Field label="Charge name">
+                <input value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} placeholder="Maintenance charges" className={fieldClass} />
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Basis">
+                  <select value={draft.calculation_type} onChange={e => setDraft({ ...draft, calculation_type: e.target.value as RuleDraft['calculation_type'] })} className={fieldClass}>
+                    <option value="flat_per_unit">Per flat</option>
+                    <option value="per_sqft">Per sq.ft</option>
+                  </select>
+                </Field>
+                <Field label="Rate (₹)">
+                  <input type="number" inputMode="decimal" min={0} step="0.01" value={draft.rate || ''} onChange={e => setDraft({ ...draft, rate: Number(e.target.value) })} className={cn(fieldClass, 'text-right tabular-nums')} />
+                </Field>
+              </div>
+              <details className="group" open={draft.tax_rate_percent > 0 || !!draft.applies_to_unit_type || draft.account_code !== '4000'}>
+                <summary className="text-[13px] font-medium text-brand cursor-pointer">More options: GST, flat type, ledger</summary>
+                <div className="grid grid-cols-2 gap-3 pt-3">
+                  <Field label="GST %">
+                    <select value={draft.tax_rate_percent} onChange={e => setDraft({ ...draft, tax_rate_percent: Number(e.target.value) })} className={fieldClass}>
+                      <option value={0}>0%</option>
+                      <option value={18}>18%</option>
+                    </select>
+                  </Field>
+                  <Field label="Flat type">
+                    <select value={draft.applies_to_unit_type ?? ''} onChange={e => setDraft({ ...draft, applies_to_unit_type: e.target.value })} className={fieldClass}>
+                      <option value="">All flats</option>
+                      {unitTypes.map(t => <option key={t} value={t}>{t} only</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Credit to" className="col-span-2">
+                    <select value={draft.account_code} onChange={e => setDraft({ ...draft, account_code: e.target.value })} className={fieldClass}>
+                      {creditAccounts.map(a => <option key={a.code} value={a.code}>{a.label}</option>)}
+                    </select>
+                  </Field>
+                  <p className="col-span-2 text-xs text-fg-subtle">
+                    GST applies only if your society is GST-registered and a member&apos;s monthly contribution exceeds ₹7,500. Confirm with your CA.
+                  </p>
+                </div>
+              </details>
+              <Button type="submit" loading={savingRule} className="w-full" leftIcon={<Plus className="w-4 h-4" />}>Add charge</Button>
+            </form>
+          )}
+        </Card>
+      </div>
+
+      {/* Bills */}
+      <Card>
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-5 py-4 border-b border-border">
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 className="text-base font-semibold">Bills</h2>
+            <div role="tablist" aria-label="Filter bills by status" className="flex flex-wrap gap-1 p-1 rounded-lg bg-surface-muted">
+              {filters.map(f => (
+                <button key={f.id} role="tab" aria-selected={statusFilter === f.id} onClick={() => setStatusFilter(f.id)}
+                  className={cn('h-8 px-2.5 rounded-md text-[13px] font-medium cursor-pointer transition duration-150',
+                    statusFilter === f.id ? 'bg-surface text-fg shadow-card' : 'text-fg-muted hover:text-fg')}>
+                  {f.label} <span className="tabular-nums text-fg-subtle">{f.n}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <label className="flex items-center gap-2 h-9 w-full sm:w-56 px-3 rounded-lg border border-border-strong text-fg-subtle focus-within:border-brand">
+            <Search className="w-4 h-4" aria-hidden="true" />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search flat or bill no." aria-label="Search bills"
+              className="flex-1 min-w-0 bg-transparent outline-none text-base sm:text-sm text-fg" />
+          </label>
+        </div>
+
+        {shownBills.length === 0 && !loading ? (
+          <EmptyState bare icon={CreditCard}
+            title={bills.length === 0 ? 'No bills yet' : 'No bills match'}
+            description={bills.length === 0 ? "Add a charge, then issue this month's bills above." : 'Try another status or flat number.'} />
+        ) : (
+          <>
+            {/* phones: one card per bill */}
+            <ul className="md:hidden divide-y divide-border">
+              {shownBills.map(b => (
+                <li key={b.id} className="px-4 py-3 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-semibold">{unitNumber(b.unit_id)}</div>
+                    <a href={`/bill/${b.id}`} className="text-[13px] text-brand">{b.bill_number}</a>
+                    <div className="text-[13px] text-fg-muted">Due {fmtDate(b.due_date)}</div>
+                  </div>
+                  <div className="text-right space-y-1">
+                    <div className="font-semibold tabular-nums">{formatINR(b.balance_due)}</div>
+                    <BillBadge status={b.status} />
+                    {canCancel(b) && <button onClick={() => cancelBill(b)} disabled={working !== null} className="block ml-auto text-[13px] text-danger cursor-pointer disabled:opacity-50">Cancel bill</button>}
+                  </div>
+                </li>
+              ))}
+            </ul>
+            {/* laptop: a table */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-surface-muted text-fg-muted text-xs">
+                  <tr>
+                    <th scope="col" className="px-5 py-2.5 font-medium">Flat</th>
+                    <th scope="col" className="px-3 py-2.5 font-medium">Bill no.</th>
+                    <th scope="col" className="px-3 py-2.5 font-medium">Due</th>
+                    <th scope="col" className="px-3 py-2.5 font-medium text-right">Billed</th>
+                    <th scope="col" className="px-3 py-2.5 font-medium text-right">Balance</th>
+                    <th scope="col" className="px-3 py-2.5 font-medium">Status</th>
+                    <th scope="col" className="px-5 py-2.5"><span className="sr-only">Actions</span></th>
+                  </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800 text-slate-300">
-                  {preview.preview.map(p => (
-                    <tr key={`${p.wing}-${p.unit_number}`}>
-                      <td className="p-2 text-white">{p.unit_number}</td>
-                      <td className="p-2 text-right">{formatINR(p.subtotal)}</td>
-                      <td className="p-2 text-right">{formatINR(p.tax)}</td>
-                      <td className="p-2 text-right font-semibold text-white">{formatINR(p.total)}</td>
+                <tbody className="divide-y divide-border">
+                  {shownBills.map(b => (
+                    <tr key={b.id} className="hover:bg-canvas">
+                      <td className="px-5 py-3 font-semibold">{unitNumber(b.unit_id)}</td>
+                      <td className="px-3 py-3"><a href={`/bill/${b.id}`} className="text-brand hover:underline">{b.bill_number}</a></td>
+                      <td className="px-3 py-3 text-fg-muted whitespace-nowrap">{fmtDate(b.due_date)}</td>
+                      <td className="px-3 py-3 text-right text-fg-muted">
+                        {formatINR(b.total_amount)}
+                        {Number(b.interest_or_late_fee) > 0 && <div className="text-xs text-fg-subtle">incl. late fee {formatINR(b.interest_or_late_fee)}</div>}
+                      </td>
+                      <td className="px-3 py-3 text-right font-semibold">{formatINR(b.balance_due)}</td>
+                      <td className="px-3 py-3"><BillBadge status={b.status} /></td>
+                      <td className="px-5 py-3 text-right">
+                        {canCancel(b) && <Button variant="ghost" size="sm" className="text-danger hover:text-danger" onClick={() => cancelBill(b)} disabled={working !== null}>Cancel bill</Button>}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
+                <tfoot>
+                  <tr className="border-t border-border bg-surface-muted">
+                    <td colSpan={4} className="px-5 py-3 text-[13px] text-fg-muted">{shownBills.length} of {bills.length} bills</td>
+                    <td className="px-3 py-3 text-right font-semibold">{formatINR(shownBills.filter(b => b.status !== 'cancelled').reduce((t, b) => t + Number(b.balance_due), 0))}</td>
+                    <td colSpan={2} className="px-5 py-3 text-[13px] text-fg-muted">balance shown</td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
-          </div>
+          </>
         )}
-      </section>
-
-      {/* Bills */}
-      <section className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="font-bold text-white text-sm">3. Bills</div>
-          <div className="flex items-center gap-2">
-            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as BillStatus | 'all')} className="bg-slate-900 border border-slate-700 rounded-xl px-2 py-1.5 text-white">
-              <option value="all">All statuses</option>
-              {(['issued', 'partially_paid', 'overdue', 'paid'] as BillStatus[]).map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
-            </select>
-            <button
-              onClick={applyLateFees}
-              disabled={working !== null}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 hover:border-rose-500 text-slate-200 cursor-pointer disabled:opacity-50"
-              title="Mark bills past due date as overdue and add the late fee from Society Rules"
-            >
-              {working === 'late' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Clock className="w-3.5 h-3.5" />}
-              <span>Apply Late Fees</span>
-            </button>
-          </div>
-        </div>
-
-        {filteredBills.length === 0 && !loading ? (
-          <EmptyState icon={CreditCard} title="No Bills Yet" description="Add charges and issue this month's bills above." />
-        ) : (
-          <div className="rounded-2xl bg-slate-900 border border-slate-800 divide-y divide-slate-800">
-            {filteredBills.map(b => (
-              <div key={b.id} className="p-3 flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="font-semibold text-white">Flat {unitNumber(b.unit_id)} <a href={`/bill/${b.id}`} className="font-mono text-sky-400 hover:underline">• {b.bill_number}</a></div>
-                  <div className="text-slate-400">Due {b.due_date} • Billed {formatINR(b.total_amount)}{Number(b.interest_or_late_fee) > 0 && ` (incl. late fee ${formatINR(b.interest_or_late_fee)})`}</div>
-                </div>
-                <div className="text-right shrink-0 space-y-1">
-                  <div className="font-bold text-white">{formatINR(b.balance_due)}</div>
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-semibold ${STATUS_STYLES[b.status]}`}>{b.status.replace('_', ' ')}</span>
-                  {Number(b.amount_paid) === 0 && !b.is_opening_balance && (b.status === 'issued' || b.status === 'overdue') && (
-                    <button onClick={() => cancelBill(b)} disabled={working !== null} className="block ml-auto text-[11px] text-rose-400 hover:underline cursor-pointer disabled:opacity-50">
-                      Cancel bill
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+      </Card>
     </div>
   );
 };
+
+const BILL_BADGE: Record<BillStatus, { label: string; tone: BadgeTone }> = {
+  draft: { label: 'Draft', tone: 'neutral' },
+  issued: { label: 'Due', tone: 'warning' },
+  partially_paid: { label: 'Part paid', tone: 'warning' },
+  paid: { label: 'Paid', tone: 'success' },
+  overdue: { label: 'Overdue', tone: 'danger' },
+  cancelled: { label: 'Cancelled', tone: 'neutral' },
+};
+const BillBadge: React.FC<{ status: BillStatus }> = ({ status }) => <Badge tone={BILL_BADGE[status].tone} dot>{BILL_BADGE[status].label}</Badge>;

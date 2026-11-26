@@ -7,6 +7,7 @@ import { Banner } from './Banner';
 import { EmptyState } from './EmptyState';
 import { Document as SocietyDocument } from '../types/database';
 import { FolderLock, Upload, Loader2, ExternalLink, Trash2, Lock } from 'lucide-react';
+import { confirmDialog } from './ui/feedback';
 
 const CATEGORIES: { value: SocietyDocument['category']; label: string }[] = [
   { value: 'bylaws', label: 'Bye-laws' },
@@ -95,7 +96,7 @@ export const DocumentsVault: React.FC<DocumentsVaultProps> = ({ societyId, canMa
   };
 
   const remove = async (doc: SocietyDocument) => {
-    if (!supabase || !window.confirm(`Delete "${doc.title}"?`)) return;
+    if (!supabase || !(await confirmDialog({ title: `Delete "${doc.title}"?`, body: 'Members can no longer open it. This cannot be undone.', confirmText: 'Delete document', tone: 'danger' }))) return;
     const { error: delErr } = await supabase.from('documents').delete().eq('id', doc.id);
     if (delErr) return setError(delErr.message);
     await deleteSocietyFile(doc.file_url);

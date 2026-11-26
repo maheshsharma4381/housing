@@ -7,6 +7,7 @@ import { OfflineIndicator } from '../components/OfflineIndicator';
 import { NamePrompt } from '../components/NamePrompt';
 import { AddMobilePrompt } from '../components/AddMobilePrompt';
 import { ServiceWorkerRegister } from '../components/ServiceWorkerRegister';
+import { FeedbackHost } from '../components/ui/feedback';
 
 const inter = Inter({ subsets: ['latin'], display: 'swap', variable: '--font-inter' });
 
@@ -55,6 +56,7 @@ export default function RootLayout({
             <NamePrompt />
             <AddMobilePrompt />
             <ServiceWorkerRegister />
+            <FeedbackHost />
           </AuthProvider>
         </RouterProvider>
       </body>

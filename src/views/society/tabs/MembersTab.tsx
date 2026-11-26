@@ -10,6 +10,7 @@ import { JoinLinkCard } from '../../../components/JoinLinkCard';
 import { normalizeMobile, formatMobile, contactLine } from '../../../lib/mobile';
 import { Users, UserPlus, Mail, AlertCircle, CheckCircle2, Loader2, XCircle, MessageCircle } from 'lucide-react';
 import { PHONE_LOGIN_ON } from '../../../lib/phone-login';
+import { confirmDialog } from '../../../components/ui/feedback';
 
 const ROLE_OPTIONS: { value: SocietyRole; label: string }[] = [
   { value: 'resident_owner', label: 'Resident (Owner)' },
@@ -171,7 +172,7 @@ export const MembersTab: React.FC<MembersTabProps> = ({ societyId, societyName, 
 
   const deactivateMember = async (m: MemberRow) => {
     if (!supabase) return;
-    if (!window.confirm(`Remove ${m.profiles?.full_name ?? 'this member'} from the society?`)) return;
+    if (!(await confirmDialog({ title: `Remove ${m.profiles?.full_name ?? 'this member'} from the society?`, body: 'They lose access to this society in Sahvaas.', confirmText: 'Remove member', tone: 'danger' }))) return;
     const { error: updErr } = await supabase.from('society_memberships').update({ is_active: false }).eq('id', m.id);
     if (updErr) setError(updErr.message);
     load();

@@ -5,6 +5,7 @@ import { useAuth, PendingInvite } from '../context/AuthContext';
 import { useRouter } from '../router/RouterContext';
 import { permissionLabel, roleLabel as professionalRoleLabel } from '../lib/professional-permissions';
 import { MailOpen, Check, X, Loader2 } from 'lucide-react';
+import { confirmDialog } from './ui/feedback';
 
 const MEMBER_ROLES: Record<string, string> = {
   resident_owner: 'Resident (Owner)',
@@ -26,7 +27,7 @@ export const PendingInvites: React.FC = () => {
   if (pendingInvites.length === 0) return null;
 
   const respond = async (inv: PendingInvite, accept: boolean) => {
-    if (!accept && !window.confirm(`Decline the invitation from ${inv.society_name}?`)) return;
+    if (!accept && !(await confirmDialog({ title: `Decline the invitation from ${inv.society_name}?`, confirmText: 'Decline', tone: 'danger' }))) return;
     setBusy(inv.id);
     setError(null);
     const { error: err } = await respondToInvite(inv, accept);

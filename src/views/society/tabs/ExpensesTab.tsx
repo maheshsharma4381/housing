@@ -11,6 +11,7 @@ import { EmptyState } from '../../../components/EmptyState';
 import { ExpenseBillForm } from './ExpenseBillForm';
 import { BillType, Expense, ExpenseStatus, Vendor, VendorPayment } from '../../../types/database';
 import { Receipt, Loader2, CheckCircle2, XCircle, Banknote, Paperclip, ChevronDown, ChevronUp, Landmark, FileWarning } from 'lucide-react';
+import { promptDialog } from '../../../components/ui/feedback';
 
 const STATUS_STYLES: Record<ExpenseStatus, string> = {
   draft: 'bg-slate-800 text-slate-300',
@@ -197,10 +198,11 @@ export const ExpensesTab: React.FC<ExpensesTabProps> = ({ societyId, currentUser
   const voidExpense = async (exp: Expense) => {
     if (!supabase) return;
     const paidSomething = Number(exp.amount_settled) > 0;
-    const reason = window.prompt(
-      `Void ${exp.expense_number}?${paidSomething ? ' Recorded payments and the ledger entries will be reversed.' : ''} Enter the reason:`,
-      'Duplicate entry'
-    );
+    const reason = await promptDialog({
+      title: `Void ${exp.expense_number}?`,
+      body: paidSomething ? 'Recorded payments and the ledger entries will be reversed.' : 'Its ledger entries will be reversed.',
+      label: 'Reason', defaultValue: 'Duplicate entry', minLength: 3, confirmText: 'Void bill', cancelText: 'Keep bill', tone: 'danger',
+    });
     if (!reason?.trim()) return;
     setBusy(exp.id);
     const { error: rpcErr } = await supabase.rpc('void_expense', { p_expense_id: exp.id, p_reason: reason.trim() });

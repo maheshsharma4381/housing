@@ -13,6 +13,7 @@ import { describeNotify, notify } from '../../../lib/notify';
 import { normalizeMobile, formatMobile, contactText } from '../../../lib/mobile';
 import { Briefcase, UserPlus, Loader2, XCircle, Eye, Save } from 'lucide-react';
 import { PHONE_LOGIN_ON } from '../../../lib/phone-login';
+import { promptDialog } from '../../../components/ui/feedback';
 
 interface InviteRow { id: string; invited_email: string | null; invited_mobile: string | null; role: string; permissions: string[]; expires_at: string; access_until: string | null; status: string }
 interface GrantRow {
@@ -125,7 +126,7 @@ export const ProfessionalsTab: React.FC<ProfessionalsTabProps> = ({ societyId, c
     if (!supabase) return;
     let reason: string | null = null;
     if (status === 'revoked') {
-      reason = window.prompt(`Reason for revoking ${g.profiles?.full_name ?? 'this professional'}'s access?`, 'Engagement completed');
+      reason = await promptDialog({ title: `Revoke ${g.profiles?.full_name ?? 'this professional'}'s access?`, body: 'They can no longer open this society.', label: 'Reason', defaultValue: 'Engagement completed', confirmText: 'Revoke access', tone: 'danger' });
       if (reason === null) return;
     }
     setBusy(g.id);

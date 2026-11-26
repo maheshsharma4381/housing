@@ -7,6 +7,7 @@ import { signed, sideTotal, type OpeningBalance, type Side } from '../lib/openin
 import { EMPTY_CHART, type Chart } from '../lib/chart';
 import { Banner } from './Banner';
 import { BookOpen, Check, Loader2, Undo2 } from 'lucide-react';
+import { confirmDialog } from './ui/feedback';
 
 const n = (v: unknown) => Number(v ?? 0) || 0;
 const showDate = (s: string | null) => (s ? new Date(s).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
@@ -40,7 +41,7 @@ export const OpeningBalanceReview: React.FC<{ societyId: string; canDecide: bool
 
   const decide = async (approve: boolean) => {
     if (!supabase) return;
-    if (approve && !window.confirm('Approve the opening balance? It goes into the books and flat-wise dues become bills the owners can pay.')) return;
+    if (approve && !(await confirmDialog({ title: 'Approve the opening balance?', body: 'It goes into the books and flat-wise dues become bills the owners can pay.', confirmText: 'Approve' }))) return;
     setBusy(true);
     setError(null);
     const { error: err } = await supabase.rpc('decide_opening_balance', {

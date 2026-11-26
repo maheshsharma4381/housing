@@ -449,6 +449,11 @@ Phase 8 polish.
 
 _(Claude: add anything here that this brief got wrong or missed.)_
 
+- 26 Nov 2026: screens not redesigned yet are made light by a temporary `.palette-bridge` in `globals.css` (it re-points the old slate/sky/emerald/amber/rose colours). Paper (bill, receipt, invoice, QR) opts out with `.palette-native`. Under the bridge `text-white` is dark, so redesigned code uses `text-on-brand` on solid fills. Remove the bridge in Phase 8.
+- Native `<dialog>` and a small store (`ui/feedback.tsx`) are used for confirm/prompt dialogs and toasts instead of Radix and sonner: no new dependencies were needed.
+
 ### Needs backend (owner approval required before building)
 
 _(Claude: one line each: what, which journey it helps, and why the UI cannot do it alone.)_
+
+- **Record a cash or cheque payment for a flat (committee).** Helps J3 and the Home "Record payment" quick action the brief lists. There is no RPC for the committee to record a resident's offline payment; the UI only verifies UTRs that residents submit, so the button is "Verify payments" for now.

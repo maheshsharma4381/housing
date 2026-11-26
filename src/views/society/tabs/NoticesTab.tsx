@@ -7,6 +7,7 @@ import { EmptyState } from '../../../components/EmptyState';
 import { Notice } from '../../../types/database';
 import { FileText, Pin, PinOff, Trash2, Send, Loader2 } from 'lucide-react';
 import { NoticeSeen } from '../../../components/NoticeSeen';
+import { confirmDialog } from '../../../components/ui/feedback';
 
 const CATEGORIES: { value: Notice['category']; label: string }[] = [
   { value: 'general', label: 'General' },
@@ -84,7 +85,7 @@ export const NoticesTab: React.FC<NoticesTabProps> = ({ societyId, currentUserId
   };
 
   const remove = async (n: Notice) => {
-    if (!supabase || !window.confirm(`Delete notice "${n.title}"?`)) return;
+    if (!supabase || !(await confirmDialog({ title: `Delete the notice "${n.title}"?`, body: 'Residents will no longer see it.', confirmText: 'Delete notice', tone: 'danger' }))) return;
     const { error: delErr } = await supabase.from('notices').delete().eq('id', n.id);
     if (delErr) setError(delErr.message);
     onChanged();

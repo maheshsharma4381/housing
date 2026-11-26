@@ -8,6 +8,7 @@ import { Banner } from './Banner';
 import { InvoiceView } from './InvoiceView';
 import { PlanQuote, PlatformInvoice, SocietyPlan, SubscriptionPlan } from '../types/database';
 import { CreditCard, Loader2, Printer, Sparkles, X } from 'lucide-react';
+import { confirmDialog } from './ui/feedback';
 
 interface BankDetails { bank_name?: string; bank_account?: string; bank_ifsc?: string; bank_upi?: string; seller_name?: string }
 
@@ -62,9 +63,13 @@ export const PlanBilling: React.FC<{ societyId: string; canManage: boolean; onPl
 
   const choose = async (code: string) => {
     if (!supabase) return;
-    if (code === 'free' && !window.confirm(plan?.paid_plan_code === 'pro'
-      ? 'Switch to the Free plan? Residents will see a few local offers, and Pro features (GSTR-2B, TDS register, bank statement match, Tally export) will be locked. No data is deleted.'
-      : 'Switch to the Free plan? Residents will see a few local offers. No data is deleted.')) return;
+    if (code === 'free' && !(await confirmDialog({
+      title: 'Switch to the Free plan?',
+      body: plan?.paid_plan_code === 'pro'
+        ? 'Residents will see a few local offers, and Pro features (GSTR-2B, TDS register, bank statement match, Tally export) will be locked. No data is deleted.'
+        : 'Residents will see a few local offers. No data is deleted.',
+      confirmText: 'Switch to Free',
+    }))) return;
     setBusy(code);
     const { data, error: rpcErr } = await supabase.rpc('choose_plan', { p_society_id: societyId, p_plan_code: code, p_term: term });
     setBusy(null);

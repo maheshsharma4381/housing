@@ -235,8 +235,9 @@ export const RequestsWaiting: React.FC<{ societyId: string; onOpen: () => void }
   }, [societyId]);
   if (n === 0) return null;
   return (
-    <button onClick={onOpen} className="w-full text-left p-4 rounded-2xl bg-sky-500/10 border border-sky-500/30 text-sky-200 text-xs cursor-pointer">
-      {n} flat request{n === 1 ? '' : 's'} waiting — open Requests &amp; NOCs →
+    <button onClick={onOpen} className="w-full flex items-center justify-between gap-3 text-left px-4 sm:px-5 py-4 rounded-xl bg-info-soft border border-info/20 text-info text-sm font-medium cursor-pointer hover:border-info/40">
+      <span>{n} flat request{n === 1 ? '' : 's'} waiting in Requests &amp; NOCs</span>
+      <span aria-hidden="true">Open →</span>
     </button>
   );
 };

@@ -3,15 +3,15 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { LogOut, MonitorSmartphone } from 'lucide-react';
+import { confirmDialog } from './ui/feedback';
 
-const confirmText = 'Log out of all devices? Every phone and computer signed in to this account will need to log in again.';
 
 /** Lost phone (spec 8.1): ends every session of this account, on every device. */
 export const LogoutEverywhereButton: React.FC<{ className?: string }> = ({ className }) => {
   const { logoutEverywhere } = useAuth();
   return (
     <button
-      onClick={() => { if (window.confirm(confirmText)) logoutEverywhere(); }}
+      onClick={async () => { if (await confirmDialog({ title: 'Log out of all devices?', body: 'Every phone and computer signed in to this account will need to log in again.', confirmText: 'Log out everywhere', tone: 'danger' })) logoutEverywhere(); }}
       className={className ?? 'w-full flex items-center justify-center gap-2 py-1.5 text-slate-500 hover:text-rose-400 text-[11px] cursor-pointer'}
     >
       <MonitorSmartphone className="w-3.5 h-3.5" /> <span>Log out of all devices</span>

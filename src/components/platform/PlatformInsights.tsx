@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase/client';
 import { formatINR } from '../../lib/inr';
 import { Banner } from '../Banner';
 import { Loader2, Eye, Megaphone } from 'lucide-react';
+import { confirmDialog } from '../ui/feedback';
 
 // Spec 11 items 2–5: setup funnel, society health (with the support view), revenue, announcements.
 
@@ -220,7 +221,7 @@ export const Announcements: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const send = async () => {
-    if (!supabase || !window.confirm('Send this announcement to the secretaries now?')) return;
+    if (!supabase || !(await confirmDialog({ title: 'Send this announcement to the secretaries now?', confirmText: 'Send' }))) return;
     setBusy(true);
     setError(null);
     const { data, error: err } = await supabase.rpc('platform_announce', { p_title: f.title, p_body: f.body, p_plan: f.plan || null, p_state: f.state || null });

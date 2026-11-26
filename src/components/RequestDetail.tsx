@@ -13,6 +13,7 @@ import { formatINR } from '../lib/inr';
 import { DEPOSIT_LABELS } from '../lib/shifting';
 import { Link } from '../router/RouterContext';
 import { TransferDetails } from './TransferDetails';
+import { confirmDialog } from './ui/feedback';
 
 export interface RequestRow {
   id: string; society_id: string; unit_id: string; kind: string; status: string; applicant_id: string | null;
@@ -259,7 +260,7 @@ export const RequestDetail: React.FC<{
             <button disabled={busy !== null} onClick={() => run('resubmit', async () => { await rpc('resubmit_request', { p_request_id: request.id, p_note: null }); })}
               className="px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold disabled:opacity-50 cursor-pointer">Send to the committee again</button>
           )}
-          <button disabled={busy !== null} onClick={() => { if (window.confirm('Withdraw this request?')) void run('withdraw', async () => { await rpc('withdraw_request', { p_request_id: request.id }); }); }}
+          <button disabled={busy !== null} onClick={async () => { if (await confirmDialog({ title: 'Withdraw this request?', confirmText: 'Withdraw', tone: 'danger' })) void run('withdraw', async () => { await rpc('withdraw_request', { p_request_id: request.id }); }); }}
             className="px-3 py-2 rounded-xl bg-slate-800 text-slate-300 cursor-pointer">Withdraw</button>
         </div>
       )}

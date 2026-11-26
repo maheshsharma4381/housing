@@ -10,6 +10,7 @@ import { flatLabels } from '../lib/flat-label';
 import { formatMobile } from '../lib/mobile';
 import { STAFF_KINDS, staffKindLabel, type StaffKind, type StaffRow } from '../lib/staff';
 import { staffFileUrl, uploadStaffFile } from '../lib/staff-files';
+import { promptDialog } from './ui/feedback';
 
 interface UnitOption { id: string; label: string }
 interface Draft { id: string | null; name: string; kind: StaffKind; mobile: string; units: string[] }
@@ -133,7 +134,7 @@ export const StaffRegister: React.FC<{ societyId: string; isCommittee: boolean; 
                 <input type="date" value={r.police_verified_on ?? ''} className="bg-slate-950 border border-slate-700 rounded px-1 text-white"
                   onChange={e => run(`v-${r.id}`, async () => { await rpc('set_staff_verified', { p_staff_id: r.id, p_verified_on: e.target.value || null }); })} />
               </label>
-              <button onClick={() => { const n = window.prompt('Note (only the committee sees it)', r.notes ?? ''); if (n !== null) void run(`n-${r.id}`, async () => { await rpc('set_staff_notes', { p_staff_id: r.id, p_notes: n }); }); }}
+              <button onClick={async () => { const n = await promptDialog({ title: 'Note', label: 'Note (only the committee sees it)', defaultValue: r.notes ?? '', multiline: true, confirmText: 'Save note' }); if (n !== null) void run(`n-${r.id}`, async () => { await rpc('set_staff_notes', { p_staff_id: r.id, p_notes: n }); }); }}
                 className="text-slate-300 cursor-pointer">Note</button>
               <button onClick={() => run(`a-${r.id}`, async () => { await rpc('set_staff_active', { p_staff_id: r.id, p_active: !r.active }); })}
                 className={r.active ? 'text-rose-300 cursor-pointer' : 'text-emerald-300 cursor-pointer'}>{r.active ? 'Remove' : 'Restore'}</button>

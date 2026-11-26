@@ -8,6 +8,7 @@ import { Banner } from './Banner';
 import { flatLabels } from '../lib/flat-label';
 import { POLL_FOOTNOTE, pollResultCsv } from '../lib/polls';
 import { downloadCsv } from '../lib/csv-export';
+import { confirmDialog } from './ui/feedback';
 
 export interface PollRow {
   id: string; question: string; details: string | null; options: string[]; closes_at: string; closed_at: string | null; created_at: string;
@@ -54,13 +55,13 @@ export const PollCard: React.FC<{ poll: PollRow; isCommittee: boolean; canManage
     const client = supabase;
     void act(`vote-${unitId}`, () => client.rpc('cast_poll_vote', { p_poll_id: poll.id, p_unit_id: unitId, p_option_index: choice }));
   };
-  const close = () => {
-    if (!supabase || !window.confirm('Close this poll now? Nobody can vote after this.')) return;
+  const close = async () => {
+    if (!supabase || !(await confirmDialog({ title: 'Close this poll now?', body: 'Nobody can vote after this.', confirmText: 'Close poll' }))) return;
     const client = supabase;
     void act('close', () => client.rpc('close_poll', { p_poll_id: poll.id }), onChanged);
   };
-  const remove = () => {
-    if (!supabase || !window.confirm('Delete this poll?')) return;
+  const remove = async () => {
+    if (!supabase || !(await confirmDialog({ title: 'Delete this poll?', body: 'Its votes are deleted too. This cannot be undone.', confirmText: 'Delete poll', tone: 'danger' }))) return;
     const client = supabase;
     void act('delete', () => client.rpc('delete_poll', { p_poll_id: poll.id }), onChanged);
   };

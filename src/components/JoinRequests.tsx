@@ -4,7 +4,11 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase/client';
 import { formatMobile } from '../lib/mobile';
 import { Banner } from './Banner';
-import { UserPlus, Loader2 } from 'lucide-react';
+import { Card, CardHeader } from './ui/Card';
+import { Button } from './ui/Button';
+import { fieldClass } from './ui/Field';
+import { cn } from './ui/cn';
+import { promptDialog, toast } from './ui/feedback';
 
 interface JoinRequestRow {
   id: string;
@@ -14,7 +18,6 @@ interface JoinRequestRow {
   created_at: string;
 }
 
-const inputClass = 'bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-sky-500';
 
 const RequestCard: React.FC<{
   r: JoinRequestRow; units: { id: string; unit_number: string }[]; canDecide: boolean; onDone: (msg: string) => void;
@@ -22,12 +25,18 @@ const RequestCard: React.FC<{
   const guess = units.find(u => u.unit_number.trim().toLowerCase() === (r.flat_hint ?? '').trim().toLowerCase());
   const [unitId, setUnitId] = useState(guess?.id ?? '');
   const [role, setRole] = useState<'resident_owner' | 'resident_tenant'>('resident_owner');
-  const [rejecting, setRejecting] = useState(false);
-  const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const decide = async (approve: boolean) => {
+  const reject = async () => {
+    const reason = await promptDialog({
+      title: `Reject ${r.full_name}'s request?`, body: 'They will see your reason.',
+      label: 'Reason', minLength: 3, confirmText: 'Reject request', tone: 'danger',
+    });
+    if (reason) void decide(false, reason);
+  };
+
+  const decide = async (approve: boolean, reason = '') => {
     if (!supabase) return;
     setBusy(true);
     setError(null);
@@ -41,42 +50,33 @@ const RequestCard: React.FC<{
   };
 
   return (
-    <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
+    <li className="px-4 sm:px-5 py-4 space-y-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <span className="font-bold text-white text-sm">{r.full_name}</span>
-        <span className="text-slate-500">{new Date(r.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</span>
+        <span className="font-semibold text-fg">{r.full_name}</span>
+        <span className="text-[13px] text-fg-subtle">{new Date(r.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</span>
       </div>
-      <div className="text-slate-400">
-        {r.mobile && <>Mobile: <strong className="text-white">{formatMobile(r.mobile)}</strong> · </>}
-        Says flat: <strong className="text-white">{r.flat_hint || '—'}</strong>
+      <div className="text-[13px] text-fg-muted">
+        {r.mobile && <>Mobile <strong className="text-fg font-medium">{formatMobile(r.mobile)}</strong> · </>}
+        Says flat <strong className="text-fg font-medium">{r.flat_hint || '—'}</strong>
       </div>
       <Banner tone="error">{error}</Banner>
-      {canDecide && !rejecting && (
+      {canDecide && (
         <div className="flex flex-wrap items-center gap-2">
-          <select className={inputClass} value={unitId} onChange={e => setUnitId(e.target.value)} aria-label="Flat">
+          <select className={cn(fieldClass, 'w-auto min-w-36')} value={unitId} onChange={e => setUnitId(e.target.value)} aria-label="Flat">
             <option value="">Choose the flat</option>
             {[...units]
               .sort((a, b) => a.unit_number.localeCompare(b.unit_number, undefined, { numeric: true }))
               .map(u => <option key={u.id} value={u.id}>{u.unit_number}</option>)}
           </select>
-          <select className={inputClass} value={role} onChange={e => setRole(e.target.value as typeof role)} aria-label="Role">
+          <select className={cn(fieldClass, 'w-auto')} value={role} onChange={e => setRole(e.target.value as typeof role)} aria-label="Role">
             <option value="resident_owner">Owner</option>
             <option value="resident_tenant">Tenant</option>
           </select>
-          <button onClick={() => decide(true)} disabled={busy || !unitId} className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold cursor-pointer disabled:opacity-50 flex items-center gap-1.5">
-            {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Approve
-          </button>
-          <button onClick={() => setRejecting(true)} className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-rose-300 font-semibold cursor-pointer">Reject</button>
+          <Button variant="secondary" className="text-danger hover:text-danger" onClick={reject} disabled={busy}>Reject</Button>
+          <Button onClick={() => decide(true)} loading={busy} disabled={!unitId}>Approve</Button>
         </div>
       )}
-      {canDecide && rejecting && (
-        <div className="flex flex-wrap items-center gap-2">
-          <input className={`${inputClass} flex-1 min-w-[12rem]`} placeholder="Reason (they will see it)" value={reason} onChange={e => setReason(e.target.value)} />
-          <button onClick={() => decide(false)} disabled={busy || !reason.trim()} className="px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold cursor-pointer disabled:opacity-50">Reject</button>
-          <button onClick={() => setRejecting(false)} className="px-3 py-2 rounded-xl bg-slate-800 text-slate-300 cursor-pointer">Cancel</button>
-        </div>
-      )}
-    </div>
+    </li>
   );
 };
 
@@ -86,8 +86,6 @@ export const JoinRequests: React.FC<{
 }> = ({ societyId, units, canDecide, onDecided }) => {
   const [rows, setRows] = useState<JoinRequestRow[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-
   const load = useCallback(async () => {
     if (!supabase) return;
     const { data, error: err } = await supabase
@@ -104,17 +102,17 @@ export const JoinRequests: React.FC<{
     load();
   }, [load]);
 
-  if (rows.length === 0 && !error && !notice) return null;
+  if (rows.length === 0 && !error) return null;
 
   return (
-    <section className="space-y-3 text-xs">
-      <h2 className="text-lg font-bold text-white flex items-center gap-2"><UserPlus className="w-5 h-5 text-sky-400" /> Join requests</h2>
-      <p className="text-slate-400">They opened your joining link, but their mobile did not match a flat&apos;s owner. Check who they are before you approve.</p>
-      <Banner tone="error">{error}</Banner>
-      <Banner tone="success">{notice}</Banner>
-      {rows.map(r => (
-        <RequestCard key={r.id} r={r} units={units} canDecide={canDecide} onDone={(msg) => { setNotice(msg); load(); onDecided?.(); }} />
-      ))}
-    </section>
+    <Card>
+      <CardHeader title="Join requests" description="They opened your joining link. Check who they are, pick their flat, then approve." />
+      {error && <div className="px-4 sm:px-5 pt-4"><Banner tone="error">{error}</Banner></div>}
+      <ul className="divide-y divide-border">
+        {rows.map(r => (
+          <RequestCard key={r.id} r={r} units={units} canDecide={canDecide} onDone={(msg) => { toast.success(msg); load(); onDecided?.(); }} />
+        ))}
+      </ul>
+    </Card>
   );
 };

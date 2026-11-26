@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase/client';
 import { whatsappLink } from '../lib/messages';
 import { Banner } from './Banner';
 import { Link2, Copy, MessageCircle, RefreshCw, Check } from 'lucide-react';
+import { confirmDialog } from './ui/feedback';
 
 /** The society's one joining link (031), shared in the residents' WhatsApp group. */
 export const JoinLinkCard: React.FC<{ societyId: string; societyName?: string; canChange: boolean }> = ({ societyId, societyName, canChange }) => {
@@ -34,7 +35,7 @@ export const JoinLinkCard: React.FC<{ societyId: string; societyName?: string; c
   };
 
   const renew = async () => {
-    if (!supabase || !window.confirm('Make a new link? The old link will stop working.')) return;
+    if (!supabase || !(await confirmDialog({ title: 'Make a new joining link?', body: 'The old link stops working. Share the new one in your WhatsApp group.', confirmText: 'Make new link' }))) return;
     setBusy(true);
     const { data, error: err } = await supabase.rpc('new_join_code', { p_society_id: societyId });
     setBusy(false);

@@ -7,6 +7,7 @@ import { Banner } from './Banner';
 import { EmptyState } from './EmptyState';
 import { tenancyState, TENANCY_STATE_LABELS } from '../lib/tenancy';
 import { formatMobile } from '../lib/mobile';
+import { confirmDialog } from './ui/feedback';
 
 export interface TenancyRow {
   id: string; unit_id: string; tenant_name: string; tenant_mobile: string; tenant_email: string | null; occupants: number;
@@ -39,7 +40,7 @@ export const Tenancies: React.FC<{
   useEffect(() => { void load(); }, [load, refreshKey]);
 
   const end = async (t: TenancyRow) => {
-    if (!supabase || !window.confirm(`End the tenancy of ${t.tenant_name}? The tenant loses access to flat ${labels[t.unit_id] ?? ''} in Sahvaas.`)) return;
+    if (!supabase || !(await confirmDialog({ title: `End the tenancy of ${t.tenant_name}?`, body: `The tenant loses access to flat ${labels[t.unit_id] ?? ''} in Sahvaas.`, confirmText: 'End tenancy', tone: 'danger' }))) return;
     setBusy(t.id); setError(null);
     const { error: err } = await supabase.rpc('end_tenancy', { p_tenancy_id: t.id, p_end_date: null });
     setBusy(null);

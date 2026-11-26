@@ -15,6 +15,7 @@ import { SetupFunnel, SocietyHealth, RevenuePanel, Announcements } from '../../c
 import { AuditLog, Profile } from '../../types/database';
 import { Building2, Users, FileText, Cpu, LogOut, RefreshCw, Loader2, Search, Inbox, Percent, CreditCard, Megaphone, MessageCircle, Filter, HeartPulse, IndianRupee, Send } from 'lucide-react';
 import { LogoutEverywhereButton } from '../../components/SignOutMenu';
+import { promptDialog } from '../../components/ui/feedback';
 
 interface SocietyOverview {
   id: string; name: string; slug: string; city: string; state: string;
@@ -80,7 +81,7 @@ export const PlatformDashboardPage: React.FC = () => {
     if (!supabase || status === s.subscription_status) return;
     let reason: string | null = null;
     if (status === 'suspended' || status === 'cancelled') {
-      reason = window.prompt(`Reason to ${status === 'suspended' ? 'suspend' : 'cancel'} ${s.name}? Members lose access immediately.`);
+      reason = await promptDialog({ title: `${status === 'suspended' ? 'Suspend' : 'Cancel'} ${s.name}?`, body: 'Members lose access immediately.', label: 'Reason', minLength: 3, confirmText: status === 'suspended' ? 'Suspend society' : 'Cancel society', tone: 'danger' });
       if (!reason?.trim()) return;
     }
     setBusy(s.id);

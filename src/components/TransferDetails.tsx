@@ -11,6 +11,7 @@ import { whatsappLink, inviteText } from '../lib/messages';
 import { notify } from '../lib/notify';
 import { transferBlocker, transferFeeError, TRANSFER_WARNING } from '../lib/transfer';
 import type { RequestRow } from './RequestDetail';
+import { confirmDialog } from './ui/feedback';
 
 export const TransferDetails: React.FC<{
   request: RequestRow; flatLabel: string; canDecide: boolean; missingDocs: number; onChanged: () => void;
@@ -125,7 +126,7 @@ export const TransferDetails: React.FC<{
                 <label className="text-slate-400">Transfer date (blank: today)<input type="date" value={form.transfer_date} onChange={e => setForm({ ...form, transfer_date: e.target.value })} className={inputClass} /></label>
               </div>
               {missingDocs === 0 && blocker && <div className="text-amber-300">{blocker}</div>}
-              <button onClick={() => { if (window.confirm(`Transfer flat ${flatLabel} to ${d.buyer_name}? The seller loses access and the buyer is invited.`)) void approve(); }}
+              <button onClick={async () => { if (await confirmDialog({ title: `Transfer flat ${flatLabel} to ${d.buyer_name}?`, body: 'The seller loses access and the buyer is invited.', confirmText: 'Approve transfer' })) void approve(); }}
                 disabled={busy !== null || missingDocs > 0 || blocker !== null}
                 className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold disabled:opacity-50 cursor-pointer">
                 {busy === 'approve' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Approve transfer'}</button>
