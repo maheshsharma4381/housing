@@ -27,7 +27,7 @@ const SETTING_FIELDS: { key: string; label: string; step?: string }[] = [
   { key: 'cost_foreign', label: '₹ per code to a foreign number', step: '0.001' },
 ];
 
-const inputClass = 'w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-purple-500';
+const inputClass = 'w-full bg-surface border border-border-strong rounded-lg px-3 py-2 text-fg outline-none focus:border-brand';
 
 /** Spec 11 item 1: what login codes cost, per society and in all, with the limits and blocked numbers. */
 export const OtpCosts: React.FC = () => {
@@ -67,17 +67,17 @@ export const OtpCosts: React.FC = () => {
     p: Object.fromEntries(SETTING_FIELDS.filter(f => form[f.key] !== '').map(f => [f.key, Number(form[f.key])])),
   }), 'Limits saved.');
 
-  if (!data) return error ? <Banner tone="error">{error}</Banner> : <Loader2 className="w-5 h-5 animate-spin text-purple-400" />;
+  if (!data) return error ? <Banner tone="error">{error}</Banner> : <Loader2 className="w-5 h-5 animate-spin text-brand-ink" />;
   const t = data.totals;
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-bold text-white">OTP &amp; cost</h2>
-          <p className="text-slate-400">Login codes sent and what they cost (before GST).</p>
+          <h2 className="text-lg font-semibold text-fg">OTP &amp; cost</h2>
+          <p className="text-fg-muted">Login codes sent and what they cost (before GST).</p>
         </div>
-        <select value={days} onChange={e => setDays(Number(e.target.value))} className="bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white">
+        <select value={days} onChange={e => setDays(Number(e.target.value))} className="bg-surface border border-border-strong rounded-lg px-3 py-2 text-fg">
           <option value={7}>Last 7 days</option>
           <option value={30}>Last 30 days</option>
           <option value={365}>Last 12 months</option>
@@ -90,37 +90,37 @@ export const OtpCosts: React.FC = () => {
         {[
           ['WhatsApp', t.whatsapp], ['SMS', t.sms], ['Foreign numbers', t.foreign], ['Estimated cost', formatINR(Number(t.cost))],
         ].map(([label, v]) => (
-          <div key={label as string} className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
-            <div className="text-slate-400">{label}</div>
-            <div className="text-xl font-bold text-white">{v}</div>
+          <div key={label as string} className="p-4 rounded-xl bg-surface border border-border">
+            <div className="text-fg-muted">{label}</div>
+            <div className="text-xl font-semibold text-fg">{v}</div>
           </div>
         ))}
       </div>
-      <p className="text-slate-500">
+      <p className="text-fg-subtle">
         Failed {t.failed} · refused by the limits {t.refused}{t.console > 0 ? ` · shown in the server log (development) ${t.console}` : ''} · not linked to a society {data.unattributed}
       </p>
 
       <section className="space-y-2">
-        <h3 className="font-semibold text-slate-300">By society (alert above 5 codes per flat a year)</h3>
+        <h3 className="font-semibold text-fg">By society (alert above 5 codes per flat a year)</h3>
         {data.societies.length === 0 ? (
-          <p className="text-slate-500">No codes sent to registered numbers yet.</p>
+          <p className="text-fg-subtle">No codes sent to registered numbers yet.</p>
         ) : (
-          <div className="overflow-x-auto rounded-2xl border border-slate-800">
+          <div className="overflow-x-auto rounded-xl border border-border">
             <table className="w-full text-left">
-              <thead className="bg-slate-900 text-slate-400">
+              <thead className="bg-surface text-fg-muted">
                 <tr><th className="p-3">Society</th><th className="p-3">Flats</th><th className="p-3">Sent</th><th className="p-3">Cost</th><th className="p-3">Last 12 months</th></tr>
               </thead>
               <tbody>
                 {data.societies.map(s => (
-                  <tr key={s.society_id} className="border-t border-slate-800">
-                    <td className="p-3 text-white">{s.name}</td>
+                  <tr key={s.society_id} className="border-t border-border">
+                    <td className="p-3 text-fg">{s.name}</td>
                     <td className="p-3">{s.flats}</td>
                     <td className="p-3">{s.sent}</td>
                     <td className="p-3">{formatINR(Number(s.cost))}</td>
                     <td className="p-3">
                       {s.sent_year}
                       {s.alert && (
-                        <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-300 text-[10px] font-semibold">
+                        <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-danger-soft text-danger text-xs font-semibold">
                           <AlertTriangle className="w-3 h-3" /> Over 5 per flat a year
                         </span>
                       )}
@@ -133,42 +133,42 @@ export const OtpCosts: React.FC = () => {
         )}
       </section>
 
-      <section className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
-        <h3 className="font-semibold text-white">Limits</h3>
+      <section className="p-5 rounded-xl bg-surface border border-border space-y-3">
+        <h3 className="font-semibold text-fg">Limits</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {SETTING_FIELDS.map(f => (
             <label key={f.key} className="space-y-1">
-              <span className="text-slate-400">{f.label}</span>
+              <span className="text-fg-muted">{f.label}</span>
               <input type="number" min={0} step={f.step ?? '1'} value={form[f.key] ?? ''} onChange={e => setForm(v => ({ ...v, [f.key]: e.target.value }))} className={inputClass} />
             </label>
           ))}
         </div>
-        <button onClick={saveSettings} disabled={busy} className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold cursor-pointer disabled:opacity-50 flex items-center gap-1.5">
+        <button onClick={saveSettings} disabled={busy} className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold cursor-pointer disabled:opacity-50 flex items-center gap-1.5">
           <Save className="w-3.5 h-3.5" /> Save limits
         </button>
       </section>
 
-      <section className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
-        <h3 className="font-semibold text-white">Blocked numbers</h3>
+      <section className="p-5 rounded-xl bg-surface border border-border space-y-3">
+        <h3 className="font-semibold text-fg">Blocked numbers</h3>
         <div className="flex flex-wrap gap-2">
           <input placeholder="Mobile" inputMode="tel" value={block.mobile} onChange={e => setBlock(b => ({ ...b, mobile: e.target.value }))} className={`${inputClass} max-w-[12rem]`} />
           <input placeholder="Reason" value={block.reason} onChange={e => setBlock(b => ({ ...b, reason: e.target.value }))} className={`${inputClass} flex-1 min-w-[12rem]`} />
           <button
             onClick={() => run(() => supabase!.rpc('block_mobile', { p_mobile: block.mobile, p_reason: block.reason }), 'Number blocked.').then(() => setBlock({ mobile: '', reason: '' }))}
             disabled={busy || !block.mobile.trim()}
-            className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+            className="px-4 py-2 rounded-lg bg-danger-solid hover:bg-danger text-on-brand font-semibold cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
           >
             <Ban className="w-3.5 h-3.5" /> Block
           </button>
         </div>
         {data.blocked.length === 0 ? (
-          <p className="text-slate-500">No blocked numbers.</p>
+          <p className="text-fg-subtle">No blocked numbers.</p>
         ) : (
-          <ul className="divide-y divide-slate-800">
+          <ul className="divide-y divide-border">
             {data.blocked.map(b => (
               <li key={b.mobile} className="py-2 flex items-center justify-between gap-3">
-                <span><strong className="text-white">{formatMobile(b.mobile)}</strong>{b.reason ? <span className="text-slate-400"> · {b.reason}</span> : null}</span>
-                <button onClick={() => run(() => supabase!.rpc('unblock_mobile', { p_mobile: b.mobile }), 'Number unblocked.')} className="text-sky-400 hover:underline cursor-pointer">Unblock</button>
+                <span><strong className="text-fg">{formatMobile(b.mobile)}</strong>{b.reason ? <span className="text-fg-muted"> · {b.reason}</span> : null}</span>
+                <button onClick={() => run(() => supabase!.rpc('unblock_mobile', { p_mobile: b.mobile }), 'Number unblocked.')} className="text-brand hover:underline cursor-pointer">Unblock</button>
               </li>
             ))}
           </ul>

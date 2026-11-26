@@ -24,6 +24,10 @@ import { YearLockPanel } from '../../components/YearLockPanel';
 import { Expense } from '../../types/database';
 import { Briefcase, FileSpreadsheet, Landmark, Receipt, FolderLock, LogOut, ShieldCheck, Lock, Boxes, Scale, ListTree, Tags, BookOpen, BarChart3 } from 'lucide-react';
 import { LogoutEverywhereButton } from '../../components/SignOutMenu';
+import { Logo } from '../../components/ui/Logo';
+import { Badge } from '../../components/ui/Badge';
+import { Button } from '../../components/ui/Button';
+import { cn } from '../../components/ui/cn';
 
 type Tab = 'gst' | 'financials' | 'ledgers' | 'billtypes' | 'opening' | 'expenses' | 'assets' | 'bank' | 'adjustments' | 'documents' | 'remarks' | 'my_societies';
 
@@ -90,67 +94,64 @@ export const ProfessionalDashboardPage: React.FC = () => {
     { id: 'adjustments', label: 'Audit & Year Close', icon: Scale },
     { id: 'documents', label: 'Audit Vault', icon: FolderLock },
     { id: 'remarks', label: 'Audit Remarks', icon: ShieldCheck },
-    { id: 'my_societies', label: 'My Client Societies', icon: Briefcase },
+    { id: 'my_societies', label: 'My client societies', icon: Briefcase },
   ];
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col md:flex-row">
-      <aside className="w-full md:w-72 bg-slate-900 border-r border-slate-800 p-4 shrink-0 flex flex-col justify-between print:hidden">
-        <div className="space-y-6">
-          <div className="px-2 space-y-1">
-            <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-amber-400">
-              <Briefcase className="w-3.5 h-3.5" />
-              <span>Professional Portal</span>
-            </div>
-            <h2 className="text-base font-bold text-white mt-1">{profile?.full_name}</h2>
-            <p className="text-xs text-slate-400">{currentGrant ? roleLabel(currentGrant.role) : 'CA & Auditor Console'}</p>
-            <div className="pt-2"><WorkspaceSelector /></div>
+    <div className="min-h-screen bg-canvas text-fg text-sm flex flex-col md:flex-row">
+      <aside className="w-full md:w-[248px] shrink-0 flex flex-col gap-4 md:gap-5 bg-surface border-b md:border-b-0 md:border-r border-border px-3 py-4 md:py-5 print:hidden md:sticky md:top-0 md:h-screen md:overflow-y-auto">
+        <div className="px-2 flex items-center justify-between gap-2"><Logo /><Badge tone="brand">CA portal</Badge></div>
+        <div className="px-1 space-y-2">
+          <div className="px-2">
+            <div className="font-semibold text-fg truncate">{profile?.full_name || 'My profile'}</div>
+            <div className="text-xs text-fg-subtle">{currentGrant ? roleLabel(currentGrant.role) : 'CA & auditor'}</div>
           </div>
-
-          <nav className="space-y-1">
-            {tabs.map(tab => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
-              const ok = allowed[tab.id];
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => ok && setActiveTab(tab.id)}
-                  disabled={!ok}
-                  title={ok ? undefined : tab.id === 'bank' && bankPermission ? 'Bank statement match is part of the Pro plan' : 'Not included in the access granted by this society'}
-                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-medium transition ${
-                    isActive ? 'bg-amber-600 text-white shadow-sm'
-                      : ok ? 'text-slate-400 hover:text-slate-200 hover:bg-slate-800 cursor-pointer'
-                      : 'text-slate-600 cursor-not-allowed opacity-50'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5"><Icon className="w-4 h-4" /><span>{tab.label}</span></div>
-                  {!ok && <Lock className="w-3 h-3 text-slate-600" />}
-                </button>
-              );
-            })}
-          </nav>
+          <WorkspaceSelector />
         </div>
 
-        <div className="pt-4 border-t border-slate-800 space-y-2 text-xs">
-          <div className="truncate text-slate-400 font-mono text-[11px]">{contactText(profile)}</div>
-          <button onClick={() => logout()} className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-rose-400 font-medium cursor-pointer transition">
-            <LogOut className="w-3.5 h-3.5" /> <span>Sign Out</span>
-          </button>
+        <nav aria-label="CA portal" className="flex md:flex-col gap-1 md:gap-0.5 overflow-x-auto md:overflow-visible -mx-1 px-1 md:mx-0 md:px-0 md:flex-1">
+          {tabs.map(tab => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            const ok = allowed[tab.id];
+            return (
+              <button
+                key={tab.id}
+                onClick={() => ok && setActiveTab(tab.id)}
+                disabled={!ok}
+                aria-current={isActive ? 'page' : undefined}
+                title={ok ? undefined : tab.id === 'bank' && bankPermission ? 'Bank statement match is part of the Pro plan' : 'Not included in the access granted by this society'}
+                className={cn('shrink-0 md:w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm whitespace-nowrap text-left transition duration-150',
+                  isActive ? 'bg-brand-soft text-brand-ink font-semibold'
+                    : ok ? 'text-fg-muted font-medium hover:bg-surface-muted hover:text-fg cursor-pointer'
+                    : 'text-fg-subtle opacity-60 cursor-not-allowed')}
+              >
+                <Icon className="w-5 h-5 shrink-0" />
+                <span className="flex-1">{tab.label}</span>
+                {!ok && <Lock className="w-3.5 h-3.5" aria-label="Locked" />}
+              </button>
+            );
+          })}
+        </nav>
+
+        <div className="hidden md:block pt-4 border-t border-border space-y-2 px-1">
+          <div className="px-2 text-xs text-fg-subtle truncate">{contactText(profile)}</div>
+          <Button variant="ghost" size="sm" className="w-full justify-start text-danger hover:text-danger" leftIcon={<LogOut className="w-4 h-4" />} onClick={() => logout()}>
+            Sign out
+          </Button>
           <LogoutEverywhereButton />
         </div>
       </aside>
 
-      <main className="flex-1 p-4 md:p-8 overflow-y-auto">
-        <div className="pb-6 border-b border-slate-800 mb-6">
-          <h1 className="text-xl font-bold text-white flex flex-wrap items-center gap-2">
-            <span>{tabs.find(t => t.id === activeTab)?.label}</span>
-            <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">
-              Client: {activeSociety?.name || 'None selected'}
-            </span>
-          </h1>
-          <p className="text-xs text-slate-400 mt-1">
-            {permissions.includes('manage_accounts') ? 'Access' : 'Read-only access'} granted by the society committee{currentGrant?.expires_at ? ` until ${new Date(currentGrant.expires_at).toLocaleDateString('en-IN')}` : ''}. Every module you open is logged for the committee.
+      <main className="flex-1 min-w-0 w-full max-w-[1440px] mx-auto px-4 py-5 md:px-6 md:py-6 lg:px-8 lg:py-8">
+        {/* the client and what this grant allows, always in view (brief: sticky context bar) */}
+        <div className="mb-6 space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-2xl leading-8 font-semibold tracking-tight">{tabs.find(t => t.id === activeTab)?.label}</h1>
+            <Badge tone="brand">{activeSociety?.name || 'No client selected'}</Badge>
+          </div>
+          <p className="text-[13px] text-fg-muted">
+            {permissions.includes('manage_accounts') ? 'Access' : 'Read-only access'} granted by the society committee{currentGrant?.expires_at ? ` until ${new Date(currentGrant.expires_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}. Every module you open is logged for the committee.
           </p>
         </div>
 
@@ -195,15 +196,15 @@ export const ProfessionalDashboardPage: React.FC = () => {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {professionalGrants.map(grant => (
-                <div key={grant.id} className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-2 text-xs">
+                <div key={grant.id} className="p-5 rounded-xl bg-surface border border-border space-y-2 text-xs">
                   <div className="flex items-center justify-between">
-                    <h3 className="font-bold text-white text-sm">{grant.society.name}</h3>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] uppercase font-semibold bg-emerald-500/10 text-emerald-400">{grant.status}</span>
+                    <h3 className="font-semibold text-fg text-sm">{grant.society.name}</h3>
+                    <span className="px-2 py-0.5 rounded-lg text-xs font-medium bg-success-soft text-success capitalize">{grant.status}</span>
                   </div>
-                  <div className="text-slate-400">{grant.society.city}, {grant.society.state}</div>
-                  <div className="text-amber-300">{roleLabel(grant.role)}{grant.expires_at && ` • until ${new Date(grant.expires_at).toLocaleDateString('en-IN')}`}</div>
+                  <div className="text-fg-muted">{grant.society.city}, {grant.society.state}</div>
+                  <div className="text-warning">{roleLabel(grant.role)}{grant.expires_at && ` • until ${new Date(grant.expires_at).toLocaleDateString('en-IN')}`}</div>
                   <div className="flex flex-wrap gap-1 pt-1">
-                    {grant.permissions.map(p => <span key={p} className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 text-[10px]">{permissionLabel(p)}</span>)}
+                    {grant.permissions.map(p => <span key={p} className="px-2 py-0.5 rounded-full bg-surface-muted text-fg text-xs">{permissionLabel(p)}</span>)}
                   </div>
                 </div>
               ))}
@@ -245,26 +246,26 @@ const ExpensesReadOnly: React.FC<{ societyId: string }> = ({ societyId }) => {
   return (
     <div className="space-y-3 text-xs">
       <div className="grid grid-cols-2 gap-3">
-        <div className="p-3 rounded-2xl bg-slate-900 border border-slate-800"><div className="text-slate-400">GST on approved bills</div><div className="text-base font-bold text-white">{formatINR(totals.gst)}</div></div>
-        <div className="p-3 rounded-2xl bg-slate-900 border border-slate-800"><div className="text-slate-400">TDS deducted</div><div className="text-base font-bold text-white">{formatINR(totals.tds)}</div></div>
+        <div className="p-3 rounded-xl bg-surface border border-border"><div className="text-fg-muted">GST on approved bills</div><div className="text-base font-semibold text-fg">{formatINR(totals.gst)}</div></div>
+        <div className="p-3 rounded-xl bg-surface border border-border"><div className="text-fg-muted">TDS deducted</div><div className="text-base font-semibold text-fg">{formatINR(totals.tds)}</div></div>
       </div>
-      <div className="rounded-2xl bg-slate-900 border border-slate-800 overflow-x-auto">
+      <div className="rounded-xl bg-surface border border-border overflow-x-auto">
         <table className="w-full text-left">
-          <thead className="bg-slate-950 text-slate-400">
+          <thead className="bg-canvas text-fg-muted">
             <tr><th className="p-2">No.</th><th className="p-2">Vendor / GSTIN</th><th className="p-2">Invoice</th><th className="p-2 text-right">Taxable</th><th className="p-2 text-right">GST</th><th className="p-2 text-right">TDS</th><th className="p-2">Status</th></tr>
           </thead>
-          <tbody className="divide-y divide-slate-800 text-slate-300">
+          <tbody className="divide-y divide-border text-fg">
             {rows.map(r => (
               <tr key={r.id}>
-                <td className="p-2 font-mono">{r.expense_number}{r.voucher_number && <div className="text-[10px] text-slate-500">{r.voucher_number}</div>}</td>
-                <td className="p-2"><div className="text-white">{r.vendors?.name ?? r.payee_name ?? '—'}</div><div className="font-mono text-[10px] text-slate-500">{r.vendors?.gstin ?? 'No GSTIN'}</div></td>
+                <td className="p-2 font-mono">{r.expense_number}{r.voucher_number && <div className="text-xs text-fg-subtle">{r.voucher_number}</div>}</td>
+                <td className="p-2"><div className="text-fg">{r.vendors?.name ?? r.payee_name ?? '—'}</div><div className="font-mono text-xs text-fg-subtle">{r.vendors?.gstin ?? 'No GSTIN'}</div></td>
                 <td className="p-2">
-                  {r.invoice_status === 'none' ? 'No invoice (voucher)' : r.invoice_status === 'pending' ? <span className="text-amber-300">Invoice pending</span> : r.invoice_number ?? '—'}
-                  <div className="text-slate-500">{r.invoice_date ?? ''}{r.expense_type === 'capital' ? ' · asset' : ''}</div>
+                  {r.invoice_status === 'none' ? 'No invoice (voucher)' : r.invoice_status === 'pending' ? <span className="text-warning">Invoice pending</span> : r.invoice_number ?? '—'}
+                  <div className="text-fg-subtle">{r.invoice_date ?? ''}{r.expense_type === 'capital' ? ' · asset' : ''}</div>
                 </td>
                 <td className="p-2 text-right">{formatINR(r.subtotal)}</td>
-                <td className="p-2 text-right">{formatINR(r.gst_amount)}{r.gst_claimable && <div className="text-[10px] text-emerald-400">ITC</div>}</td>
-                <td className="p-2 text-right">{formatINR(r.tds_amount)}{r.tds_section && <div className="text-[10px] text-slate-500">{r.tds_section} {r.tds_rate}%</div>}{r.tds_override_reason && <div className="text-[10px] text-amber-300" title={r.tds_override_reason}>changed</div>}</td>
+                <td className="p-2 text-right">{formatINR(r.gst_amount)}{r.gst_claimable && <div className="text-xs text-success">ITC</div>}</td>
+                <td className="p-2 text-right">{formatINR(r.tds_amount)}{r.tds_section && <div className="text-xs text-fg-subtle">{r.tds_section} {r.tds_rate}%</div>}{r.tds_override_reason && <div className="text-xs text-warning" title={r.tds_override_reason}>changed</div>}</td>
                 <td className="p-2 capitalize">{r.payment_status === 'partial' && r.status === 'approved' ? 'part paid' : r.status.replace('_', ' ')}</td>
               </tr>
             ))}
