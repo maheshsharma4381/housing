@@ -69,13 +69,13 @@ export const ResidentTickets: React.FC<ResidentTicketsProps> = ({ societyId, uni
     onChanged();
   };
 
-  const inputClass = 'w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-sky-500';
+  const inputClass = 'w-full bg-surface border border-border-strong rounded-lg px-3 py-2 text-fg outline-none focus:border-brand';
 
   return (
     <div className="space-y-4 text-xs">
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-bold text-white">My Helpdesk Tickets</h2>
-        <button onClick={() => setShowForm(v => !v)} className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold cursor-pointer">
+        <h2 className="text-base font-semibold text-fg">My Helpdesk Tickets</h2>
+        <button onClick={() => setShowForm(v => !v)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold cursor-pointer">
           {showForm ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
           <span>{showForm ? 'Close' : 'New Ticket'}</span>
         </button>
@@ -83,7 +83,7 @@ export const ResidentTickets: React.FC<ResidentTicketsProps> = ({ societyId, uni
       <Banner tone="success">{notice}</Banner>
 
       {showForm && (
-        <form onSubmit={submit} className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
+        <form onSubmit={submit} className="p-4 rounded-xl bg-surface border border-border space-y-3">
           <Banner tone="error">{error}</Banner>
           <div className="grid grid-cols-2 gap-2">
             <select value={category} onChange={e => setCategory(e.target.value as Complaint['category'])} className={inputClass}>
@@ -98,7 +98,7 @@ export const ResidentTickets: React.FC<ResidentTicketsProps> = ({ societyId, uni
           </div>
           <input value={title} onChange={e => setTitle(e.target.value)} maxLength={191} placeholder="Short title, e.g. Water leaking from ceiling" className={inputClass} />
           <textarea rows={4} value={description} onChange={e => setDescription(e.target.value)} placeholder="Details: where, since when, best time to visit…" className={inputClass} />
-          <button type="submit" disabled={saving} className="w-full py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50">
+          <button type="submit" disabled={saving} className="w-full py-2.5 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} Raise Ticket
           </button>
         </form>
@@ -108,17 +108,17 @@ export const ResidentTickets: React.FC<ResidentTicketsProps> = ({ societyId, uni
         <EmptyState icon={MessageSquare} title="No Tickets Yet" description="Raise a ticket for plumbing, electrical, lift or parking issues." />
       ) : (
         complaints.map(c => (
-          <div key={c.id} className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
+          <div key={c.id} className="p-4 rounded-xl bg-surface border border-border">
             <button onClick={() => setOpenId(openId === c.id ? null : c.id)} className="w-full flex items-center justify-between gap-2 text-left cursor-pointer">
               <div className="min-w-0">
-                <div className="font-mono text-[11px] text-slate-400">{c.ticket_number} • {new Date(c.created_at).toLocaleDateString('en-IN')}</div>
-                <h4 className="font-bold text-white text-sm truncate">{c.title}</h4>
+                <div className="font-mono text-xs text-fg-muted">{c.ticket_number} • {new Date(c.created_at).toLocaleDateString('en-IN')}</div>
+                <h4 className="font-semibold text-fg text-sm truncate">{c.title}</h4>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-semibold ${
-                  c.status === 'resolved' || c.status === 'closed' ? 'bg-emerald-500/10 text-emerald-300' : 'bg-amber-500/10 text-amber-300'
+                <span className={`px-2 py-0.5 rounded-full text-xs uppercase font-semibold ${
+                  c.status === 'resolved' || c.status === 'closed' ? 'bg-success-soft text-success' : 'bg-warning-soft text-warning'
                 }`}>{c.status.replace('_', ' ')}</span>
-                {openId === c.id ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+                {openId === c.id ? <ChevronUp className="w-4 h-4 text-fg-muted" /> : <ChevronDown className="w-4 h-4 text-fg-muted" />}
               </div>
             </button>
             {openId === c.id && <ComplaintThread complaint={c} currentUserId={userId} canManage={false} onChanged={onChanged} />}

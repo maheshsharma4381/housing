@@ -23,13 +23,55 @@ import {
   Vote,
   IdCard,
   FileSignature,
+  ClipboardPaste,
+  QrCode,
+  Menu,
+  ChevronRight,
+  X,
 } from 'lucide-react';
+import { formatINR } from '../../lib/inr';
+import { Banner } from '../../components/Banner';
+import { LogoMark } from '../../components/ui/Logo';
+import { Button, IconButton, buttonClass } from '../../components/ui/Button';
+import { Card, CardHeader } from '../../components/ui/Card';
+import { Badge, StatusBadge, type BadgeTone } from '../../components/ui/Badge';
+import { PageHeader } from '../../components/ui/PageHeader';
+import { fieldClass } from '../../components/ui/Field';
+import { cn } from '../../components/ui/cn';
 import { SignOutMenu } from '../../components/SignOutMenu';
 import { FlatStatement } from '../../components/FlatStatement';
 import { PWAInstallButton } from '../../components/PWAInstallButton';
 import { PollsList } from '../../components/PollsList';
 import { StaffRegister } from '../../components/StaffRegister';
 import { MyRequests } from '../../components/MyRequests';
+
+const RESIDENT_TABS = ['overview', 'bills', 'account', 'notices', 'polls', 'staff', 'requests', 'complaints', 'documents'] as const;
+type ResidentTab = typeof RESIDENT_TABS[number];
+
+const TAB_META: Record<ResidentTab, { label: string; Icon: React.ComponentType<{ className?: string }>; ownerOnly?: boolean }> = {
+  overview: { label: 'Home', Icon: Home },
+  bills: { label: 'Bills', Icon: Receipt, ownerOnly: true },
+  account: { label: 'My account', Icon: BookOpen, ownerOnly: true },
+  notices: { label: 'Notices', Icon: FileText },
+  complaints: { label: 'Complaints', Icon: MessageSquare },
+  requests: { label: 'Requests', Icon: FileSignature },
+  polls: { label: 'Polls', Icon: Vote },
+  staff: { label: 'Staff', Icon: IdCard },
+  documents: { label: 'Documents', Icon: FolderLock },
+};
+
+const fmtDate = (iso?: string | null) => (iso
+  ? new Date(`${iso.slice(0, 10)}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
+  : '');
+
+const BILL_BADGE: Record<Bill['status'], { label: string; tone: BadgeTone }> = {
+  draft: { label: 'Draft', tone: 'neutral' },
+  issued: { label: 'Due', tone: 'warning' },
+  partially_paid: { label: 'Part paid', tone: 'warning' },
+  paid: { label: 'Paid', tone: 'success' },
+  overdue: { label: 'Overdue', tone: 'danger' },
+  cancelled: { label: 'Cancelled', tone: 'neutral' },
+};
 
 const OUTSTANDING_STATUSES: Bill['status'][] = ['issued', 'partially_paid', 'overdue'];
 const UTR_PATTERN = /^\d{12}$/;
@@ -48,7 +90,6 @@ function buildUpiLink(settings: Pick<SocietySetting, 'upi_id' | 'upi_payee_name'
 export const ResidentDashboardPage: React.FC = () => {
   const {
     user,
-    profile,
     activeSociety,
     societyMemberships,
   } = useAuth();
@@ -62,13 +103,27 @@ export const ResidentDashboardPage: React.FC = () => {
     : flatMemberships[0]?.unit_id ?? null;
   const [flatNumbers, setFlatNumbers] = useState<Record<string, string>>({});
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'bills' | 'account' | 'notices' | 'polls' | 'staff' | 'requests' | 'complaints' | 'documents' | 'profile'>('overview');
+  const [activeTab, setActiveTabState] = useState<ResidentTab>('overview');
+  const [showMore, setShowMore] = useState(false);
+  // the URL keeps your place: refresh, back and a shared link open this screen (brief section 7)
+  const setActiveTab = useCallback((tab: ResidentTab) => {
+    setActiveTabState(tab);
+    setShowMore(false);
+    const url = new URL(window.location.href);
+    if (tab === 'overview') url.searchParams.delete('tab');
+    else url.searchParams.set('tab', tab);
+    window.history.replaceState(window.history.state, '', url);
+  }, []);
+  useEffect(() => {
+    const wanted = new URLSearchParams(window.location.search).get('tab');
+    if (wanted && (RESIDENT_TABS as readonly string[]).includes(wanted)) setActiveTabState(wanted as ResidentTab);
+  }, []);
   // Tenants see no bills, dues or ledger (spec 10.2): owners pay
   const isOwner = flatMemberships.find(m => m.unit_id === unitId)?.role === 'resident_owner';
   // a flat switched to one they rent: leave the owner-only tabs
   useEffect(() => {
     if (!isOwner && (activeTab === 'bills' || activeTab === 'account')) setActiveTab('overview');
-  }, [isOwner, activeTab]);
+  }, [isOwner, activeTab, setActiveTab]);
   const [myBills, setMyBills] = useState<Bill[]>([]);
   const [myPayments, setMyPayments] = useState<Payment[]>([]);
   const [societyNotices, setSocietyNotices] = useState<Notice[]>([]);
@@ -161,7 +216,7 @@ export const ResidentDashboardPage: React.FC = () => {
   const handleUtrSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setPayError(null);
-    const utr = utrNumber.trim();
+    const utr = utrNumber.replace(/\D/g, '');
     if (!user || !activeSociety || !supabase) return;
 
     if (!unitId) {
@@ -212,337 +267,276 @@ export const ResidentDashboardPage: React.FC = () => {
     }
   };
 
-  return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 pb-20 md:pb-8">
-      {/* Mobile Top Header */}
-      <div className="bg-slate-900 border-b border-slate-800 px-4 py-4">
-        <div className="max-w-md mx-auto flex items-center justify-between">
-          <div>
-            <div className="text-[11px] font-semibold text-sky-400 uppercase tracking-wide">
-              {activeSociety?.name || 'Resident Portal'}
-            </div>
-            <h1 className="text-base font-bold text-white mt-0.5">
-              {profile?.full_name}
-            </h1>
-            {flatMemberships.length > 1 ? (
-              <select
-                value={unitId ?? ''}
-                onChange={e => setSelectedUnitId(e.target.value)}
-                className="mt-0.5 bg-slate-950 border border-slate-700 rounded-lg px-2 py-0.5 text-[11px] text-white outline-none"
-                aria-label="Select flat"
-              >
-                {flatMemberships.map(m => (
-                  <option key={m.unit_id as string} value={m.unit_id as string}>
-                    Flat {flatNumbers[m.unit_id as string] ?? '…'}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <div className="text-[11px] text-slate-400">
-                {myUnit ? `Flat ${myUnit.unit_number} (${myUnit.unit_type})` : 'No flat linked yet — ask your secretary'}
-              </div>
-            )}
-          </div>
+  // the oldest unpaid due date leads (brief J1: "You owe ₹X, due 10 Dec")
+  const nextDue = [...outstandingBills].sort((a, b) => a.due_date.localeCompare(b.due_date))[0];
+  const overdue = outstandingBills.some(b => b.status === 'overdue');
+  const tabs = RESIDENT_TABS.filter(t => isOwner || !TAB_META[t].ownerOnly);
+  const phoneBar: ResidentTab[] = isOwner ? ['overview', 'bills', 'notices', 'complaints'] : ['overview', 'notices', 'complaints', 'requests'];
+  const roleLabel = flatMemberships.find(m => m.unit_id === unitId)?.role === 'resident_tenant' ? 'Tenant' : 'Owner';
 
-          <div className="flex items-center gap-2 shrink-0">
+  const pasteUtr = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      setUtrNumber(text.replace(/\D/g, '').slice(0, 12));
+    } catch {
+      setPayError('Paste did not work on this phone: type the UTR instead.');
+    }
+  };
+
+  const utrForm = (id: string) => (
+    <form onSubmit={handleUtrSubmit} className="space-y-2.5">
+      <label htmlFor={id} className="block text-sm font-semibold text-fg">Paid already? Enter the UTR</label>
+      <div className="flex gap-2">
+        <input
+          id={id}
+          type="text"
+          inputMode="numeric"
+          autoComplete="off"
+          placeholder="12-digit UTR from your UPI app"
+          value={utrNumber}
+          onChange={e => setUtrNumber(e.target.value.replace(/[^\d\s-]/g, '').slice(0, 16))}
+          className={cn(fieldClass, 'h-11 font-mono tracking-wide')}
+        />
+        <Button type="button" variant="secondary" className="h-11" onClick={pasteUtr} leftIcon={<ClipboardPaste className="w-4 h-4" />}>Paste</Button>
+      </div>
+      <Banner tone="error">{payError}</Banner>
+      <Button type="submit" className="w-full h-11" loading={submittingUtr} disabled={utrNumber.replace(/\D/g, '').length !== 12}>
+        Submit UTR
+      </Button>
+      <p className="text-xs text-fg-subtle">The treasurer matches it with the bank, then your receipt comes here.</p>
+    </form>
+  );
+
+  return (
+    <div className="min-h-screen bg-canvas text-fg text-sm pb-[calc(4.75rem+env(safe-area-inset-bottom))] md:pb-10">
+      {/* Top bar */}
+      <header className="sticky top-0 z-30 bg-surface/95 backdrop-blur-md border-b border-border print:hidden">
+        <div className="max-w-2xl mx-auto px-4 py-2.5 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <LogoMark size={32} />
+            <div className="min-w-0">
+              <div className="text-[15px] font-semibold text-fg truncate">{activeSociety?.name || 'My society'}</div>
+              {flatMemberships.length > 1 ? (
+                <select
+                  value={unitId ?? ''}
+                  onChange={e => setSelectedUnitId(e.target.value)}
+                  className="-ml-1 bg-transparent text-xs text-fg-muted outline-none cursor-pointer"
+                  aria-label="Select flat"
+                >
+                  {flatMemberships.map(m => (
+                    <option key={m.unit_id as string} value={m.unit_id as string}>
+                      Flat {flatNumbers[m.unit_id as string] ?? '…'}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <div className="text-xs text-fg-subtle truncate">
+                  {myUnit ? `Flat ${myUnit.unit_number} · ${roleLabel}` : 'No flat linked yet: ask your secretary'}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
             {/* the installable app (spec: the PWA is the mobile app) */}
             <PWAInstallButton />
             <NotificationBell onOpen={(link) => {
-              if (link === 'bills' || link === 'payments') setActiveTab('bills');
+              if (link === 'bills' || link === 'payments') setActiveTab(isOwner ? 'bills' : 'overview');
               else if (link === 'notices' || link === 'complaints' || link === 'polls' || link === 'requests') setActiveTab(link);
             }} />
             <SignOutMenu />
           </div>
         </div>
-      </div>
-
-      {/* Main Resident Container */}
-      <div className="max-w-md mx-auto px-4 mt-6 space-y-6">
-        {/* Outstanding Banner (owners only) */}
-        {isOwner && (
-        <div className="p-5 rounded-3xl bg-gradient-to-br from-sky-600 to-sky-800 text-white shadow-xl shadow-sky-900/30 flex items-center justify-between">
-          <div>
-            <div className="text-xs font-medium text-sky-200">Current Outstanding Due</div>
-            <div className="text-2xl font-black mt-0.5">
-              ₹{outstandingTotal.toLocaleString('en-IN')}
-            </div>
-            <div className="text-[11px] text-sky-200 mt-1">
-              Flat {myUnit?.unit_number || 'Unit'}
-            </div>
+        {/* laptop: every screen as a tab row */}
+        <nav aria-label="Resident" className="hidden md:block border-t border-border">
+          <div className="max-w-2xl mx-auto px-2 flex gap-1 overflow-x-auto">
+            {tabs.map(t => {
+              const { label, Icon } = TAB_META[t];
+              const on = activeTab === t;
+              return (
+                <button key={t} onClick={() => setActiveTab(t)} aria-current={on ? 'page' : undefined}
+                  className={cn('flex items-center gap-1.5 px-3 h-11 border-b-2 text-sm whitespace-nowrap cursor-pointer',
+                    on ? 'border-brand text-brand-ink font-semibold' : 'border-transparent text-fg-muted hover:text-fg')}>
+                  <Icon className="w-4 h-4" /> {label}
+                </button>
+              );
+            })}
           </div>
+        </nav>
+      </header>
 
-          {outstandingTotal > 0 ? (
-            <button
-              onClick={() => setShowPayModal(true)}
-              className="palette-native px-4 py-2.5 rounded-xl bg-white text-sky-950 font-bold text-xs shadow-md active:scale-95 transition cursor-pointer"
-            >
-              Pay via UPI
-            </button>
-          ) : (
-            <span className="px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-200 text-xs font-semibold flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5" /> All Clear
-            </span>
-          )}
-        </div>
+      <main className="max-w-2xl mx-auto px-4 pt-5 space-y-4">
+        {/* HOME */}
+        {activeTab === 'overview' && (
+          <>
+            {isOwner && (
+              <Card className="p-5 space-y-1 rounded-xl">
+                {outstandingTotal > 0 ? (
+                  <>
+                    <div className="text-[13px] text-fg-muted">{payingBill ? `Bill ${payingBill.bill_number}` : `${outstandingBills.length} unpaid bills`}</div>
+                    <div className="text-[34px] leading-[42px] font-semibold tracking-tight tabular-nums">{formatINR(outstandingTotal)}</div>
+                    {nextDue && (
+                      <Badge tone={overdue ? 'danger' : 'warning'} dot className="mt-1">
+                        {overdue ? 'Overdue since' : 'Due'} {fmtDate(nextDue.due_date)}
+                      </Badge>
+                    )}
+                    {/* one tap to the UPI app with the amount filled in (brief J1) */}
+                    {upiLink ? (
+                      <>
+                        <a href={upiLink} className={buttonClass('primary', 'lg', 'w-full mt-4 md:hidden')}>Pay {formatINR(outstandingTotal)} via UPI</a>
+                        <Button size="lg" className="w-full mt-4 hidden md:flex" onClick={() => setShowPayModal(true)} leftIcon={<QrCode className="w-5 h-5" />}>
+                          Pay {formatINR(outstandingTotal)}: show UPI QR
+                        </Button>
+                        <button type="button" onClick={() => setShowPayModal(true)} className="w-full mt-2 text-xs text-fg-subtle md:hidden cursor-pointer">
+                          Paying from another phone? <span className="text-brand font-medium">Show the QR code</span>
+                        </button>
+                      </>
+                    ) : (
+                      <Button size="lg" className="w-full mt-4" onClick={() => setShowPayModal(true)}>How to pay {formatINR(outstandingTotal)}</Button>
+                    )}
+                  </>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <span className="w-11 h-11 rounded-full bg-success-soft text-success flex items-center justify-center shrink-0"><CheckCircle2 className="w-6 h-6" aria-hidden="true" /></span>
+                    <div>
+                      <div className="text-base font-semibold">All paid</div>
+                      <div className="text-[13px] text-fg-muted">Nothing is due for flat {myUnit?.unit_number ?? ''}. Thank you.</div>
+                    </div>
+                  </div>
+                )}
+              </Card>
+            )}
+
+            {submittedUtrSuccess && (
+              <div role="status" className="p-4 rounded-xl bg-success-soft border border-success/20 text-success flex items-start gap-3">
+                <CheckCircle2 className="w-5 h-5 shrink-0 mt-px" aria-hidden="true" />
+                <div className="text-[13px]">
+                  <div className="font-semibold">Payment sent for verification</div>
+                  UTR <span className="font-mono">{submittedUtrSuccess}</span> is with the treasurer. Your receipt appears below once it is verified.
+                </div>
+              </div>
+            )}
+
+            {isOwner && outstandingTotal > 0 && <Card className="p-4">{utrForm('utr')}</Card>}
+
+            <div className="grid grid-cols-2 gap-3">
+              <button type="button" onClick={() => setActiveTab('complaints')}
+                className="flex flex-col items-start gap-2 p-4 min-h-11 rounded-xl bg-surface border border-border shadow-card text-left font-medium cursor-pointer hover:border-border-strong">
+                <MessageSquare className="w-5 h-5 text-brand" aria-hidden="true" /> Raise a complaint
+              </button>
+              <button type="button" onClick={() => setActiveTab('requests')}
+                className="flex flex-col items-start gap-2 p-4 min-h-11 rounded-xl bg-surface border border-border shadow-card text-left font-medium cursor-pointer hover:border-border-strong">
+                <FileSignature className="w-5 h-5 text-brand" aria-hidden="true" /> Ask for an NOC
+              </button>
+            </div>
+
+            {isOwner && latestBill && (
+              <Link href={`/bill/${latestBill.id}`} className="flex items-center justify-between gap-3 p-4 rounded-xl bg-surface border border-border shadow-card hover:border-border-strong">
+                <div className="min-w-0">
+                  <div className="text-[13px] text-fg-muted">Latest bill · {latestBill.bill_number}</div>
+                  <div className="font-semibold tabular-nums">{formatINR(Number(latestBill.total_amount))}</div>
+                </div>
+                <span className="text-[13px] font-medium text-brand">View bill →</span>
+              </Link>
+            )}
+
+            {/* Payments (owners only: tenants see no money, spec 10.2) */}
+            {isOwner && (
+              <Card>
+                <CardHeader title="My payments" />
+                {myPayments.length === 0 && !loading ? (
+                  <p className="px-5 py-4 text-fg-muted">No payments yet.</p>
+                ) : (
+                  <ul className="divide-y divide-border">
+                    {myPayments.map(p => (
+                      <li key={p.id} className="px-4 sm:px-5 py-3 flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="font-semibold tabular-nums">{formatINR(Number(p.amount))}</div>
+                          <div className="text-xs text-fg-subtle">UTR {p.transaction_reference_utr} · {fmtDate(p.payment_date)}</div>
+                          {p.status === 'rejected' && p.verification_notes && <div className="text-xs text-danger mt-0.5">Rejected: {p.verification_notes}</div>}
+                        </div>
+                        <div className="text-right space-y-1 shrink-0">
+                          <StatusBadge status={p.status === 'pending_verification' ? 'pending' : p.status} label={p.status === 'pending_verification' ? 'Being checked' : undefined} />
+                          {p.status === 'verified' && <Link href={`/receipt/${p.id}`} className="block text-xs text-brand hover:underline">Receipt</Link>}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Card>
+            )}
+
+            <Card>
+              <CardHeader title="Notices" actions={<Button variant="link" size="sm" onClick={() => setActiveTab('notices')}>See all</Button>} />
+              {societyNotices.length === 0 ? (
+                <p className="px-5 py-4 text-fg-muted">Nothing new from the committee.</p>
+              ) : (
+                <ul className="divide-y divide-border">
+                  {societyNotices.slice(0, 2).map(n => (
+                    <li key={n.id} className="px-4 sm:px-5 py-3 space-y-0.5">
+                      <div className="font-semibold">{n.title}</div>
+                      <div className="text-[13px] text-fg-muted line-clamp-2">{n.content}</div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
+            {activeSociety && <SponsoredCard societyId={activeSociety.id} placement="home_feed" />}
+          </>
         )}
 
-        {submittedUtrSuccess && (
-          <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-300 flex items-start gap-2.5">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-            <div>
-              <span className="font-semibold text-white">Payment Submission Recorded!</span>
-              <p className="mt-0.5 text-emerald-300">
-                UTR <strong className="font-mono text-white">{submittedUtrSuccess}</strong> submitted to society treasurer for bank statement reconciliation.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Navigation Tabs */}
-        <div className={`grid ${isOwner ? 'grid-cols-5 sm:grid-cols-9' : 'grid-cols-4 sm:grid-cols-7'} gap-2 text-center text-xs`}>
-          <button
-            onClick={() => setActiveTab('overview')}
-            className={`p-2.5 rounded-xl border transition cursor-pointer ${
-              activeTab === 'overview' 
-                ? 'bg-sky-600/20 border-sky-500 text-sky-400 font-bold' 
-                : 'bg-slate-900 border-slate-800 text-slate-400'
-            }`}
-          >
-            <Home className="w-4 h-4 mx-auto mb-1" />
-            <span>Home</span>
-          </button>
-
-          {isOwner && (
-          <button
-            onClick={() => setActiveTab('bills')}
-            className={`p-2.5 rounded-xl border transition cursor-pointer ${
-              activeTab === 'bills' 
-                ? 'bg-sky-600/20 border-sky-500 text-sky-400 font-bold' 
-                : 'bg-slate-900 border-slate-800 text-slate-400'
-            }`}
-          >
-            <Receipt className="w-4 h-4 mx-auto mb-1" />
-            <span>Bills</span>
-          </button>
-          )}
-          {isOwner && (
-          <button
-            onClick={() => setActiveTab('account')}
-            className={`p-2.5 rounded-xl border transition cursor-pointer ${
-              activeTab === 'account' 
-                ? 'bg-sky-600/20 border-sky-500 text-sky-400 font-bold' 
-                : 'bg-slate-900 border-slate-800 text-slate-400'
-            }`}
-          >
-            <BookOpen className="w-4 h-4 mx-auto mb-1" />
-            <span>My account</span>
-          </button>
-          )}
-
-          <button
-            onClick={() => setActiveTab('notices')}
-            className={`p-2.5 rounded-xl border transition cursor-pointer ${
-              activeTab === 'notices' 
-                ? 'bg-sky-600/20 border-sky-500 text-sky-400 font-bold' 
-                : 'bg-slate-900 border-slate-800 text-slate-400'
-            }`}
-          >
-            <FileText className="w-4 h-4 mx-auto mb-1" />
-            <span>Notices</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('polls')}
-            className={`p-2.5 rounded-xl border transition cursor-pointer ${
-              activeTab === 'polls'
-                ? 'bg-sky-600/20 border-sky-500 text-sky-400 font-bold'
-                : 'bg-slate-900 border-slate-800 text-slate-400'
-            }`}
-          >
-            <Vote className="w-4 h-4 mx-auto mb-1" />
-            <span>Polls</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('staff')}
-            className={`p-2.5 rounded-xl border transition cursor-pointer ${
-              activeTab === 'staff'
-                ? 'bg-sky-600/20 border-sky-500 text-sky-400 font-bold'
-                : 'bg-slate-900 border-slate-800 text-slate-400'
-            }`}
-          >
-            <IdCard className="w-4 h-4 mx-auto mb-1" />
-            <span>Staff</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('requests')}
-            className={`p-2.5 rounded-xl border transition cursor-pointer ${
-              activeTab === 'requests'
-                ? 'bg-sky-600/20 border-sky-500 text-sky-400 font-bold'
-                : 'bg-slate-900 border-slate-800 text-slate-400'
-            }`}
-          >
-            <FileSignature className="w-4 h-4 mx-auto mb-1" />
-            <span>Requests</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('complaints')}
-            className={`p-2.5 rounded-xl border transition cursor-pointer ${
-              activeTab === 'complaints' 
-                ? 'bg-sky-600/20 border-sky-500 text-sky-400 font-bold' 
-                : 'bg-slate-900 border-slate-800 text-slate-400'
-            }`}
-          >
-            <MessageSquare className="w-4 h-4 mx-auto mb-1" />
-            <span>Tickets</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('documents')}
-            className={`p-2.5 rounded-xl border transition cursor-pointer ${
-              activeTab === 'documents'
-                ? 'bg-sky-600/20 border-sky-500 text-sky-400 font-bold'
-                : 'bg-slate-900 border-slate-800 text-slate-400'
-            }`}
-          >
-            <FolderLock className="w-4 h-4 mx-auto mb-1" />
-            <span>Docs</span>
-          </button>
-        </div>
-
-        {/* TAB 1: OVERVIEW */}
         {activeTab === 'account' && isOwner && unitId && activeSociety && (
           <FlatStatement unitId={unitId} societyName={activeSociety.name} />
         )}
 
-        {activeTab === 'overview' && (
-          <div className="space-y-4">
-            {isOwner && latestBill && (
-              <Link href={`/bill/${latestBill.id}`} className="block p-4 rounded-2xl bg-slate-900 border border-slate-800 text-xs hover:border-sky-500">
-                <div className="text-slate-400">Latest bill · {latestBill.bill_number}</div>
-                <div className="flex items-baseline justify-between">
-                  <strong className="text-white text-sm">₹{Number(latestBill.total_amount).toLocaleString('en-IN')}</strong>
-                  <span className="text-sky-400">View bill →</span>
-                </div>
-              </Link>
-            )}
-            {/* Account History / Payments (owners only: tenants see no money, spec 10.2) */}
-            <div className={`${isOwner ? '' : 'hidden '}p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-3 text-xs`}>
-              <h3 className="font-bold text-white text-sm">Account Payment History</h3>
-              {myPayments.length === 0 && !loading ? (
-                <p className="text-slate-400 text-xs">No payment records found.</p>
-              ) : (
-                <div className="space-y-2">
-                  {myPayments.map(p => (
-                    <div key={p.id} className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
-                      <div>
-                        <div className="font-bold text-white">₹{Number(p.amount).toLocaleString('en-IN')}</div>
-                        <div className="text-[11px] font-mono text-slate-400">UTR: {p.transaction_reference_utr}</div>
-                        <div className="text-[10px] text-slate-500">{p.payment_date}</div>
-                        {p.status === 'rejected' && p.verification_notes && (
-                          <div className="text-[11px] text-rose-300 mt-0.5">Rejected: {p.verification_notes}</div>
-                        )}
-                      </div>
-                      <div className="text-right space-y-1">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-semibold ${
-                          p.status === 'verified' ? 'bg-emerald-500/10 text-emerald-400'
-                            : p.status === 'rejected' ? 'bg-rose-500/10 text-rose-300'
-                            : 'bg-amber-500/10 text-amber-300'
-                        }`}>
-                          {p.status.replace('_', ' ')}
-                        </span>
-                        {p.status === 'verified' && (
-                          <Link href={`/receipt/${p.id}`} className="block text-[11px] text-sky-400 hover:underline">
-                            View receipt
-                          </Link>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Circulars snippet */}
-            <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-3 text-xs">
-              <div className="flex items-center justify-between">
-                <h3 className="font-bold text-white text-sm">Society Circulars</h3>
-                <button onClick={() => setActiveTab('notices')} className="text-xs text-sky-400">
-                  View all
-                </button>
-              </div>
-              {societyNotices.slice(0, 2).map(n => (
-                <div key={n.id} className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
-                  <div className="font-bold text-white">{n.title}</div>
-                  <div className="text-slate-400 line-clamp-2">{n.content}</div>
-                </div>
-              ))}
-              {activeSociety && <SponsoredCard societyId={activeSociety.id} placement="home_feed" />}
-            </div>
-          </div>
-        )}
-
-        {/* TAB 2: BILLS */}
+        {/* BILLS */}
         {activeTab === 'bills' && isOwner && (
-          <div className="space-y-3 text-xs">
-            <h2 className="text-base font-bold text-white">My Maintenance Bills</h2>
+          <div className="space-y-4">
+            <PageHeader title="My bills" description={myUnit ? `Flat ${myUnit.unit_number}` : undefined} />
             {myBills.length === 0 && !loading ? (
-              <EmptyState
-                icon={Receipt}
-                title="No Bills Issued"
-                description="There are currently no maintenance bills issued for your unit."
-              />
+              <EmptyState icon={Receipt} title="No bills yet" description="Your society has not issued a maintenance bill for your flat yet." />
             ) : (
-              myBills.map(b => (
-                <div key={b.id} className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Link href={`/bill/${b.id}`} className="font-mono text-sky-400 hover:underline">{b.bill_number}</Link>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] uppercase font-semibold bg-slate-800 text-slate-300">
-                      {b.status}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-baseline pt-1">
-                    <div>
-                      <div className="text-slate-400">Bill Date: {b.bill_date}</div>
-                      <div className="font-bold text-white text-sm">Total: ₹{Number(b.total_amount).toLocaleString('en-IN')}</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-slate-400">Due: {b.due_date}</div>
-                      <div className="font-bold text-sky-400 text-sm">Balance: ₹{Number(b.balance_due).toLocaleString('en-IN')}</div>
-                    </div>
-                  </div>
-                </div>
-              ))
+              <Card>
+                <ul className="divide-y divide-border">
+                  {myBills.map(b => (
+                    <li key={b.id}>
+                      <Link href={`/bill/${b.id}`} className="px-4 sm:px-5 py-3.5 flex items-center justify-between gap-3 hover:bg-canvas">
+                        <div className="min-w-0">
+                          <div className="font-semibold">{b.bill_number}</div>
+                          <div className="text-xs text-fg-subtle">Billed {fmtDate(b.bill_date)} · due {fmtDate(b.due_date)}</div>
+                        </div>
+                        <div className="text-right space-y-1 shrink-0">
+                          <div className="font-semibold tabular-nums">{formatINR(Number(b.balance_due) > 0 ? Number(b.balance_due) : Number(b.total_amount))}</div>
+                          <Badge tone={BILL_BADGE[b.status].tone} dot>{BILL_BADGE[b.status].label}</Badge>
+                        </div>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
             )}
           </div>
         )}
 
-        {/* TAB 3: NOTICES */}
+        {/* NOTICES */}
         {activeTab === 'notices' && (
-          <div className="space-y-3 text-xs">
-            <h2 className="text-base font-bold text-white">Society Notices & Circulars</h2>
+          <div className="space-y-4">
+            <PageHeader title="Notices" />
             {societyNotices.length === 0 && !loading ? (
-              <EmptyState
-                icon={FileText}
-                title="Notice Board Empty"
-                description="No notices have been published by the managing committee yet."
-              />
+              <EmptyState icon={FileText} title="No notices yet" description="Notices from your committee show up here, and you get a notification." />
             ) : (
               societyNotices.map(n => (
-                <div key={n.id} className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-1.5">
-                  <div className="text-[10px] text-slate-400 font-mono">{new Date(n.published_at).toLocaleDateString()}</div>
-                  <h4 className="font-bold text-white text-sm">{n.title}</h4>
-                  <p className="text-slate-300 leading-relaxed">{n.content}</p>
-                </div>
+                <Card key={n.id} as="article" className="p-4 sm:p-5 space-y-1.5">
+                  <div className="text-xs text-fg-subtle">{fmtDate(n.published_at)}</div>
+                  <h3 className="text-base font-semibold">{n.title}</h3>
+                  <p className="text-fg-muted leading-relaxed whitespace-pre-line">{n.content}</p>
+                </Card>
               ))
             )}
             {activeSociety && <SponsoredCard societyId={activeSociety.id} placement="notices" />}
           </div>
         )}
 
-        {/* TAB 4: COMPLAINTS */}
+        {/* COMPLAINTS */}
         {activeTab === 'complaints' && activeSociety && (
           <ResidentTickets
             societyId={activeSociety.id}
@@ -554,7 +548,6 @@ export const ResidentDashboardPage: React.FC = () => {
           />
         )}
 
-        {/* TAB 5: DOCUMENTS */}
         {activeTab === 'documents' && activeSociety && (
           <DocumentsVault societyId={activeSociety.id} canManage={false} />
         )}
@@ -572,76 +565,74 @@ export const ResidentDashboardPage: React.FC = () => {
         {activeTab === 'polls' && activeSociety && (
           <PollsList societyId={activeSociety.id} isCommittee={false} canManage={false} />
         )}
-      </div>
+      </main>
 
-      {/* Pay via UPI Modal */}
+      {/* Phone bottom bar */}
+      <nav aria-label="Resident" className="md:hidden print:hidden fixed bottom-0 inset-x-0 z-30 bg-surface/95 backdrop-blur-md border-t border-border px-1 pt-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom))] grid grid-cols-5">
+        {phoneBar.map(t => {
+          const { label, Icon } = TAB_META[t];
+          const on = activeTab === t && !showMore;
+          return (
+            <button key={t} onClick={() => setActiveTab(t)} aria-current={on ? 'page' : undefined}
+              className={cn('min-h-12 flex flex-col items-center justify-center gap-0.5 text-xs cursor-pointer', on ? 'text-brand font-semibold' : 'text-fg-subtle font-medium')}>
+              <Icon className="w-[22px] h-[22px]" />
+              <span>{label}</span>
+            </button>
+          );
+        })}
+        <button onClick={() => setShowMore(v => !v)} aria-expanded={showMore}
+          className={cn('min-h-12 flex flex-col items-center justify-center gap-0.5 text-xs cursor-pointer', showMore ? 'text-brand font-semibold' : 'text-fg-subtle font-medium')}>
+          <Menu className="w-[22px] h-[22px]" />
+          <span>More</span>
+        </button>
+      </nav>
+      {showMore && (
+        <div className="md:hidden fixed inset-0 z-20 bg-fg/40" onClick={() => setShowMore(false)}>
+          <div role="dialog" aria-label="All screens" onClick={e => e.stopPropagation()}
+            className="absolute bottom-[calc(3.75rem+env(safe-area-inset-bottom))] inset-x-0 rounded-t-2xl bg-surface border-t border-border shadow-pop px-3 pt-2 pb-3">
+            <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-border-strong" aria-hidden="true" />
+            {tabs.filter(t => !phoneBar.includes(t)).map(t => {
+              const { label, Icon } = TAB_META[t];
+              return (
+                <button key={t} onClick={() => setActiveTab(t)}
+                  className={cn('w-full min-h-12 flex items-center gap-3 px-3 rounded-lg text-left text-[15px] cursor-pointer',
+                    activeTab === t ? 'bg-brand-soft text-brand-ink font-semibold' : 'text-fg font-medium active:bg-surface-muted')}>
+                  <Icon className="w-5 h-5 text-fg-muted" />
+                  <span className="flex-1">{label}</span>
+                  <ChevronRight className="w-4 h-4 text-fg-subtle" />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Pay by QR (another phone, a laptop, or no UPI ID yet) */}
       {showPayModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-sm rounded-2xl bg-slate-900 p-6 border border-slate-800 text-xs text-slate-200 shadow-2xl space-y-4">
-            <h3 className="text-base font-bold text-white">Society UPI Payment</h3>
-            <p className="text-slate-400">
-              Scan with GPay, PhonePe, Paytm or BHIM, then enter the 12-digit UTR reference below.
-            </p>
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-fg/40 p-0 sm:p-4" onClick={() => setShowPayModal(false)}>
+          <div role="dialog" aria-modal="true" aria-labelledby="pay-title" onClick={e => e.stopPropagation()}
+            className="w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl bg-surface p-5 sm:p-6 shadow-pop space-y-4 max-h-[92vh] overflow-y-auto">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 id="pay-title" className="text-base font-semibold">Pay {formatINR(outstandingTotal)} by UPI</h3>
+                <p className="text-[13px] text-fg-muted">Scan with GPay, PhonePe, Paytm or BHIM, then enter the 12-digit UTR.</p>
+              </div>
+              <IconButton variant="ghost" label="Close" onClick={() => setShowPayModal(false)} className="-mr-2 -mt-1"><X className="w-5 h-5" /></IconButton>
+            </div>
 
             {upiLink ? (
-              <div className="palette-native p-3 bg-white rounded-xl text-slate-950 flex flex-col items-center justify-center gap-1">
-                <QRCodeSVG value={upiLink} size={160} />
-                <span className="font-mono text-[11px] text-slate-800 font-bold mt-1">
-                  {societySettings?.upi_id}
-                </span>
-                <span className="text-[11px] text-slate-600">
-                  {societySettings?.upi_payee_name} • ₹{outstandingTotal.toLocaleString('en-IN')}
-                </span>
-                <a href={upiLink} className="mt-1 text-[11px] font-semibold text-sky-700 underline sm:hidden">
-                  Open in UPI app
-                </a>
+              <div className="palette-native p-4 bg-surface rounded-xl border border-border flex flex-col items-center justify-center gap-1">
+                <QRCodeSVG value={upiLink} size={176} />
+                <span className="font-mono text-xs text-fg-subtle font-semibold mt-2">{societySettings?.upi_id}</span>
+                <span className="text-xs text-fg-subtle">{societySettings?.upi_payee_name} · {formatINR(outstandingTotal)}</span>
               </div>
             ) : (
-              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>Your society has not configured its UPI ID yet. Please pay via the method shared by the treasurer and enter the UTR below.</span>
+              <div className="p-3 rounded-lg bg-warning-soft text-warning text-[13px] flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
+                <span>Your society has not added its UPI ID yet. Pay the way your treasurer shared, then enter the UTR below.</span>
               </div>
             )}
-
-            {payError && (
-              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>{payError}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleUtrSubmit} className="space-y-3">
-              <div>
-                <label className="block text-slate-400 mb-1">Enter 12-digit UPI UTR / Reference</label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={12}
-                  required
-                  placeholder="e.g. 625219401292"
-                  value={utrNumber}
-                  onChange={(e) => setUtrNumber(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white font-mono outline-none focus:border-sky-500"
-                />
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  type="submit"
-                  disabled={submittingUtr}
-                  className="flex-1 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold cursor-pointer disabled:opacity-50"
-                >
-                  {submittingUtr ? 'Recording...' : 'Submit UTR for Verification'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowPayModal(false)}
-                  className="px-3 py-2.5 rounded-xl bg-slate-800 text-slate-300 font-medium cursor-pointer"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
+            {utrForm('utr-qr')}
           </div>
         </div>
       )}
