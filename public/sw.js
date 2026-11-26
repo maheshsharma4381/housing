@@ -3,7 +3,7 @@
    - Offline (Phase 7): a page load that fails offline gets /offline.html. Nothing else is cached:
      API calls, Supabase and other sites always go to the network (src/lib/sw-policy.ts is the same rule). */
 const OFFLINE = '/offline.html';
-const CACHE = 'sahvaas-offline-v1';
+const CACHE = 'sahvaas-offline-v2';
 
 self.addEventListener('install', (event) => {
   // the offline page is a nice-to-have: failing to cache it must not stop the worker (push needs it)

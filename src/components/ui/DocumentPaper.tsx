@@ -5,8 +5,7 @@ import { cn } from './cn';
 
 /*
  * Printable documents (bill, receipt): a screen toolbar, then white A4 paper with a letterhead
- * (brief section 8.7). Paper keeps Tailwind's own colours (.palette-native) so it prints the same
- * whatever theme the app is in.
+ * (brief section 8.7). Paper uses fixed Tailwind slate colours so it prints the same whatever theme the app is in.
  */
 
 /** Page around the paper: back button and actions on screen, nothing but the paper in print. */
@@ -37,7 +36,7 @@ export const DocumentState: React.FC<{ loading?: string; error?: string | null; 
 /** White A4 sheet. */
 export const Paper: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => (
   <article className={cn(
-    'palette-native bg-white text-slate-900 rounded-xl border border-slate-200 shadow-[0_12px_24px_-6px_rgba(16,24,40,.12)]',
+    'bg-white text-slate-900 rounded-xl border border-slate-200 shadow-[0_12px_24px_-6px_rgba(16,24,40,.12)]',
     'p-6 sm:p-10 space-y-7 text-[13px] leading-5 tabular-nums',
     'print:rounded-none print:border-0 print:shadow-none print:p-0',
     className,

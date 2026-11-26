@@ -256,15 +256,15 @@ error (Alert with retry), no permission (calm explanation, who can do it), read-
 ## 9. Page inventory (tick each when redesigned and verified)
 
 ### Society portal — `src/views/society/SocietyDashboardPage.tsx` + `tabs/` + components
-- [ ] Home — KPIs: collected this month, outstanding, overdue flats, approvals waiting;
+- [x] Home — KPIs: collected this month, outstanding, overdue flats, approvals waiting;
       setup checklist as a progress card (`/setup`); "Needs your attention"; quick actions
       (Issue bills, Record payment, Add vendor bill, Post notice); latest notices. (`HomeCards`)
-- [ ] Approvals — one inbox: vendor bills, join requests, CA adjustments, opening balance,
+- [x] Approvals — one inbox: vendor bills, join requests, CA adjustments, opening balance,
       flat requests; each item has Approve / Reject with ConfirmDialog. (`PendingVendorBills`, `JoinRequests`, `RequestsWaiting`)
-- [ ] Maintenance bills — charges (billing rules) as a clean card list with an "Add charge"
+- [x] Maintenance bills — charges (billing rules) as a clean card list with an "Add charge"
       drawer; issue-bills as a 3-step flow with preview; bills `DataTable` with status chips,
       flat search, totals footer; cancel with PromptDialog. (`BillingTab`, `RuleFlats`, `BillTypes`)
-- [ ] Payments received — "To verify" queue first (proof image preview, verify / reject),
+- [x] Payments received — "To verify" queue first (proof image preview, verify / reject),
       then history table; record payment drawer. (`PaymentsTab`)
 - [ ] Vendor bills — list with status, maker-checker state; long form as a sectioned page
       (vendor, invoice upload with AI extract, amounts/GST/TDS, revenue vs capital). (`ExpensesTab`, `ExpenseBillForm`)
@@ -282,7 +282,7 @@ error (Alert with retry), no permission (calm explanation, who can do it), read-
       Reconciliation, Audit & Year Close. (`ChartOfAccounts`, `OpeningBalanceEditor`, `OpeningBalanceReview`, `AssetRegister`, `BankReconciliation`, `AdjustmentsPanel`, `YearLockPanel`, `PriorYearEditor`)
 
 ### Resident portal — `src/views/resident/`
-- [ ] Overview — hero card "You owe ₹X, due 10 Dec" with a big **Pay via UPI** button (or
+- [x] Overview — hero card "You owe ₹X, due 10 Dec" with a big **Pay via UPI** button (or
       "All paid ✓" state), then notices, my requests, polls, sponsored card (Free plan only,
       clearly labelled "Sponsored", never on money screens).
 - [ ] Bills, My account / statement, Notices, Polls, Staff, Requests, Complaints (`ResidentTickets`), Documents.
@@ -299,21 +299,21 @@ error (Alert with retry), no permission (calm explanation, who can do it), read-
       KPI cards + charts (use `src/lib/chart.ts`, follow the dataviz skill) + filterable tables.
 
 ### Public site and auth — `src/views/public/`, `src/components/PublicHeader.tsx`, `PublicFooter.tsx`
-- [ ] Home — rewrite the hero for a secretary ("Run your society without registers and
+- [x] Home — rewrite the hero for a secretary ("Run your society without registers and
       WhatsApp chaos" style, plain words), real product screenshots of the redesigned app
       in a device frame, persona sections (Committee, Residents, CAs), how it works in 3
       steps, security/trust strip, pricing teaser, FAQ, final CTA.
 - [ ] Features, For Societies, For Accountants & CAs, Security, Pricing (plan cards +
       comparison table), Contact (form + details).
-- [ ] Login, Signup, Forgot / Reset password — split layout: form on the left, brand panel
+- [x] Login, Signup, Forgot / Reset password — split layout: form on the left, brand panel
       on the right (desktop); OTP as 6 separate boxes with auto-advance and paste. (`MobileOtpLogin`)
 - [ ] Onboarding, Setup wizard (`SetupWizard`), Join by link (`/join/[code]`).
-- [ ] Public bill and receipt pages (`/bill/[id]`, `/receipt/[id]`) — printable document pattern.
+- [x] Public bill and receipt pages (`/bill/[id]`, `/receipt/[id]`) — printable document pattern.
 - [ ] 404, error page, `public/offline.html` — branded, friendly, with a way back.
 - [ ] Shared prompts: `NamePrompt`, `AddMobilePrompt`, `PWAInstallButton`, `OfflineIndicator`, `NotificationBell`, `WorkspaceSelector`, `SignOutMenu`.
 
 ### Brand
-- [ ] A simple, professional logo mark + "Sahvaas" wordmark as SVG (replace the "S" square);
+- [x] A simple, professional logo mark + "Sahvaas" wordmark as SVG (replace the "S" square);
       update `public/icon.svg` and the PNG icons, favicon, manifest, `themeColor`.
 
 ## 10. Copy rules
@@ -448,6 +448,16 @@ Phase 8 polish.
 ## 14. Notes found during the work
 
 _(Claude: add anything here that this brief got wrong or missed.)_
+
+- **Status, 26 Nov 2026 (branch `ui-redesign`).** Every screen now uses the tokens (light theme, Inter, 8/12/16 radii,
+  sentence case), the temporary palette bridge is gone, all `window.confirm` / `window.prompt` calls use
+  `ui/feedback`, and the app icons use the new mark. Ticked items above meet their line in full. The rest are
+  on the new look but not yet to every detail of their line: drawers for create/edit forms, a shared
+  `DataTable` (only Maintenance bills has the table + phone cards pattern), the complaints chat thread,
+  the documents folder grid, the CA FY context bar, a dark-mode switch (the tokens support `.dark`), the
+  dev-only `/ui` page, Phase 0 screenshots, the Phase 0.5 journey audit (`docs/UX_JOURNEYS.md`) and Lighthouse.
+  An automated contrast scan (text under 3.2:1 against its background) found nothing on the 16 society
+  screens, 13 platform screens and the public pages after the last fixes.
 
 - 26 Nov 2026: screens not redesigned yet are made light by a temporary `.palette-bridge` in `globals.css` (it re-points the old slate/sky/emerald/amber/rose colours). Paper (bill, receipt, invoice, QR) opts out with `.palette-native`. Under the bridge `text-white` is dark, so redesigned code uses `text-on-brand` on solid fills. Remove the bridge in Phase 8.
 - Native `<dialog>` and a small store (`ui/feedback.tsx`) are used for confirm/prompt dialogs and toasts instead of Radix and sonner: no new dependencies were needed.

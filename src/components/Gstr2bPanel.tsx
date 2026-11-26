@@ -138,7 +138,7 @@ export const Gstr2bPanel: React.FC<{ societyId: string; societyName?: string }> 
           <span className="text-fg-muted">Return period</span>
           <input type="month" value={month} onChange={e => setMonth(e.target.value)} className={inputClass} />
           <input type="file" accept=".json,.csv,application/json,text/csv" onChange={e => onFile(e.target.files?.[0])}
-            className="text-fg file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-slate-800 file:text-slate-200 file:cursor-pointer" />
+            className="text-fg file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border file:border-border-strong file:bg-surface-muted file:text-fg file:cursor-pointer" />
         </div>
 
         {parsed && (
@@ -156,7 +156,7 @@ export const Gstr2bPanel: React.FC<{ societyId: string; societyName?: string }> 
                 {parsed.errors.slice(0, 30).map(e => <li key={e}>{e}</li>)}
               </ul>
             )}
-            <button onClick={runImport} disabled={busy || parsed.invoices.length === 0} className="w-full py-2.5 rounded-lg bg-warning-solid hover:bg-warning-solid text-on-brand font-semibold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50">
+            <button onClick={runImport} disabled={busy || parsed.invoices.length === 0} className="w-full py-2.5 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50">
               {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Reconcile {periodLabel(toPeriod(month))}
             </button>
           </div>
@@ -185,7 +185,7 @@ export const Gstr2bPanel: React.FC<{ societyId: string; societyName?: string }> 
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-semibold text-fg text-sm">Reconciliations</span>
             {uploads.map(u => (
-              <button key={u.id} onClick={() => loadDetail(u.id)} className={`px-3 py-1.5 rounded-lg cursor-pointer ${selected === u.id ? 'bg-warning-solid text-on-brand' : 'bg-surface border border-border text-fg'}`}>
+              <button key={u.id} onClick={() => loadDetail(u.id)} className={`px-3 py-1.5 rounded-lg cursor-pointer ${selected === u.id ? 'bg-brand text-on-brand' : 'bg-surface border border-border text-fg'}`}>
                 {periodLabel(u.return_period)}
               </button>
             ))}

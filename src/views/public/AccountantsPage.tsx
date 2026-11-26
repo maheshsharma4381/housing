@@ -98,7 +98,7 @@ export const AccountantsPage: React.FC = () => {
         <div className="text-center">
           <Link
             href="/contact"
-            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-warning-solid hover:bg-warning-solid text-on-brand font-semibold text-xs shadow-card transition"
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-brand hover:bg-brand-hover text-on-brand font-semibold text-xs shadow-card transition"
           >
             <span>Partner with Sahvaas as a CA</span>
             <ArrowRight className="w-4 h-4" />

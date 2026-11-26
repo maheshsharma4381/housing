@@ -116,7 +116,7 @@ export const RemarksPanel: React.FC<RemarksPanelProps> = ({ societyId, currentUs
             <input value={reference} onChange={e => setReference(e.target.value)} placeholder="Ref (EXP-0004, bill no…)" className={inputClass} />
           </div>
           <textarea rows={3} value={text} onChange={e => setText(e.target.value)} placeholder="Observation, e.g. Lift AMC invoice lacks a signed work order" className={`w-full ${inputClass}`} />
-          <button type="submit" disabled={busy === 'new' || text.trim().length < 3} className="w-full py-2 rounded-lg bg-warning-solid hover:bg-warning-solid text-on-brand font-semibold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50">
+          <button type="submit" disabled={busy === 'new' || text.trim().length < 3} className="w-full py-2 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50">
             {busy === 'new' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} Add Remark
           </button>
         </form>

@@ -621,7 +621,7 @@ export const ResidentDashboardPage: React.FC = () => {
             </div>
 
             {upiLink ? (
-              <div className="palette-native p-4 bg-surface rounded-xl border border-border flex flex-col items-center justify-center gap-1">
+              <div className="p-4 bg-surface rounded-xl border border-border flex flex-col items-center justify-center gap-1">
                 <QRCodeSVG value={upiLink} size={176} />
                 <span className="font-mono text-xs text-fg-subtle font-semibold mt-2">{societySettings?.upi_id}</span>
                 <span className="text-xs text-fg-subtle">{societySettings?.upi_payee_name} · {formatINR(outstandingTotal)}</span>

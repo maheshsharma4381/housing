@@ -429,7 +429,7 @@ export const ExpenseBillForm: React.FC<ExpenseBillFormProps> = ({ societyId, ven
 
       {mode !== 'none' && (
         <label className="flex items-center gap-2 text-fg cursor-pointer">
-          <input type="checkbox" checked={form.gstClaimable} onChange={e => set('gstClaimable', e.target.checked)} className="accent-sky-500" />
+          <input type="checkbox" checked={form.gstClaimable} onChange={e => set('gstClaimable', e.target.checked)} className="accent-brand" />
           Claim GST input credit <span className="text-fg-subtle">— off for most society purchases; your CA decides</span>
         </label>
       )}

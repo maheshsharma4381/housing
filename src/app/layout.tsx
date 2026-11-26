@@ -45,8 +45,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={inter.variable}>
-      {/* palette-bridge: screens not redesigned yet still use the old dark palette (globals.css) */}
-      <body className="palette-bridge bg-canvas text-fg antialiased selection:bg-brand-soft min-h-screen flex flex-col font-sans">
+      <body className="bg-canvas text-fg antialiased selection:bg-brand-soft min-h-screen flex flex-col font-sans">
         <RouterProvider>
           <AuthProvider>
             <div className="flex-1 flex flex-col">

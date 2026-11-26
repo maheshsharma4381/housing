@@ -222,12 +222,12 @@ export const BillingConsole: React.FC = () => {
                 <td className="p-2 font-semibold text-fg">{p.name}</td>
                 <td className="p-2"><input type="number" min={0} step="0.5" value={p.monthly_rate_per_unit_inr} disabled={p.tier_code === 'free'} onChange={e => editPlan(p.id, { monthly_rate_per_unit_inr: Number(e.target.value) })} className={`w-20 ${cell}`} /></td>
                 {FEATURES.map(f => (
-                  <td key={f.key} className="p-2 text-center"><input type="checkbox" className="accent-purple-500" checked={p.feature_keys.includes(f.key)}
+                  <td key={f.key} className="p-2 text-center"><input type="checkbox" className="accent-brand" checked={p.feature_keys.includes(f.key)}
                     onChange={e => editPlan(p.id, { feature_keys: e.target.checked ? [...p.feature_keys, f.key] : p.feature_keys.filter(k => k !== f.key) })} /></td>
                 ))}
-                <td className="p-2 text-center"><input type="checkbox" className="accent-purple-500" checked={p.show_ads} onChange={e => editPlan(p.id, { show_ads: e.target.checked })} /></td>
+                <td className="p-2 text-center"><input type="checkbox" className="accent-brand" checked={p.show_ads} onChange={e => editPlan(p.id, { show_ads: e.target.checked })} /></td>
                 <td className="p-2"><input type="number" min={0} value={p.storage_mb} onChange={e => editPlan(p.id, { storage_mb: Number(e.target.value) })} className={`w-20 ${cell}`} /></td>
-                <td className="p-2 text-center"><input type="checkbox" className="accent-purple-500" checked={p.is_active} onChange={e => editPlan(p.id, { is_active: e.target.checked })} /></td>
+                <td className="p-2 text-center"><input type="checkbox" className="accent-brand" checked={p.is_active} onChange={e => editPlan(p.id, { is_active: e.target.checked })} /></td>
               </tr>
             ))}
           </tbody>

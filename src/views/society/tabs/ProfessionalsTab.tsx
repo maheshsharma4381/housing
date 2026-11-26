@@ -171,7 +171,7 @@ export const ProfessionalsTab: React.FC<ProfessionalsTabProps> = ({ societyId, c
             </label>
           ))}
         </div>
-        <button type="submit" disabled={busy === 'invite'} className="w-full py-2.5 rounded-lg bg-warning-solid hover:bg-warning-solid text-on-brand font-semibold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50">
+        <button type="submit" disabled={busy === 'invite'} className="w-full py-2.5 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50">
           {busy === 'invite' ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />} Save Invite
         </button>
       </form>

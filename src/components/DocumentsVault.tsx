@@ -126,7 +126,7 @@ export const DocumentsVault: React.FC<DocumentsVaultProps> = ({ societyId, canMa
             type="file"
             accept=".pdf,.jpg,.jpeg,.png,.webp"
             onChange={e => { setFile(e.target.files?.[0] ?? null); setNotice(null); }}
-            className="block w-full text-fg file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-slate-800 file:text-slate-200 file:cursor-pointer"
+            className="block w-full text-fg file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border file:border-border-strong file:bg-surface-muted file:text-fg file:cursor-pointer"
           />
           <label className="flex items-center gap-2 text-fg cursor-pointer">
             <input type="checkbox" checked={restricted} onChange={e => setRestricted(e.target.checked)} /> Committee only (residents cannot see it)

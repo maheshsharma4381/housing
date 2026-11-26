@@ -128,16 +128,16 @@ export const AdsConsole: React.FC = () => {
                 <option value="draft">Draft</option><option value="live">Live</option><option value="paused">Paused</option><option value="ended">Ended</option></select></label>
             <div className="sm:col-span-2 flex flex-wrap items-center gap-4 text-fg">
               {(['home_feed', 'notices'] as const).map(p => (
-                <label key={p} className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" className="accent-purple-500" checked={form.placements.includes(p)}
+                <label key={p} className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" className="accent-brand" checked={form.placements.includes(p)}
                   onChange={e => setForm({ ...form, placements: e.target.checked ? [...form.placements, p] : form.placements.filter(x => x !== p) })} />
                   {p === 'home_feed' ? 'Resident home feed' : 'Notices list'}</label>
               ))}
-              <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" className="accent-purple-500" checked={form.is_house} onChange={e => setForm({ ...form, is_house: e.target.checked })} /> Sahvaas house card</label>
+              <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" className="accent-brand" checked={form.is_house} onChange={e => setForm({ ...form, is_house: e.target.checked })} /> Sahvaas house card</label>
               <label className="flex items-center gap-1.5">Priority <input type="number" value={form.priority} onChange={e => setForm({ ...form, priority: Number(e.target.value) })} className="w-16 bg-surface border border-border-strong rounded-lg px-2 py-1 text-fg" /></label>
             </div>
             <label className="space-y-1 sm:col-span-2"><span className="text-fg-muted">Image (JPG / PNG / WEBP, 2 MB)</span>
               <input type="file" accept="image/jpeg,image/png,image/webp" onChange={e => upload(e.target.files?.[0])}
-                className="w-full text-fg file:mr-2 file:px-2 file:py-1.5 file:rounded-lg file:border-0 file:bg-slate-800 file:text-slate-200" /></label>
+                className="w-full text-fg file:mr-2 file:px-2 file:py-1.5 file:rounded-lg file:border file:border-border-strong file:bg-surface-muted file:text-fg" /></label>
             <div className="sm:col-span-2 flex gap-2">
               <button onClick={save} disabled={busy !== null || !form.sponsor_name.trim() || !form.title.trim() || form.placements.length === 0}
                 className="flex items-center gap-1 px-4 py-2 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold cursor-pointer disabled:opacity-50">

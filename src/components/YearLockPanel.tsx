@@ -70,7 +70,7 @@ export const YearLockPanel: React.FC<{ societyId: string; canLock: boolean }> = 
       {canLockLast && (confirming ? (
         <div className="flex flex-wrap gap-2">
           <input value={note} onChange={e => setNote(e.target.value)} placeholder="Note, e.g. audited by CA Priya Iyer on 12 Sep" className="flex-1 min-w-[220px] bg-surface border border-border-strong rounded-lg px-3 py-2 text-fg outline-none focus:border-brand" />
-          <button onClick={lock} disabled={busy} className="px-4 py-2 rounded-lg bg-warning-solid hover:bg-warning-solid text-on-brand font-semibold cursor-pointer disabled:opacity-50">
+          <button onClick={lock} disabled={busy} className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold cursor-pointer disabled:opacity-50">
             {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Propose lock'}
           </button>
           <button onClick={() => setConfirming(false)} className="px-3 rounded-xl bg-surface-muted text-fg cursor-pointer">Cancel</button>

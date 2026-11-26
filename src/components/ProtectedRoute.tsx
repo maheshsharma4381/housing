@@ -59,8 +59,8 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 text-slate-300">
-        <Loader2 className="w-8 h-8 animate-spin text-sky-500 mb-3" />
+      <div className="min-h-screen bg-canvas flex flex-col items-center justify-center p-4 text-fg">
+        <Loader2 className="w-8 h-8 animate-spin text-brand mb-3" />
         <p className="text-xs font-medium">Verifying Supabase authentication & permissions...</p>
       </div>
     );
@@ -97,21 +97,21 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   const fallbackPath = getRedirectPath();
   // Avoid a redirect loop when the user's default workspace is this same portal
   const canRedirect = !fallbackPath.startsWith(`/${requiredPortal}`);
-  const toneClasses = copy.tone === 'rose' ? 'bg-rose-500/20 text-rose-400' : 'bg-amber-500/20 text-amber-400';
+  const toneClasses = copy.tone === 'rose' ? 'bg-danger-soft text-danger' : 'bg-warning-soft text-warning';
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 gap-4">
+    <div className="min-h-screen bg-canvas flex flex-col items-center justify-center p-4 gap-4">
       <div className="w-full"><PendingInvites /></div>
-      <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-2xl p-6 text-center space-y-4">
-        <div className={`w-12 h-12 rounded-2xl mx-auto flex items-center justify-center ${toneClasses}`}>
+      <div className="max-w-md w-full bg-surface border border-border rounded-xl p-6 text-center space-y-4">
+        <div className={`w-12 h-12 rounded-xl mx-auto flex items-center justify-center ${toneClasses}`}>
           <ShieldAlert className="w-6 h-6" />
         </div>
-        <h2 className="text-base font-bold text-white">{copy.title}</h2>
-        <p className="text-xs text-slate-400">{copy.description}</p>
+        <h2 className="text-base font-semibold text-fg">{copy.title}</h2>
+        <p className="text-xs text-fg-muted">{copy.description}</p>
         {canRedirect ? (
           <button
             onClick={() => navigate(fallbackPath, { replace: true })}
-            className="w-full py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold cursor-pointer"
+            className="w-full py-2.5 rounded-lg bg-brand hover:bg-brand-hover text-on-brand text-xs font-semibold cursor-pointer"
           >
             Return to My Workspace
           </button>
@@ -121,7 +121,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
               await logout();
               navigate('/', { replace: true });
             }}
-            className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold cursor-pointer"
+            className="w-full py-2.5 rounded-lg bg-surface-muted hover:bg-border text-fg text-xs font-semibold cursor-pointer"
           >
             Sign Out
           </button>

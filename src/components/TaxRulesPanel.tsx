@@ -134,7 +134,7 @@ export const TaxRulesPanel: React.FC<{ currentUserId?: string }> = ({ currentUse
                 <td className="p-2"><input type="number" step="0.01" min={0} max={100} value={r.rate_other} onChange={e => editRule(r.id, { rate_other: Number(e.target.value) })} className={`w-20 ${cell}`} /></td>
                 <td className="p-2"><input type="number" min={0} value={r.single_bill_limit ?? ''} placeholder="—" onChange={e => editRule(r.id, { single_bill_limit: num(e.target.value) })} className={`w-28 ${cell}`} /></td>
                 <td className="p-2"><input type="number" min={0} value={r.annual_limit ?? ''} placeholder="—" onChange={e => editRule(r.id, { annual_limit: num(e.target.value) })} className={`w-28 ${cell}`} /></td>
-                <td className="p-2"><input type="checkbox" checked={r.is_active} onChange={e => editRule(r.id, { is_active: e.target.checked })} className="accent-purple-500" /></td>
+                <td className="p-2"><input type="checkbox" checked={r.is_active} onChange={e => editRule(r.id, { is_active: e.target.checked })} className="accent-brand" /></td>
               </tr>
             ))}
           </tbody>
@@ -167,7 +167,7 @@ export const TaxRulesPanel: React.FC<{ currentUserId?: string }> = ({ currentUse
                   <option value="">Never</option>{ASSET_TYPES.map(a => <option key={a.code} value={a.code}>{a.label}</option>)}</select></td>
                 <td className="p-2"><input type="number" min={0} value={c.asset_threshold ?? ''} placeholder="—" onChange={e => editCategory(c.id, { asset_threshold: num(e.target.value) })} className={`w-24 ${cell}`} />
                   {c.asset_threshold != null && <span className="ml-1 text-fg-subtle">{formatINR(c.asset_threshold)}</span>}</td>
-                <td className="p-2"><input type="checkbox" checked={c.is_active} onChange={e => editCategory(c.id, { is_active: e.target.checked })} className="accent-purple-500" /></td>
+                <td className="p-2"><input type="checkbox" checked={c.is_active} onChange={e => editCategory(c.id, { is_active: e.target.checked })} className="accent-brand" /></td>
               </tr>
             ))}
           </tbody>

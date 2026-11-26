@@ -425,7 +425,7 @@ export const ExpensesTab: React.FC<ExpensesTabProps> = ({ societyId, currentUser
                         <input type="date" max={today()} value={paying.date} onChange={e => setPaying({ ...paying, date: e.target.value })} className={inputClass} /></label>
                       <label className="space-y-1"><span className="text-fg-muted">Proof (optional)</span>
                         <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={e => setPaying({ ...paying, proof: e.target.files?.[0] ?? null })}
-                          className="w-full text-fg file:mr-2 file:px-2 file:py-1.5 file:rounded-lg file:border-0 file:bg-slate-800 file:text-slate-200" /></label>
+                          className="w-full text-fg file:mr-2 file:px-2 file:py-1.5 file:rounded-lg file:border file:border-border-strong file:bg-surface-muted file:text-fg" /></label>
                     </div>
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <span className="text-fg">
@@ -443,7 +443,7 @@ export const ExpensesTab: React.FC<ExpensesTabProps> = ({ societyId, currentUser
                 {attaching?.id === exp.id && (
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 items-end">
                     <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={e => setAttaching({ ...attaching, file: e.target.files?.[0] ?? null })}
-                      className="col-span-2 sm:col-span-1 text-fg file:mr-2 file:px-2 file:py-1.5 file:rounded-lg file:border-0 file:bg-slate-800 file:text-slate-200" />
+                      className="col-span-2 sm:col-span-1 text-fg file:mr-2 file:px-2 file:py-1.5 file:rounded-lg file:border file:border-border-strong file:bg-surface-muted file:text-fg" />
                     <input value={attaching.invoiceNumber} onChange={e => setAttaching({ ...attaching, invoiceNumber: e.target.value })} placeholder="Invoice no." className={inputClass} />
                     <input type="date" value={attaching.date} onChange={e => setAttaching({ ...attaching, date: e.target.value })} className={inputClass} />
                     <button onClick={() => attachInvoice(exp)} disabled={!attaching.file || busy !== null} className="py-2 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold cursor-pointer disabled:opacity-50">Attach</button>

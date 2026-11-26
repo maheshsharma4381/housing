@@ -241,7 +241,7 @@ export const FeatureGate: React.FC<{ plan: SocietyPlan | null; feature: string; 
   ({ plan, feature, label, planName, onUpgrade, children }) => {
     if (!plan || plan.features.includes(feature as SocietyPlan['features'][number])) return <>{children}</>;
     return (
-      <div className="max-w-lg mx-auto mt-8 p-6 rounded-2xl bg-surface border border-border text-center space-y-3 text-xs">
+      <div className="max-w-lg mx-auto mt-8 p-6 rounded-xl bg-surface border border-border text-center space-y-3 text-xs">
         <div className="w-12 h-12 mx-auto rounded-xl bg-warning-soft flex items-center justify-center"><Sparkles className="w-6 h-6 text-warning" /></div>
         <div className="text-lg font-semibold text-fg">{label} is on {planName}</div>
         <p className="text-fg-muted">You are on the {plan.plan_name} plan. Anything recorded earlier is kept and comes back as soon as you upgrade.</p>

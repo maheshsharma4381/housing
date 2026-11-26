@@ -354,7 +354,7 @@ const UpiStep: React.FC<{ busy: boolean; societyId: string; societyName: string;
       <label className="block space-y-1"><span className="text-fg-muted">Payee name</span>
         <input className={input} value={payee} onChange={e => setPayee(e.target.value)} /></label>
       {valid && (
-        <div className="palette-native flex items-center gap-4 p-3 rounded-xl bg-surface text-fg">
+        <div className="flex items-center gap-4 p-3 rounded-xl bg-surface text-fg">
           <QRCodeSVG value={`upi://pay?${new URLSearchParams({ pa: upi.trim(), pn: payee, cu: 'INR' }).toString()}`} size={96} />
           <span>Residents scan this QR, with the exact amount of their bill filled in.</span>
         </div>

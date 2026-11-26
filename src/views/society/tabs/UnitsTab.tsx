@@ -122,7 +122,7 @@ export const UnitsTab: React.FC<UnitsTabProps> = ({ societyId, societyName, unit
             type="file"
             accept=".csv,text/csv"
             onChange={e => handleFile(e.target.files?.[0])}
-            className="block w-full text-fg file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-slate-800 file:text-slate-200 file:cursor-pointer"
+            className="block w-full text-fg file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border file:border-border-strong file:bg-surface-muted file:text-fg file:cursor-pointer"
           />
 
           <textarea

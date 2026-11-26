@@ -245,7 +245,7 @@ export const RequestDetail: React.FC<{
                 })}
                   className="px-3 py-2 rounded-lg bg-success hover:bg-success/90 text-on-brand font-semibold disabled:opacity-50 cursor-pointer">{busy === 'approve' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Approve'}</button>}
                 <button disabled={busy !== null} onClick={() => run('changes', async () => { await rpc('decide_request', { p_request_id: request.id, p_decision: 'changes', p_note: note }); setNote(''); })}
-                  className="px-3 py-2 rounded-lg bg-warning-solid hover:bg-warning-solid text-on-brand font-semibold disabled:opacity-50 cursor-pointer">Ask for changes</button>
+                  className="px-3 py-2 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold disabled:opacity-50 cursor-pointer">Ask for changes</button>
               </>
             )}
             <button disabled={busy !== null} onClick={() => run('reject', async () => { await rpc('decide_request', { p_request_id: request.id, p_decision: 'reject', p_note: note }); setNote(''); })}

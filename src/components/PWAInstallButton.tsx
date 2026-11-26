@@ -4,6 +4,8 @@ import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 import { Download, Smartphone, X } from 'lucide-react';
+import { Button, IconButton } from './ui/Button';
+import { LogoMark } from './ui/Logo';
 
 export const PWAInstallButton: React.FC = () => {
   const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
@@ -17,14 +19,9 @@ export const PWAInstallButton: React.FC = () => {
   // Chromium / Android / Desktop flow
   if (isInstallable) {
     return (
-      <button
-        onClick={install}
-        className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-sky-500 transition active:scale-95 cursor-pointer"
-        title="Install Sahvaas PWA to Home Screen"
-      >
-        <Download className="w-3.5 h-3.5" />
+      <Button size="sm" onClick={install} title="Add Sahvaas to your home screen" leftIcon={<Download className="w-4 h-4" />}>
         <span className="sr-only sm:not-sr-only">Install app</span>
-      </button>
+      </Button>
     );
   }
 
@@ -32,53 +29,36 @@ export const PWAInstallButton: React.FC = () => {
   if (isIOS) {
     return (
       <>
-        <button
-          onClick={() => setShowIOSGuide(true)}
-          className="palette-native flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 transition cursor-pointer"
-        >
-          <Smartphone className="w-3.5 h-3.5" />
+        <Button size="sm" variant="secondary" onClick={() => setShowIOSGuide(true)} leftIcon={<Smartphone className="w-4 h-4" />}>
           <span className="sr-only sm:not-sr-only">Install app</span>
-        </button>
+        </Button>
 
         {/* portalled: a blurred sticky header would otherwise trap a fixed overlay inside it (WebKit) */}
         {showIOSGuide && typeof document !== 'undefined' && createPortal(
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-            <div className="palette-native w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in duration-150">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-sky-100 text-sky-600 flex items-center justify-center font-bold">
-                    S
-                  </div>
-                  <h3 className="text-base font-semibold text-slate-900 dark:text-white">Install on iPhone / iPad</h3>
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-fg/40 p-0 sm:p-4" onClick={() => setShowIOSGuide(false)}>
+            <div role="dialog" aria-modal="true" aria-labelledby="ios-install-title" onClick={e => e.stopPropagation()}
+              className="w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl bg-surface p-6 shadow-pop">
+              <div className="flex items-center justify-between gap-3 pb-3 border-b border-border">
+                <div className="flex items-center gap-2.5">
+                  <LogoMark size={32} />
+                  <h3 id="ios-install-title" className="text-base font-semibold text-fg">Install on iPhone or iPad</h3>
                 </div>
-                <button
-                  onClick={() => setShowIOSGuide(false)}
-                  className="p-1 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+                <IconButton variant="ghost" label="Close" onClick={() => setShowIOSGuide(false)}><X className="w-5 h-5" /></IconButton>
               </div>
-              <div className="mt-4 space-y-3 text-xs text-slate-600 dark:text-slate-300">
-                <div className="flex items-start gap-2.5">
-                  <span className="w-5 h-5 rounded-full bg-sky-100 text-sky-700 font-bold flex items-center justify-center shrink-0">1</span>
-                  <p>Tap the <strong>Share</strong> button in Safari toolbar at the bottom.</p>
-                </div>
-                <div className="flex items-start gap-2.5">
-                  <span className="w-5 h-5 rounded-full bg-sky-100 text-sky-700 font-bold flex items-center justify-center shrink-0">2</span>
-                  <p>Scroll down and tap <strong>Add to Home Screen</strong>.</p>
-                <p className="text-xs text-slate-500">Opened the link inside WhatsApp? Open it in Safari first (⋯ → Open in Safari).</p>
-                </div>
-                <div className="flex items-start gap-2.5">
-                  <span className="w-5 h-5 rounded-full bg-sky-100 text-sky-700 font-bold flex items-center justify-center shrink-0">3</span>
-                  <p>Confirm by clicking <strong>Add</strong> at top right to use Sahvaas full screen.</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowIOSGuide(false)}
-                className="mt-5 w-full rounded-xl bg-slate-900 py-2.5 text-xs font-semibold text-white hover:bg-slate-800 dark:bg-sky-600 dark:hover:bg-sky-500 transition cursor-pointer"
-              >
-                Got it
-              </button>
+              <ol className="mt-4 space-y-3 text-sm text-fg-muted">
+                {[
+                  <>Tap the <strong className="text-fg">Share</strong> button in Safari&apos;s toolbar.</>,
+                  <>Scroll down and tap <strong className="text-fg">Add to Home Screen</strong>.</>,
+                  <>Tap <strong className="text-fg">Add</strong> at the top right. Sahvaas opens full screen from your home screen.</>,
+                ].map((step, i) => (
+                  <li key={i} className="flex items-start gap-3">
+                    <span className="w-6 h-6 rounded-full bg-brand-soft text-brand-ink text-xs font-semibold flex items-center justify-center shrink-0">{i + 1}</span>
+                    <p className="pt-0.5">{step}</p>
+                  </li>
+                ))}
+              </ol>
+              <p className="mt-3 text-xs text-fg-subtle">Opened the link inside WhatsApp? Open it in Safari first (⋯ → Open in Safari).</p>
+              <Button className="mt-5 w-full" onClick={() => setShowIOSGuide(false)}>Got it</Button>
             </div>
           </div>, document.body)}
       </>
