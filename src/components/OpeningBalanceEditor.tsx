@@ -15,7 +15,7 @@ type Row = { key: string; side: Side; label: string; code: string; groupKey?: st
 type CatchRow = { key: string; code: string; debit: string; credit: string };
 type VendorRow = { key: string; vendor_id: string; amount: string };
 
-const inputClass = 'bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-white outline-none focus:border-sky-500 disabled:opacity-60';
+const inputClass = 'bg-surface border border-border-strong rounded-lg px-2 py-1 text-fg outline-none focus:border-brand disabled:opacity-60';
 const numClass = `${inputClass} w-32 text-right`;
 const n = (v: unknown) => Number(v ?? 0) || 0;
 const same = (a: number, b: number) => Math.abs(a - b) < 0.005;
@@ -28,7 +28,7 @@ const todayIso = () => {
 const showDate = (s: string | null) => (s ? new Date(s).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
 
 const Tie: React.FC<{ ok: boolean; children: React.ReactNode }> = ({ ok, children }) => (
-  <div className={`flex items-center gap-1 ${ok ? 'text-emerald-300' : 'text-rose-300'}`}>
+  <div className={`flex items-center gap-1 ${ok ? 'text-success' : 'text-danger'}`}>
     {ok ? <CheckCircle2 className="w-3.5 h-3.5" /> : <X className="w-3.5 h-3.5" />} {children}
   </div>
 );
@@ -204,39 +204,39 @@ export const OpeningBalanceEditor: React.FC<{ societyId: string; canManage: bool
   };
 
   if (loading && !ob) {
-    return <div className="flex items-center gap-2 text-xs text-slate-400"><Loader2 className="w-4 h-4 animate-spin" /> Loading opening balance…</div>;
+    return <div className="flex items-center gap-2 text-xs text-fg-muted"><Loader2 className="w-4 h-4 animate-spin" /> Loading opening balance…</div>;
   }
   if (!ob) return <Banner tone="error">{error}</Banner>;
 
   const ledgerOptions = (list: ChartLedger[]) => list.map(l => <option key={l.code} value={l.code}>{l.name} ({l.code})</option>);
   const side = (s: Side, title: string) => (
     <div className="space-y-1.5">
-      <div className="font-semibold text-slate-300">{title}</div>
+      <div className="font-semibold text-fg">{title}</div>
       {rows.filter(r => r.side === s).map(r => (
         <div key={r.key} className="flex items-center gap-2">
           <div className="flex-1 min-w-0">
-            <div className="text-slate-200 truncate">{r.label}</div>
+            <div className="text-fg truncate">{r.label}</div>
             <select value={r.code} disabled={!editable} onChange={e => setRow(r.key, { code: e.target.value })} className={`${inputClass} w-full mt-0.5`}>
               <option value="">{r.groupKey ? 'New ledger with this name' : 'Choose a ledger'}</option>
               {ledgerOptions(r.pick === 'fixed_assets' ? fixedAssetLedgers : sheetLedgers)}
             </select>
           </div>
           <input type="number" step="0.01" value={r.amount} disabled={!editable} onChange={e => setRow(r.key, { amount: e.target.value })} className={numClass} />
-          {editable && <button onClick={() => setRows(rs => rs.filter(x => x.key !== r.key))} className="p-1 text-slate-500 hover:text-rose-300 cursor-pointer" title="Remove line"><X className="w-3.5 h-3.5" /></button>}
+          {editable && <button onClick={() => setRows(rs => rs.filter(x => x.key !== r.key))} className="p-1 text-fg-subtle hover:text-danger cursor-pointer" title="Remove line"><X className="w-3.5 h-3.5" /></button>}
         </div>
       ))}
       {editable && (
-        <button onClick={() => setRows(rs => [...rs, { key: key(), side: s, label: 'Other', code: '', amount: '' }])} className="flex items-center gap-1 text-sky-300 hover:text-sky-200 cursor-pointer">
+        <button onClick={() => setRows(rs => [...rs, { key: key(), side: s, label: 'Other', code: '', amount: '' }])} className="flex items-center gap-1 text-brand hover:text-brand-ink cursor-pointer">
           <Plus className="w-3.5 h-3.5" /> Add line
         </button>
       )}
-      <div className="flex justify-between border-t border-slate-800 pt-1.5 font-semibold text-white"><span>Total</span><span>{formatINR(s === 'assets' ? assets : liabilities)}</span></div>
+      <div className="flex justify-between border-t border-border pt-1.5 font-semibold text-fg"><span>Total</span><span>{formatINR(s === 'assets' ? assets : liabilities)}</span></div>
     </div>
   );
 
   return (
     <div className="space-y-5 text-xs">
-      <p className="text-slate-400">
+      <p className="text-fg-muted">
         Enter the last audited balance sheet exactly as it is, then each flat&apos;s dues on the day the society started using Sahvaas.
         The committee approves it before anything reaches the books.
       </p>
@@ -248,19 +248,19 @@ export const OpeningBalanceEditor: React.FC<{ societyId: string; canManage: bool
 
       <div className="flex flex-wrap gap-4">
         <label className="space-y-1">
-          <div className="text-slate-400">Audited balance sheet as on</div>
+          <div className="text-fg-muted">Audited balance sheet as on</div>
           <select value={auditedAsOf} disabled={!editable} onChange={e => setAuditedAsOf(e.target.value)} className={inputClass}>
             {Array.from(new Set([...fyEnds(new Date()), auditedAsOf])).map(d => <option key={d} value={d}>{showDate(d)}</option>)}
           </select>
         </label>
         <label className="space-y-1">
-          <div className="text-slate-400">Started using Sahvaas on</div>
+          <div className="text-fg-muted">Started using Sahvaas on</div>
           <input type="date" value={liveOn} min={auditedAsOf} max={todayIso()} disabled={!editable} onChange={e => setLiveOn(e.target.value)} className={inputClass} />
         </label>
       </div>
 
-      <section className="rounded-2xl bg-slate-900 border border-slate-800 p-4 space-y-3">
-        <h3 className="font-semibold text-white">1. Audited balance sheet</h3>
+      <section className="rounded-xl bg-surface border border-border p-4 space-y-3">
+        <h3 className="font-semibold text-fg">1. Audited balance sheet</h3>
         <div className="grid gap-6 lg:grid-cols-2">
           {side('liabilities', 'Liabilities & funds')}
           {side('assets', 'Assets')}
@@ -268,15 +268,15 @@ export const OpeningBalanceEditor: React.FC<{ societyId: string; canManage: bool
         <Tie ok={same(assets, liabilities)}>{same(assets, liabilities) ? 'Both sides match' : `Difference: ${formatINR(Math.abs(assets - liabilities))}`}</Tie>
       </section>
 
-      <section className="rounded-2xl bg-slate-900 border border-slate-800 p-4 space-y-2">
-        <h3 className="font-semibold text-white">2. {label ?? 'Catch-up entry'}</h3>
+      <section className="rounded-xl bg-surface border border-border p-4 space-y-2">
+        <h3 className="font-semibold text-fg">2. {label ?? 'Catch-up entry'}</h3>
         {label === null ? (
-          <p className="text-slate-400">Nothing to enter — you started on 1 April.</p>
+          <p className="text-fg-muted">Nothing to enter — you started on 1 April.</p>
         ) : (
           <>
-            <p className="text-slate-400">One summary entry for the months between the audit and go-live: income, expenses, collections and payments for that period.</p>
+            <p className="text-fg-muted">One summary entry for the months between the audit and go-live: income, expenses, collections and payments for that period.</p>
             <table className="w-full">
-              <thead className="text-slate-500 text-left"><tr><th className="py-1">Ledger</th><th className="py-1 text-right">Debit</th><th className="py-1 text-right">Credit</th><th /></tr></thead>
+              <thead className="text-fg-subtle text-left"><tr><th className="py-1">Ledger</th><th className="py-1 text-right">Debit</th><th className="py-1 text-right">Credit</th><th /></tr></thead>
               <tbody>
                 {catchup.map(r => (
                   <tr key={r.key}>
@@ -288,13 +288,13 @@ export const OpeningBalanceEditor: React.FC<{ societyId: string; canManage: bool
                     </td>
                     <td className="py-1 text-right"><input type="number" step="0.01" min="0" value={r.debit} disabled={!editable} onChange={e => setCatch(r.key, { debit: e.target.value, credit: '' })} className={numClass} /></td>
                     <td className="py-1 text-right"><input type="number" step="0.01" min="0" value={r.credit} disabled={!editable} onChange={e => setCatch(r.key, { credit: e.target.value, debit: '' })} className={numClass} /></td>
-                    <td>{editable && <button onClick={() => setCatchup(rs => rs.filter(x => x.key !== r.key))} className="p-1 text-slate-500 hover:text-rose-300 cursor-pointer" title="Remove line"><X className="w-3.5 h-3.5" /></button>}</td>
+                    <td>{editable && <button onClick={() => setCatchup(rs => rs.filter(x => x.key !== r.key))} className="p-1 text-fg-subtle hover:text-danger cursor-pointer" title="Remove line"><X className="w-3.5 h-3.5" /></button>}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
             {editable && (
-              <button onClick={() => setCatchup(rs => [...rs, { key: key(), code: '', debit: '', credit: '' }])} className="flex items-center gap-1 text-sky-300 hover:text-sky-200 cursor-pointer">
+              <button onClick={() => setCatchup(rs => [...rs, { key: key(), code: '', debit: '', credit: '' }])} className="flex items-center gap-1 text-brand hover:text-brand-ink cursor-pointer">
                 <Plus className="w-3.5 h-3.5" /> Add line
               </button>
             )}
@@ -303,15 +303,15 @@ export const OpeningBalanceEditor: React.FC<{ societyId: string; canManage: bool
         )}
       </section>
 
-      <section className="rounded-2xl bg-slate-900 border border-slate-800 p-4 space-y-2">
-        <h3 className="font-semibold text-white">3. Flat-wise dues on {showDate(liveOn)}</h3>
+      <section className="rounded-xl bg-surface border border-border p-4 space-y-2">
+        <h3 className="font-semibold text-fg">3. Flat-wise dues on {showDate(liveOn)}</h3>
         <table className="w-full">
-          <thead className="text-slate-500 text-left"><tr><th className="py-1">Flat</th><th className="py-1">Owner</th><th className="py-1 text-right">Dues</th><th className="py-1 text-right">Advance</th></tr></thead>
-          <tbody className="divide-y divide-slate-800">
+          <thead className="text-fg-subtle text-left"><tr><th className="py-1">Flat</th><th className="py-1">Owner</th><th className="py-1 text-right">Dues</th><th className="py-1 text-right">Advance</th></tr></thead>
+          <tbody className="divide-y divide-border">
             {ob.flats.map(f => (
               <tr key={f.unit_id}>
-                <td className="py-1 text-white">{f.name}</td>
-                <td className="py-1 text-slate-400">{f.owner_name ?? '—'}</td>
+                <td className="py-1 text-fg">{f.name}</td>
+                <td className="py-1 text-fg-muted">{f.owner_name ?? '—'}</td>
                 <td className="py-1 text-right"><input type="number" step="0.01" min="0" value={flats[f.unit_id]?.dues ?? ''} disabled={!editable}
                   onChange={e => setFlats(fs => ({ ...fs, [f.unit_id]: { dues: e.target.value, advance: '' } }))} className={numClass} /></td>
                 <td className="py-1 text-right"><input type="number" step="0.01" min="0" value={flats[f.unit_id]?.advance ?? ''} disabled={!editable}
@@ -328,9 +328,9 @@ export const OpeningBalanceEditor: React.FC<{ societyId: string; canManage: bool
         </Tie>
       </section>
 
-      <section className="rounded-2xl bg-slate-900 border border-slate-800 p-4 space-y-2">
-        <h3 className="font-semibold text-white">4. Vendor-wise payables on {showDate(liveOn)} (optional)</h3>
-        <p className="text-slate-400">Sundry Creditors on {showDate(liveOn)}: {formatINR(creditors)}. Anything not given to a vendor stays as “Not linked to a vendor”.</p>
+      <section className="rounded-xl bg-surface border border-border p-4 space-y-2">
+        <h3 className="font-semibold text-fg">4. Vendor-wise payables on {showDate(liveOn)} (optional)</h3>
+        <p className="text-fg-muted">Sundry Creditors on {showDate(liveOn)}: {formatINR(creditors)}. Anything not given to a vendor stays as “Not linked to a vendor”.</p>
         {vendors.map(v => (
           <div key={v.key} className="flex items-center gap-2">
             <select value={v.vendor_id} disabled={!editable} onChange={e => setVendor(v.key, { vendor_id: e.target.value })} className={`${inputClass} flex-1`}>
@@ -338,11 +338,11 @@ export const OpeningBalanceEditor: React.FC<{ societyId: string; canManage: bool
               {ob.vendors.map(o => <option key={o.vendor_id} value={o.vendor_id}>{o.name}</option>)}
             </select>
             <input type="number" step="0.01" min="0" value={v.amount} disabled={!editable} onChange={e => setVendor(v.key, { amount: e.target.value })} className={numClass} />
-            {editable && <button onClick={() => setVendors(vs => vs.filter(x => x.key !== v.key))} className="p-1 text-slate-500 hover:text-rose-300 cursor-pointer" title="Remove line"><X className="w-3.5 h-3.5" /></button>}
+            {editable && <button onClick={() => setVendors(vs => vs.filter(x => x.key !== v.key))} className="p-1 text-fg-subtle hover:text-danger cursor-pointer" title="Remove line"><X className="w-3.5 h-3.5" /></button>}
           </div>
         ))}
         {editable && ob.vendors.length > 0 && (
-          <button onClick={() => setVendors(vs => [...vs, { key: key(), vendor_id: '', amount: '' }])} className="flex items-center gap-1 text-sky-300 hover:text-sky-200 cursor-pointer">
+          <button onClick={() => setVendors(vs => [...vs, { key: key(), vendor_id: '', amount: '' }])} className="flex items-center gap-1 text-brand hover:text-brand-ink cursor-pointer">
             <Plus className="w-3.5 h-3.5" /> Add vendor
           </button>
         )}
@@ -353,16 +353,16 @@ export const OpeningBalanceEditor: React.FC<{ societyId: string; canManage: bool
         <div className="flex flex-wrap gap-2">
           {editable && (
             <>
-              <button onClick={() => run('save')} disabled={busy} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white cursor-pointer disabled:opacity-50">
+              <button onClick={() => run('save')} disabled={busy} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-surface-muted hover:bg-border text-fg cursor-pointer disabled:opacity-50">
                 {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} Save draft
               </button>
-              <button onClick={() => run('submit')} disabled={busy || !ties} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white cursor-pointer disabled:opacity-50">
+              <button onClick={() => run('submit')} disabled={busy || !ties} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-brand hover:bg-brand-hover text-on-brand cursor-pointer disabled:opacity-50">
                 <Send className="w-3.5 h-3.5" /> Submit for approval
               </button>
             </>
           )}
           {ob.status === 'submitted' && (
-            <button onClick={() => run('withdraw')} disabled={busy} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white cursor-pointer disabled:opacity-50">
+            <button onClick={() => run('withdraw')} disabled={busy} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-surface-muted hover:bg-border text-fg cursor-pointer disabled:opacity-50">
               <Undo2 className="w-3.5 h-3.5" /> Withdraw to edit
             </button>
           )}

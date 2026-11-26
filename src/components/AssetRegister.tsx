@@ -114,20 +114,20 @@ export const AssetRegister: React.FC<AssetRegisterProps> = ({ societyId, canMana
     { header: 'Closing WDV', value: p => p.closing_wdv },
   ]));
 
-  const inputClass = 'w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-sky-500';
+  const inputClass = 'w-full bg-surface border border-border-strong rounded-lg px-3 py-2 text-fg outline-none focus:border-brand';
 
   return (
     <div className="space-y-5 text-xs">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-lg font-bold text-white">Fixed Asset Register</h2>
-          <p className="text-slate-400">Assets bought through approved bills appear here automatically. Depreciation is previewed now and posted once at year end.</p>
+          <h2 className="text-lg font-semibold text-fg">Fixed Asset Register</h2>
+          <p className="text-fg-muted">Assets bought through approved bills appear here automatically. Depreciation is previewed now and posted once at year end.</p>
         </div>
         <div className="flex gap-2">
-          <select value={fyEnd} onChange={e => setFyEnd(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white">
+          <select value={fyEnd} onChange={e => setFyEnd(e.target.value)} className="bg-surface border border-border-strong rounded-lg px-3 py-2 text-fg">
             {fyOptions.map(f => <option key={f} value={f}>{fyLabel(f)}</option>)}
           </select>
-          <button onClick={exportCsv} disabled={preview.length === 0} className="flex items-center gap-1 px-3 py-2 rounded-xl bg-slate-800 text-slate-200 cursor-pointer disabled:opacity-50">
+          <button onClick={exportCsv} disabled={preview.length === 0} className="flex items-center gap-1 px-3 py-2 rounded-lg bg-surface-muted text-fg cursor-pointer disabled:opacity-50">
             <Download className="w-3.5 h-3.5" /> CSV
           </button>
         </div>
@@ -136,79 +136,79 @@ export const AssetRegister: React.FC<AssetRegisterProps> = ({ societyId, canMana
       <Banner tone="success">{notice}</Banner>
 
       {loading ? (
-        <div className="flex justify-center p-8"><Loader2 className="w-5 h-5 text-sky-400 animate-spin" /></div>
+        <div className="flex justify-center p-8"><Loader2 className="w-5 h-5 text-brand animate-spin" /></div>
       ) : assets.length === 0 ? (
         <EmptyState icon={Boxes} title="No assets yet" description="Book a purchase as “New asset” when adding a bill, or add assets the society already owns." />
       ) : (
-        <div className="overflow-x-auto rounded-2xl border border-slate-800">
+        <div className="overflow-x-auto rounded-xl border border-border">
           <table className="w-full min-w-[760px]">
-            <thead className="bg-slate-900 text-slate-400 text-left">
+            <thead className="bg-surface text-fg-muted text-left">
               <tr>
                 <th className="p-2.5">Asset</th><th className="p-2.5">Put to use</th><th className="p-2.5 text-right">Opening WDV</th>
                 <th className="p-2.5 text-right">Additions</th><th className="p-2.5 text-right">Rate</th><th className="p-2.5 text-right">Depreciation</th>
                 <th className="p-2.5 text-right">Closing WDV</th>{canManage && <th className="p-2.5" />}
               </tr>
             </thead>
-            <tbody className="text-slate-200">
+            <tbody className="text-fg">
               {assets.map(a => {
                 const p = byId.get(a.id);
                 return (
                   <React.Fragment key={a.id}>
-                    <tr className="border-t border-slate-800">
+                    <tr className="border-t border-border">
                       <td className="p-2.5">
-                        <span className="font-mono text-slate-500">{a.asset_number}</span> <span className="font-semibold text-white">{a.name}</span>
-                        <div className="text-slate-500">{typeLabel(a.account_code)}{a.location ? ` · ${a.location}` : ''}{a.opening_as_of ? ' · brought in with opening balances' : ''}</div>
-                        {a.status === 'disposed' && <div className="text-rose-300">Disposed {a.disposed_on} for {formatINR(a.disposal_amount)}</div>}
+                        <span className="font-mono text-fg-subtle">{a.asset_number}</span> <span className="font-semibold text-fg">{a.name}</span>
+                        <div className="text-fg-subtle">{typeLabel(a.account_code)}{a.location ? ` · ${a.location}` : ''}{a.opening_as_of ? ' · brought in with opening balances' : ''}</div>
+                        {a.status === 'disposed' && <div className="text-danger">Disposed {a.disposed_on} for {formatINR(a.disposal_amount)}</div>}
                       </td>
                       <td className="p-2.5">{a.put_to_use_date}</td>
                       <td className="p-2.5 text-right">{p ? formatINR(p.opening_wdv) : '—'}</td>
                       <td className="p-2.5 text-right">{p && Number(p.additions) ? formatINR(p.additions) : '—'}</td>
-                      <td className="p-2.5 text-right">{a.dep_rate}% {a.dep_method.toUpperCase()}{p?.half_rate && <div className="text-amber-300">half (&lt; 180 days)</div>}</td>
+                      <td className="p-2.5 text-right">{a.dep_rate}% {a.dep_method.toUpperCase()}{p?.half_rate && <div className="text-warning">half (&lt; 180 days)</div>}</td>
                       <td className="p-2.5 text-right">{p ? formatINR(p.depreciation) : '—'}</td>
-                      <td className="p-2.5 text-right font-semibold text-white">{p ? formatINR(p.closing_wdv) : '—'}</td>
+                      <td className="p-2.5 text-right font-semibold text-fg">{p ? formatINR(p.closing_wdv) : '—'}</td>
                       {canManage && (
                         <td className="p-2.5 text-right whitespace-nowrap">
                           {a.status === 'active' && (
                             <>
-                              <button onClick={() => setEdit({ id: a.id, kind: 'rate', rate: Number(a.dep_rate), method: a.dep_method, reason: '' })} className="text-sky-400 hover:underline cursor-pointer mr-2">Rate</button>
-                              <button onClick={() => setEdit({ id: a.id, kind: 'dispose', date: today(), amount: 0, mode: 'bank', bankId: defaultBankId(banks, 'receipt') ?? '', reason: '' })} className="text-slate-400 hover:text-rose-300 cursor-pointer">Dispose</button>
+                              <button onClick={() => setEdit({ id: a.id, kind: 'rate', rate: Number(a.dep_rate), method: a.dep_method, reason: '' })} className="text-brand hover:underline cursor-pointer mr-2">Rate</button>
+                              <button onClick={() => setEdit({ id: a.id, kind: 'dispose', date: today(), amount: 0, mode: 'bank', bankId: defaultBankId(banks, 'receipt') ?? '', reason: '' })} className="text-fg-muted hover:text-danger cursor-pointer">Dispose</button>
                             </>
                           )}
                         </td>
                       )}
                     </tr>
                     {edit?.id === a.id && (
-                      <tr className="bg-slate-950">
+                      <tr className="bg-canvas">
                         <td colSpan={8} className="p-2.5">
                           {edit.kind === 'rate' ? (
                             <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 items-end">
-                              <label className="space-y-1"><span className="text-slate-400">Rate %</span>
+                              <label className="space-y-1"><span className="text-fg-muted">Rate %</span>
                                 <input type="number" min={0} max={100} step="0.01" value={edit.rate} onChange={e => setEdit({ ...edit, rate: Number(e.target.value) })} className={inputClass} /></label>
-                              <label className="space-y-1"><span className="text-slate-400">Method</span>
+                              <label className="space-y-1"><span className="text-fg-muted">Method</span>
                                 <select value={edit.method} onChange={e => setEdit({ ...edit, method: e.target.value as 'wdv' | 'slm' })} className={inputClass}>
                                   <option value="wdv">WDV</option><option value="slm">Straight line</option></select></label>
                               <input value={edit.reason} onChange={e => setEdit({ ...edit, reason: e.target.value })} placeholder="Reason (e.g. as advised by CA)" className={`col-span-2 ${inputClass}`} />
                               <button onClick={() => rpc(a.id, 'update_asset', { p_asset_id: a.id, p_name: a.name, p_location: a.location ?? null, p_dep_rate: edit.rate, p_dep_method: edit.method, p_reason: edit.reason || null }, `${a.asset_number} updated.`)}
-                                disabled={busy !== null} className="py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold cursor-pointer disabled:opacity-50">Save</button>
+                                disabled={busy !== null} className="py-2 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold cursor-pointer disabled:opacity-50">Save</button>
                             </div>
                           ) : (
                             <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 items-end">
-                              <label className="space-y-1"><span className="text-slate-400">Date</span>
+                              <label className="space-y-1"><span className="text-fg-muted">Date</span>
                                 <input type="date" max={today()} value={edit.date} onChange={e => setEdit({ ...edit, date: e.target.value })} className={inputClass} /></label>
-                              <label className="space-y-1"><span className="text-slate-400">Sold for (₹, 0 = scrapped)</span>
+                              <label className="space-y-1"><span className="text-fg-muted">Sold for (₹, 0 = scrapped)</span>
                                 <input type="number" min={0} value={edit.amount || ''} onChange={e => setEdit({ ...edit, amount: Number(e.target.value) })} className={inputClass} /></label>
-                              <label className="space-y-1"><span className="text-slate-400">Money received in</span>
+                              <label className="space-y-1"><span className="text-fg-muted">Money received in</span>
                                 <select value={edit.mode} onChange={e => setEdit({ ...edit, mode: e.target.value as 'bank' | 'cash' })} className={inputClass}>
                                   <option value="bank">Bank</option><option value="cash">Cash</option></select></label>
                               {edit.mode === 'bank' && banks.length > 1 && (
-                                <label className="space-y-1 col-span-2"><span className="text-slate-400">Received in</span>
+                                <label className="space-y-1 col-span-2"><span className="text-fg-muted">Received in</span>
                                   <select value={edit.bankId} onChange={e => setEdit({ ...edit, bankId: e.target.value })} className={inputClass}>
                                     {banks.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                                   </select></label>
                               )}
                               <input value={edit.reason} onChange={e => setEdit({ ...edit, reason: e.target.value })} placeholder="Reason (e.g. sold as scrap)" className={`col-span-2 ${inputClass}`} />
                               <button onClick={() => rpc(a.id, 'dispose_asset', { p_asset_id: a.id, p_disposed_on: edit.date, p_sale_amount: edit.amount, p_mode: edit.mode, p_reason: edit.reason, p_bank_ledger_id: edit.mode === 'bank' && edit.bankId ? edit.bankId : null }, `${a.asset_number} disposed; gain or loss posted.`)}
-                                disabled={busy !== null || !edit.reason.trim()} className="py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold cursor-pointer disabled:opacity-50">Dispose</button>
+                                disabled={busy !== null || !edit.reason.trim()} className="py-2 rounded-lg bg-danger-solid hover:bg-danger text-on-brand font-semibold cursor-pointer disabled:opacity-50">Dispose</button>
                             </div>
                           )}
                         </td>
@@ -218,8 +218,8 @@ export const AssetRegister: React.FC<AssetRegisterProps> = ({ societyId, canMana
                 );
               })}
             </tbody>
-            <tfoot className="bg-slate-900 font-bold text-white">
-              <tr className="border-t border-slate-700">
+            <tfoot className="bg-surface font-semibold text-fg">
+              <tr className="border-t border-border-strong">
                 <td className="p-2.5" colSpan={2}>Total {fyLabel(fyEnd)}</td>
                 <td className="p-2.5 text-right">{formatINR(totals.open)}</td><td className="p-2.5 text-right">{formatINR(totals.add)}</td><td />
                 <td className="p-2.5 text-right">{formatINR(totals.dep)}</td><td className="p-2.5 text-right">{formatINR(totals.close)}</td>{canManage && <td />}
@@ -229,30 +229,30 @@ export const AssetRegister: React.FC<AssetRegisterProps> = ({ societyId, canMana
         </div>
       )}
 
-      <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex flex-wrap items-center justify-between gap-3">
-        <div className="text-slate-300">
+      <div className="p-4 rounded-xl bg-surface border border-border flex flex-wrap items-center justify-between gap-3">
+        <div className="text-fg">
           {posted
-            ? <>Depreciation for {fyLabel(fyEnd)} posted on {posted.posted_at.slice(0, 10)}: <strong className="text-white">{formatINR(posted.total)}</strong> (Dr Depreciation · Cr Accumulated Depreciation).</>
-            : <>On posting: Dr Depreciation · Cr Accumulated Depreciation <strong className="text-white">{formatINR(totals.dep)}</strong>. Defaults are Income-tax WDV rates — have your CA confirm them first.</>}
+            ? <>Depreciation for {fyLabel(fyEnd)} posted on {posted.posted_at.slice(0, 10)}: <strong className="text-fg">{formatINR(posted.total)}</strong> (Dr Depreciation · Cr Accumulated Depreciation).</>
+            : <>On posting: Dr Depreciation · Cr Accumulated Depreciation <strong className="text-fg">{formatINR(totals.dep)}</strong>. Defaults are Income-tax WDV rates — have your CA confirm them first.</>}
         </div>
         {canManage && !posted && (
           <button onClick={() => rpc('post', 'post_depreciation', { p_society_id: societyId, p_fy_end: fyEnd }, `Depreciation for ${fyLabel(fyEnd)} posted.`)}
-            disabled={busy !== null || totals.dep <= 0} className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold cursor-pointer disabled:opacity-50">
+            disabled={busy !== null || totals.dep <= 0} className="px-4 py-2 rounded-lg bg-success hover:bg-success/90 text-on-brand font-semibold cursor-pointer disabled:opacity-50">
             {busy === 'post' ? <Loader2 className="w-4 h-4 animate-spin" /> : `Post depreciation for ${fyLabel(fyEnd)}`}
           </button>
         )}
       </div>
 
       {canManage && (
-        <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
-          <div className="font-bold text-white">Asset types</div>
-          <p className="text-slate-400">Each asset type is a ledger under Fixed Assets. A new asset takes its type&apos;s rate; you can still change an asset&apos;s own rate.</p>
+        <div className="p-4 rounded-xl bg-surface border border-border space-y-3">
+          <div className="font-semibold text-fg">Asset types</div>
+          <p className="text-fg-muted">Each asset type is a ledger under Fixed Assets. A new asset takes its type&apos;s rate; you can still change an asset&apos;s own rate.</p>
           <table className="w-full">
-            <thead className="text-slate-500 text-left"><tr><th className="py-1">Type</th><th className="py-1 text-right">Depreciation (%)</th><th /></tr></thead>
-            <tbody className="divide-y divide-slate-800">
+            <thead className="text-fg-subtle text-left"><tr><th className="py-1">Type</th><th className="py-1 text-right">Depreciation (%)</th><th /></tr></thead>
+            <tbody className="divide-y divide-border">
               {assetTypes.map(t => (
                 <tr key={t.code}>
-                  <td className="py-1.5 text-slate-200">{t.name} <span className="text-slate-500">({t.code})</span></td>
+                  <td className="py-1.5 text-fg">{t.name} <span className="text-fg-subtle">({t.code})</span></td>
                   <td className="py-1.5 text-right">
                     <input type="number" min={0} max={100} step="0.01" value={rateDrafts[t.code] ?? String(t.dep_rate)}
                       onChange={e => setRateDrafts(d => ({ ...d, [t.code]: e.target.value }))} className={`w-24 text-right ${inputClass}`} />
@@ -260,7 +260,7 @@ export const AssetRegister: React.FC<AssetRegisterProps> = ({ societyId, canMana
                   <td className="py-1.5 text-right">
                     {rateDrafts[t.code] !== undefined && Number(rateDrafts[t.code]) !== t.dep_rate && (
                       <button onClick={() => rpc(`rate-${t.code}`, 'set_ledger_dep_rate', { p_society_id: societyId, p_code: t.code, p_rate: Number(rateDrafts[t.code]) }, `${t.name}: depreciation rate saved.`)}
-                        disabled={busy !== null} className="text-sky-400 hover:underline cursor-pointer disabled:opacity-50">Save</button>
+                        disabled={busy !== null} className="text-brand hover:underline cursor-pointer disabled:opacity-50">Save</button>
                     )}
                   </td>
                 </tr>
@@ -271,7 +271,7 @@ export const AssetRegister: React.FC<AssetRegisterProps> = ({ societyId, canMana
             <input value={newType.name} onChange={e => setNewType({ ...newType, name: e.target.value })} placeholder="New asset type, e.g. Solar Panels" className={`flex-1 min-w-[200px] ${inputClass}`} />
             <input type="number" min={0} max={100} step="0.01" value={newType.rate} onChange={e => setNewType({ ...newType, rate: e.target.value })} className={`w-24 text-right ${inputClass}`} />
             <button onClick={async () => { await rpc('newtype', 'add_asset_ledger', { p_society_id: societyId, p_name: newType.name, p_rate: Number(newType.rate) }, `${newType.name} added as an asset type.`); setNewType({ name: '', rate: '10' }); }}
-              disabled={busy !== null || newType.name.trim().length < 2} className="flex items-center gap-1 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white cursor-pointer disabled:opacity-50">
+              disabled={busy !== null || newType.name.trim().length < 2} className="flex items-center gap-1 px-3 py-2 rounded-lg bg-surface-muted hover:bg-border text-fg cursor-pointer disabled:opacity-50">
               <Plus className="w-3.5 h-3.5" /> Add asset type
             </button>
           </div>
@@ -279,32 +279,32 @@ export const AssetRegister: React.FC<AssetRegisterProps> = ({ societyId, canMana
       )}
 
       {canManage && (existing ? (
-        <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
-          <div className="font-bold text-white">Add an asset the society already owns</div>
-          <p className="text-slate-400">Its written-down value must already be in your opening balances (account {existing.code}). Use the WDV as on the start of the financial year.</p>
+        <div className="p-4 rounded-xl bg-surface border border-border space-y-3">
+          <div className="font-semibold text-fg">Add an asset the society already owns</div>
+          <p className="text-fg-muted">Its written-down value must already be in your opening balances (account {existing.code}). Use the WDV as on the start of the financial year.</p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <input value={existing.name} onChange={e => setExisting({ ...existing, name: e.target.value })} placeholder="e.g. Diesel generator 62.5 kVA" className={`col-span-2 ${inputClass}`} />
             <select value={existing.code} onChange={e => setExisting({ ...existing, code: e.target.value as AssetAccountCode })} className={`col-span-2 ${inputClass}`}>
               {assetTypes.map(t => <option key={t.code} value={t.code}>{t.name} ({t.dep_rate}%)</option>)}
             </select>
-            <label className="space-y-1"><span className="text-slate-400">Bought on</span>
+            <label className="space-y-1"><span className="text-fg-muted">Bought on</span>
               <input type="date" value={existing.purchased} onChange={e => setExisting({ ...existing, purchased: e.target.value })} className={inputClass} /></label>
-            <label className="space-y-1"><span className="text-slate-400">Original cost (₹)</span>
+            <label className="space-y-1"><span className="text-fg-muted">Original cost (₹)</span>
               <input type="number" min={0} value={existing.cost || ''} onChange={e => setExisting({ ...existing, cost: Number(e.target.value) })} className={inputClass} /></label>
-            <label className="space-y-1"><span className="text-slate-400">WDV (₹)</span>
+            <label className="space-y-1"><span className="text-fg-muted">WDV (₹)</span>
               <input type="number" min={0} value={existing.wdv || ''} onChange={e => setExisting({ ...existing, wdv: Number(e.target.value) })} className={inputClass} /></label>
-            <label className="space-y-1"><span className="text-slate-400">WDV as on</span>
+            <label className="space-y-1"><span className="text-fg-muted">WDV as on</span>
               <input type="date" value={existing.asOf} onChange={e => setExisting({ ...existing, asOf: e.target.value })} className={inputClass} /></label>
             <input value={existing.location} onChange={e => setExisting({ ...existing, location: e.target.value })} placeholder="Location (optional)" className={`col-span-2 ${inputClass}`} />
             <div className="col-span-2 flex gap-2">
               <button onClick={saveExisting} disabled={busy !== null || !existing.name.trim() || !existing.purchased || !existing.asOf}
-                className="flex-1 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold cursor-pointer disabled:opacity-50">Add asset</button>
-              <button onClick={() => setExisting(null)} className="px-3 rounded-xl bg-slate-800 text-slate-300 cursor-pointer">Cancel</button>
+                className="flex-1 py-2 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold cursor-pointer disabled:opacity-50">Add asset</button>
+              <button onClick={() => setExisting(null)} className="px-3 rounded-xl bg-surface-muted text-fg cursor-pointer">Cancel</button>
             </div>
           </div>
         </div>
       ) : (
-        <button onClick={() => setExisting({ ...emptyExisting, asOf: `${Number(currentFy.slice(0, 4)) - 1}-04-01` })} className="flex items-center gap-1 text-sky-400 hover:underline cursor-pointer">
+        <button onClick={() => setExisting({ ...emptyExisting, asOf: `${Number(currentFy.slice(0, 4)) - 1}-04-01` })} className="flex items-center gap-1 text-brand hover:underline cursor-pointer">
           <Plus className="w-3.5 h-3.5" /> Add an asset the society already owns
         </button>
       ))}

@@ -178,32 +178,32 @@ export const MembersTab: React.FC<MembersTabProps> = ({ societyId, societyName, 
     load();
   };
 
-  const inputClass = 'w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-sky-500';
+  const inputClass = 'w-full bg-surface border border-border-strong rounded-lg px-3 py-2 text-fg outline-none focus:border-brand';
 
   return (
-    <div className="space-y-6 text-xs">
+    <div className="space-y-6 text-sm">
       <div>
-        <h2 className="text-lg font-bold text-white">Members & Residents</h2>
-        <p className="text-slate-400">{members.length} active members • {invites.length} pending invites</p>
+        <h2 className="text-2xl font-semibold tracking-tight text-fg">Members</h2>
+        <p className="text-fg-muted">{members.length} active members • {invites.length} pending invites</p>
       </div>
 
       <JoinLinkCard societyId={societyId} societyName={societyName} canChange={canManage} />
 
       {/* Invite form */}
-      <form onSubmit={handleInvite} className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
-        <div className="flex items-center gap-2 text-sm font-bold text-white">
-          <UserPlus className="w-4 h-4 text-sky-400" />
+      <form onSubmit={handleInvite} className="p-5 rounded-xl bg-surface border border-border space-y-4">
+        <div className="flex items-center gap-2 text-sm font-semibold text-fg">
+          <UserPlus className="w-4 h-4 text-brand" />
           <span>Invite a Member</span>
         </div>
 
         {error && (
-          <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 flex items-start gap-2">
+          <div className="p-3 rounded-xl bg-danger-soft border border-danger/30 text-danger flex items-start gap-2">
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
             <span>{error}</span>
           </div>
         )}
         {notice && (
-          <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 flex items-start gap-2">
+          <div className="p-3 rounded-xl bg-success-soft border border-success/30 text-success flex items-start gap-2">
             <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
             <span>{notice}</span>
           </div>
@@ -211,25 +211,25 @@ export const MembersTab: React.FC<MembersTabProps> = ({ societyId, societyName, 
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="space-y-1">
-            <span className="block text-slate-400 font-medium">Mobile</span>
+            <span className="block text-fg-muted font-medium">Mobile</span>
             <input inputMode="tel" value={mobile} onChange={e => setMobile(e.target.value)} placeholder="98765 43210" className={inputClass} />
           </label>
           <label className="space-y-1">
-            <span className="block text-slate-400 font-medium">Email {mobile.trim() && PHONE_LOGIN_ON ? '(optional)' : ''}</span>
+            <span className="block text-fg-muted font-medium">Email {mobile.trim() && PHONE_LOGIN_ON ? '(optional)' : ''}</span>
             <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="resident@gmail.com" className={inputClass} />
           </label>
           <label className="space-y-1">
-            <span className="block text-slate-400 font-medium">Name</span>
+            <span className="block text-fg-muted font-medium">Name</span>
             <input value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Optional" className={inputClass} />
           </label>
           <label className="space-y-1">
-            <span className="block text-slate-400 font-medium">Role *</span>
+            <span className="block text-fg-muted font-medium">Role *</span>
             <select value={role} onChange={e => setRole(e.target.value as SocietyRole)} className={inputClass}>
               {ROLE_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
             </select>
           </label>
           <label className="space-y-1">
-            <span className="block text-slate-400 font-medium">Flat {isResidentRole ? '*' : '(optional)'}</span>
+            <span className="block text-fg-muted font-medium">Flat {isResidentRole ? '*' : '(optional)'}</span>
             <select value={unitId} onChange={e => setUnitId(e.target.value)} className={inputClass}>
               <option value="">{units.length === 0 ? 'Import flats first' : 'Select flat'}</option>
               {[...units]
@@ -242,7 +242,7 @@ export const MembersTab: React.FC<MembersTabProps> = ({ societyId, societyName, 
         <button
           type="submit"
           disabled={sending}
-          className="w-full py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+          className="w-full py-2.5 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
         >
           {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
           <span>{sending ? 'Saving…' : 'Save Invite'}</span>
@@ -252,12 +252,12 @@ export const MembersTab: React.FC<MembersTabProps> = ({ societyId, societyName, 
       {/* Pending invites */}
       {invites.length > 0 && (
         <div className="space-y-2">
-          <h3 className="font-semibold text-slate-400 uppercase tracking-wider text-[11px]">Pending Invites</h3>
+          <h3 className="font-semibold text-fg-muted text-xs">Pending Invites</h3>
           {invites.map(inv => (
-            <div key={inv.id} className="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between gap-3">
+            <div key={inv.id} className="p-3 rounded-xl bg-surface border border-border flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <div className="font-semibold text-white truncate">{inv.full_name || inv.email || formatMobile(inv.mobile)}</div>
-                <div className="text-slate-400 truncate">{[inv.mobile ? formatMobile(inv.mobile) : null, inv.email].filter(Boolean).join(' · ')} • {roleLabel(inv.role)} • Flat {unitLabel(inv.unit_id)}</div>
+                <div className="font-semibold text-fg truncate">{inv.full_name || inv.email || formatMobile(inv.mobile)}</div>
+                <div className="text-fg-muted truncate">{[inv.mobile ? formatMobile(inv.mobile) : null, inv.email].filter(Boolean).join(' · ')} • {roleLabel(inv.role)} • Flat {unitLabel(inv.unit_id)}</div>
               </div>
               <div className="flex items-center gap-3 shrink-0">
                 <a
@@ -272,11 +272,11 @@ export const MembersTab: React.FC<MembersTabProps> = ({ societyId, societyName, 
                   }))}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-emerald-400 hover:text-emerald-300"
+                  className="flex items-center gap-1 text-success hover:text-success"
                 >
                   <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
                 </a>
-                <button onClick={() => revokeInvite(inv.id)} className="flex items-center gap-1 text-rose-400 hover:text-rose-300 cursor-pointer">
+                <button onClick={() => revokeInvite(inv.id)} className="flex items-center gap-1 text-danger hover:text-danger cursor-pointer">
                   <XCircle className="w-3.5 h-3.5" /> Revoke
                 </button>
               </div>
@@ -287,34 +287,34 @@ export const MembersTab: React.FC<MembersTabProps> = ({ societyId, societyName, 
 
       {/* Members */}
       <div className="space-y-2">
-        <h3 className="font-semibold text-slate-400 uppercase tracking-wider text-[11px]">Active Members</h3>
+        <h3 className="font-semibold text-fg-muted text-xs">Active Members</h3>
         {canChooseAccountant && (
-          <p className="text-slate-500">
+          <p className="text-fg-subtle">
             No CA on Sahvaas? Make a committee member the Accountant. The Accountant gets the CA&apos;s screens: ledgers, bill types, opening balance, assets, bank match and year close. Another committee member approves what they submit.
           </p>
         )}
         {members.length === 0 && !loading ? (
           <EmptyState icon={Users} title="No Members Yet" description="Invite residents and committee members using the form above." />
         ) : (
-          <div className="rounded-2xl bg-slate-900 border border-slate-800 divide-y divide-slate-800">
+          <div className="rounded-xl bg-surface border border-border divide-y divide-border">
             {members.map(m => (
               <div key={m.id} className="p-3 flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="font-semibold text-white truncate">{m.profiles?.full_name ?? 'Unknown'}</div>
-                  <div className="text-slate-400 truncate">{contactLine(m.profiles)}</div>
+                  <div className="font-semibold text-fg truncate">{m.profiles?.full_name ?? 'Unknown'}</div>
+                  <div className="text-fg-muted truncate">{contactLine(m.profiles)}</div>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-sky-500/10 text-sky-300">{roleLabel(m.role)}</span>
+                  <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-brand-soft text-brand">{roleLabel(m.role)}</span>
                   {COMMITTEE_ROLES.includes(m.role) && (canChooseAccountant ? (
-                    <label className="flex items-center gap-1 text-slate-300 cursor-pointer" title="Accountant (keeps the books in Sahvaas)">
+                    <label className="flex items-center gap-1 text-fg cursor-pointer" title="Accountant (keeps the books in Sahvaas)">
                       <input type="checkbox" checked={m.is_accountant} onChange={e => setAccountant(m, e.target.checked)} /> Accountant
                     </label>
                   ) : m.is_accountant && (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/10 text-amber-300">Accountant</span>
+                    <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-warning-soft text-warning">Accountant</span>
                   ))}
-                  <span className="text-slate-400 w-14 text-right">{m.unit_id ? unitLabel(m.unit_id) : '—'}</span>
+                  <span className="text-fg-muted w-14 text-right">{m.unit_id ? unitLabel(m.unit_id) : '—'}</span>
                   {m.user_id !== currentUserId && (
-                    <button onClick={() => deactivateMember(m)} className="text-slate-500 hover:text-rose-400 cursor-pointer" title="Remove member">
+                    <button onClick={() => deactivateMember(m)} className="text-fg-subtle hover:text-danger cursor-pointer" title="Remove member">
                       <XCircle className="w-4 h-4" />
                     </button>
                   )}

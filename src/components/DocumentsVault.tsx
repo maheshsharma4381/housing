@@ -103,19 +103,19 @@ export const DocumentsVault: React.FC<DocumentsVaultProps> = ({ societyId, canMa
     load();
   };
 
-  const inputClass = 'w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-sky-500';
+  const inputClass = 'w-full bg-surface border border-border-strong rounded-lg px-3 py-2 text-fg outline-none focus:border-brand';
 
   return (
-    <div className="space-y-5 text-xs">
+    <div className="space-y-5 text-sm">
       <div>
-        <h2 className="text-lg font-bold text-white">Documents Vault</h2>
-        <p className="text-slate-400">Bye-laws, minutes and audit reports in one place. Files are private and open through expiring links.</p>
+        <h2 className="text-2xl font-semibold tracking-tight text-fg">Documents</h2>
+        <p className="text-fg-muted">Bye-laws, minutes and audit reports in one place. Files are private and open through expiring links.</p>
       </div>
       <Banner tone="error">{error}</Banner>
       <Banner tone="success">{notice}</Banner>
 
       {canManage && (
-        <form onSubmit={upload} className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
+        <form onSubmit={upload} className="p-5 rounded-xl bg-surface border border-border space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Title (defaults to file name)" className={inputClass} />
             <select value={category} onChange={e => setCategory(e.target.value as SocietyDocument['category'])} className={inputClass}>
@@ -126,12 +126,12 @@ export const DocumentsVault: React.FC<DocumentsVaultProps> = ({ societyId, canMa
             type="file"
             accept=".pdf,.jpg,.jpeg,.png,.webp"
             onChange={e => { setFile(e.target.files?.[0] ?? null); setNotice(null); }}
-            className="block w-full text-slate-300 file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-slate-800 file:text-slate-200 file:cursor-pointer"
+            className="block w-full text-fg file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-slate-800 file:text-slate-200 file:cursor-pointer"
           />
-          <label className="flex items-center gap-2 text-slate-300 cursor-pointer">
+          <label className="flex items-center gap-2 text-fg cursor-pointer">
             <input type="checkbox" checked={restricted} onChange={e => setRestricted(e.target.checked)} /> Committee only (residents cannot see it)
           </label>
-          <button type="submit" disabled={uploading || !file} className="w-full py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50">
+          <button type="submit" disabled={uploading || !file} className="w-full py-2.5 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50">
             {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Upload (PDF / image, max 10 MB)
           </button>
         </form>
@@ -140,20 +140,20 @@ export const DocumentsVault: React.FC<DocumentsVaultProps> = ({ societyId, canMa
       {docs.length === 0 && !loading ? (
         <EmptyState icon={FolderLock} title="No Documents Yet" description={canManage ? 'Upload bye-laws, AGM minutes or audit reports above.' : 'Your committee has not shared any documents yet.'} />
       ) : (
-        <div className="rounded-2xl bg-slate-900 border border-slate-800 divide-y divide-slate-800">
+        <div className="rounded-xl bg-surface border border-border divide-y divide-border">
           {docs.map(d => (
             <div key={d.id} className="p-3 flex items-center justify-between gap-3">
               <button onClick={() => open(d)} className="min-w-0 text-left cursor-pointer group">
-                <div className="font-semibold text-white truncate group-hover:text-sky-300 flex items-center gap-1.5">
-                  {d.is_restricted_to_committee && <Lock className="w-3 h-3 text-amber-400 shrink-0" />}
+                <div className="font-semibold text-fg truncate group-hover:text-brand flex items-center gap-1.5">
+                  {d.is_restricted_to_committee && <Lock className="w-3 h-3 text-warning shrink-0" />}
                   {d.title}
                 </div>
-                <div className="text-slate-400">{categoryLabel(d.category)} • {new Date(d.created_at).toLocaleDateString('en-IN')} • {d.file_size_kb} KB</div>
+                <div className="text-fg-muted">{categoryLabel(d.category)} • {new Date(d.created_at).toLocaleDateString('en-IN')} • {d.file_size_kb} KB</div>
               </button>
               <div className="flex items-center gap-3 shrink-0">
-                <button onClick={() => open(d)} title="Open" className="text-sky-400 hover:text-sky-300 cursor-pointer"><ExternalLink className="w-4 h-4" /></button>
+                <button onClick={() => open(d)} title="Open" className="text-brand hover:text-brand cursor-pointer"><ExternalLink className="w-4 h-4" /></button>
                 {canManage && (
-                  <button onClick={() => remove(d)} title="Delete" className="text-slate-500 hover:text-rose-400 cursor-pointer"><Trash2 className="w-4 h-4" /></button>
+                  <button onClick={() => remove(d)} title="Delete" className="text-fg-subtle hover:text-danger cursor-pointer"><Trash2 className="w-4 h-4" /></button>
                 )}
               </div>
             </div>

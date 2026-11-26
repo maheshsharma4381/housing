@@ -84,48 +84,48 @@ export const NotificationBell: React.FC<{ onOpen?: (link: string) => void; align
 
   return (
     <div className="relative" ref={box}>
-      <button onClick={() => setOpen(o => !o)} className="relative p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white cursor-pointer" title="Notifications">
+      <button onClick={() => setOpen(o => !o)} className="relative p-1.5 rounded-lg bg-surface-muted text-fg hover:text-fg cursor-pointer" title="Notifications">
         {unread > 0 ? <BellRing className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
         {unread > 0 && (
-          <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-amber-500 text-slate-950 text-[9px] font-bold flex items-center justify-center">
+          <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-warning-solid text-fg text-xs font-semibold flex items-center justify-center">
             {unread > 99 ? '99+' : unread}
           </span>
         )}
       </button>
       {open && (
-        <div className={`fixed inset-x-2 top-14 sm:absolute sm:inset-x-auto sm:top-auto sm:mt-2 sm:w-80 ${align === 'left' ? 'sm:left-0' : 'sm:right-0'} max-h-[70vh] overflow-y-auto rounded-2xl bg-slate-900 border border-slate-800 shadow-xl z-40 text-xs`}>
-          <div className="flex items-center justify-between p-3 border-b border-slate-800">
-            <span className="font-semibold text-white">Notifications</span>
+        <div className={`fixed inset-x-2 top-14 sm:absolute sm:inset-x-auto sm:top-auto sm:mt-2 sm:w-80 ${align === 'left' ? 'sm:left-0' : 'sm:right-0'} max-h-[70vh] overflow-y-auto rounded-xl bg-surface border border-border shadow-card z-40 text-xs`}>
+          <div className="flex items-center justify-between p-3 border-b border-border">
+            <span className="font-semibold text-fg">Notifications</span>
             {unread > 0 && (
-              <button onClick={() => markRead(null)} className="flex items-center gap-1 text-sky-400 hover:underline cursor-pointer">
+              <button onClick={() => markRead(null)} className="flex items-center gap-1 text-brand hover:underline cursor-pointer">
                 <CheckCheck className="w-3.5 h-3.5" /> Mark all read
               </button>
             )}
           </div>
           {items.length === 0 ? (
-            <p className="p-4 text-slate-400">Nothing new.</p>
+            <p className="p-4 text-fg-muted">Nothing new.</p>
           ) : (
-            <ul className="divide-y divide-slate-800">
+            <ul className="divide-y divide-border">
               {items.map(item => (
                 <li key={item.id}>
-                  <button onClick={() => openItem(item)} className="w-full text-left p-3 hover:bg-slate-800/60 cursor-pointer">
-                    <div className={item.read_at ? 'text-slate-300' : 'text-white font-semibold'}>{item.title}</div>
-                    {item.body && <div className="text-slate-400 mt-0.5">{item.body}</div>}
-                    <div className="text-slate-500 mt-0.5">{ago(item.created_at)}</div>
+                  <button onClick={() => openItem(item)} className="w-full text-left p-3 hover:bg-surface-muted/60 cursor-pointer">
+                    <div className={item.read_at ? 'text-fg' : 'text-fg font-semibold'}>{item.title}</div>
+                    {item.body && <div className="text-fg-muted mt-0.5">{item.body}</div>}
+                    <div className="text-fg-subtle mt-0.5">{ago(item.created_at)}</div>
                   </button>
                 </li>
               ))}
             </ul>
           )}
           {iphoneHint && !pushState && (
-            <p className="p-3 border-t border-slate-800 text-slate-400">To get notifications on iPhone, add Sahvaas to the Home Screen (Share → Add to Home Screen), then open it from there.</p>
+            <p className="p-3 border-t border-border text-fg-muted">To get notifications on iPhone, add Sahvaas to the Home Screen (Share → Add to Home Screen), then open it from there.</p>
           )}
           {(showPushButton || pushState) && (
-            <div className="p-3 border-t border-slate-800 space-y-1">
+            <div className="p-3 border-t border-border space-y-1">
               {showPushButton && !pushState && (
-                <button onClick={turnOnPush} className="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white cursor-pointer">Turn on phone notifications</button>
+                <button onClick={turnOnPush} className="w-full py-2 rounded-lg bg-surface-muted hover:bg-border text-fg cursor-pointer">Turn on phone notifications</button>
               )}
-              {pushState && <p className="text-slate-400">{pushState}</p>}
+              {pushState && <p className="text-fg-muted">{pushState}</p>}
             </div>
           )}
         </div>

@@ -47,22 +47,22 @@ export const RuleFlats: React.FC<{
 
   return (
     <div className="space-y-2">
-      <div className="text-slate-400">
-        Charged to: <strong className="text-white">{selected ? 'chosen flats' : 'all flats'}</strong>
+      <div className="text-fg-muted">
+        Charged to: <strong className="text-fg">{selected ? 'chosen flats' : 'all flats'}</strong>
         {canManage && (
           <>
             {' · '}
-            <button onClick={openPicker} className="text-sky-400 hover:underline cursor-pointer">Choose flats</button>
-            {selected && <>{' · '}<button onClick={allFlats} className="text-sky-400 hover:underline cursor-pointer">All flats</button></>}
+            <button onClick={openPicker} className="text-brand hover:underline cursor-pointer">Choose flats</button>
+            {selected && <>{' · '}<button onClick={allFlats} className="text-brand hover:underline cursor-pointer">All flats</button></>}
           </>
         )}
       </div>
       <Banner tone="error">{error}</Banner>
       {open && (
-        <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+        <div className="p-3 rounded-xl bg-canvas border border-border space-y-2">
           <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 max-h-48 overflow-y-auto">
             {sorted.map(u => (
-              <label key={u.id} className="flex items-center gap-1.5 text-slate-300">
+              <label key={u.id} className="flex items-center gap-1.5 text-fg">
                 <input
                   type="checkbox" checked={chosen.has(u.id)}
                   onChange={() => setChosen(s => { const n = new Set(s); if (n.has(u.id)) n.delete(u.id); else n.add(u.id); return n; })}
@@ -72,10 +72,10 @@ export const RuleFlats: React.FC<{
             ))}
           </div>
           <div className="flex gap-2">
-            <button onClick={save} disabled={busy} className="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold cursor-pointer disabled:opacity-50 flex items-center gap-1.5">
+            <button onClick={save} disabled={busy} className="px-3 py-1.5 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold cursor-pointer disabled:opacity-50 flex items-center gap-1.5">
               {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Charge {chosen.size} flats
             </button>
-            <button onClick={() => setOpen(false)} className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 cursor-pointer">Cancel</button>
+            <button onClick={() => setOpen(false)} className="px-3 py-1.5 rounded-lg bg-surface-muted text-fg cursor-pointer">Cancel</button>
           </div>
         </div>
       )}

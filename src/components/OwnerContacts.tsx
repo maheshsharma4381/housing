@@ -6,7 +6,7 @@ import { normalizeMobile, parseOwnerPaste, formatMobile, type OwnerContactRow } 
 import { Banner } from './Banner';
 import { Loader2, ClipboardPaste } from 'lucide-react';
 
-const inputClass = 'w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-sky-500';
+const inputClass = 'w-full bg-surface border border-border-strong rounded-lg px-3 py-2 text-fg outline-none focus:border-brand';
 
 const saveRows = async (societyId: string, rows: OwnerContactRow[]) => {
   if (!supabase) return { error: 'Not connected', count: 0 };
@@ -33,12 +33,12 @@ export const OwnerContactEdit: React.FC<{
   };
 
   return (
-    <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+    <div className="p-3 rounded-xl bg-canvas border border-border space-y-2">
       <Banner tone="error">{error}</Banner>
       <input className={inputClass} placeholder="Owner name" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
       <input className={inputClass} placeholder="Owner mobile" inputMode="tel" value={form.mobile} onChange={e => setForm(f => ({ ...f, mobile: e.target.value }))} />
-      <p className="text-slate-500">When this mobile logs in through your joining link, it joins this flat as the owner.</p>
-      <button onClick={save} disabled={busy} className="px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold cursor-pointer disabled:opacity-50 flex items-center gap-1.5">
+      <p className="text-fg-subtle">When this mobile logs in through your joining link, it joins this flat as the owner.</p>
+      <button onClick={save} disabled={busy} className="px-3 py-2 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold cursor-pointer disabled:opacity-50 flex items-center gap-1.5">
         {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Save
       </button>
     </div>
@@ -68,9 +68,9 @@ export const OwnerPaste: React.FC<{
   };
 
   return (
-    <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3 text-xs">
-      <p className="text-slate-400">
-        Copy three columns from Excel — <strong className="text-white">flat number, owner name, mobile</strong> — and paste them here.
+    <div className="p-5 rounded-xl bg-surface border border-border space-y-3 text-xs">
+      <p className="text-fg-muted">
+        Copy three columns from Excel — <strong className="text-fg">flat number, owner name, mobile</strong> — and paste them here.
         An empty cell leaves what is saved for that flat as it is.
       </p>
       <Banner tone="error">{error}</Banner>
@@ -80,23 +80,23 @@ export const OwnerPaste: React.FC<{
         value={text}
         onChange={e => { setText(e.target.value); setNotice(null); }}
         placeholder={'A-101\tAsha Rao\t98765 43210\nA-102\tRavi Kumar\t98111 22222'}
-        className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 font-mono text-[11px] text-white outline-none focus:border-sky-500"
+        className="w-full bg-surface border border-border-strong rounded-lg p-3 font-mono text-xs text-fg outline-none focus:border-brand"
       />
       {parsed && (
-        <div className="space-y-1 text-slate-300">
-          <div><strong className="text-white">{parsed.rows.length}</strong> flats matched</div>
+        <div className="space-y-1 text-fg">
+          <div><strong className="text-fg">{parsed.rows.length}</strong> flats matched</div>
           {parsed.unknownFlats.length > 0 && (
-            <div className="text-amber-300">Not a flat in this society: {parsed.unknownFlats.join(', ')}</div>
+            <div className="text-warning">Not a flat in this society: {parsed.unknownFlats.join(', ')}</div>
           )}
           {parsed.badMobiles.length > 0 && (
-            <div className="text-rose-300">Mobile not valid (skipped): {parsed.badMobiles.join('; ')}</div>
+            <div className="text-danger">Mobile not valid (skipped): {parsed.badMobiles.join('; ')}</div>
           )}
         </div>
       )}
       <button
         onClick={save}
         disabled={busy || !parsed || parsed.rows.length === 0}
-        className="w-full py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+        className="w-full py-2.5 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
       >
         {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardPaste className="w-4 h-4" />}
         <span>Save owners</span>

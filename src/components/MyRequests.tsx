@@ -62,7 +62,7 @@ export const MyRequests: React.FC<{ societyId: string; userId: string; flats: My
     void load();
   };
 
-  const inputClass = 'w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-sky-500';
+  const inputClass = 'w-full bg-surface border border-border-strong rounded-lg px-3 py-2 text-fg outline-none focus:border-brand';
   const typeName = (r: RequestRow) => r.kind === 'tenancy' ? 'Tenant registration' : r.kind === 'shifting' ? `Shifting: ${r.details.direction === 'out' ? 'moving out' : 'moving in'}` : r.kind === 'transfer' ? `Sale of the flat to ${r.details.buyer_name ?? ''}` : (types.find(t => t.id === r.noc_type_id)?.name ?? 'NOC request');
   // flats this person owns (a tenant cannot register a tenant)
   const ownedUnits = unitIds.filter(u => !isTenantOf(u));
@@ -71,25 +71,25 @@ export const MyRequests: React.FC<{ societyId: string; userId: string; flats: My
     <div className="space-y-4 text-xs">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-base font-bold text-white">Requests</h2>
-          <p className="text-slate-400">Ask the committee for a NOC. You get the letter here once it is approved.</p>
+          <h2 className="text-base font-semibold text-fg">Requests</h2>
+          <p className="text-fg-muted">Ask the committee for a NOC. You get the letter here once it is approved.</p>
         </div>
         <div className="flex flex-wrap gap-2 justify-end">
           {!form && !tenantFor && unitIds.length > 0 && (
             <button onClick={() => { const unit = unitIds[0]; setForm({ unit, type: allowed(unit)[0]?.id ?? '', purpose: '', addressee: '' }); setDone(null); }}
-              className="px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold flex items-center gap-1.5 cursor-pointer"><Plus className="w-4 h-4" /> New NOC request</button>
+              className="px-3 py-2 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold flex items-center gap-1.5 cursor-pointer"><Plus className="w-4 h-4" /> New NOC request</button>
           )}
           {!form && !tenantFor && !shiftFor && unitIds.length > 0 && (
             <button onClick={() => { setShiftFor(unitIds[0]); setDone(null); }}
-              className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold flex items-center gap-1.5 cursor-pointer"><Plus className="w-4 h-4" /> Book shifting</button>
+              className="px-3 py-2 rounded-lg bg-surface-muted hover:bg-border text-fg font-semibold flex items-center gap-1.5 cursor-pointer"><Plus className="w-4 h-4" /> Book shifting</button>
           )}
           {!form && !tenantFor && !sellFor && ownedUnits.length > 0 && (
             <button onClick={() => { setSellFor(ownedUnits[0]); setDone(null); }}
-              className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold flex items-center gap-1.5 cursor-pointer"><Plus className="w-4 h-4" /> Transfer this flat</button>
+              className="px-3 py-2 rounded-lg bg-surface-muted hover:bg-border text-fg font-semibold flex items-center gap-1.5 cursor-pointer"><Plus className="w-4 h-4" /> Transfer this flat</button>
           )}
           {!form && !tenantFor && ownedUnits.length > 0 && (
             <button onClick={() => { setTenantFor({ unit: ownedUnits[0], renews: null }); setDone(null); }}
-              className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold flex items-center gap-1.5 cursor-pointer"><Plus className="w-4 h-4" /> Register a tenant</button>
+              className="px-3 py-2 rounded-lg bg-surface-muted hover:bg-border text-fg font-semibold flex items-center gap-1.5 cursor-pointer"><Plus className="w-4 h-4" /> Register a tenant</button>
           )}
         </div>
       </div>
@@ -98,7 +98,7 @@ export const MyRequests: React.FC<{ societyId: string; userId: string; flats: My
       {shiftFor && (
         <>
           {unitIds.length > 1 && (
-            <select value={shiftFor} onChange={e => setShiftFor(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white">
+            <select value={shiftFor} onChange={e => setShiftFor(e.target.value)} className="w-full bg-surface border border-border-strong rounded-lg px-3 py-2 text-fg">
               {unitIds.map(u => <option key={u} value={u}>Flat {labels[u] ?? ''}</option>)}
             </select>
           )}
@@ -110,7 +110,7 @@ export const MyRequests: React.FC<{ societyId: string; userId: string; flats: My
       {sellFor && (
         <>
           {ownedUnits.length > 1 && (
-            <select value={sellFor} onChange={e => setSellFor(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white">
+            <select value={sellFor} onChange={e => setSellFor(e.target.value)} className="w-full bg-surface border border-border-strong rounded-lg px-3 py-2 text-fg">
               {ownedUnits.map(u => <option key={u} value={u}>Flat {labels[u] ?? ''}</option>)}
             </select>
           )}
@@ -123,7 +123,7 @@ export const MyRequests: React.FC<{ societyId: string; userId: string; flats: My
         <>
           {ownedUnits.length > 1 && !tenantFor.renews && (
             <select value={tenantFor.unit} onChange={e => setTenantFor({ unit: e.target.value, renews: null })}
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white">
+              className="w-full bg-canvas border border-border-strong rounded-lg px-3 py-2 text-fg">
               {ownedUnits.map(u => <option key={u} value={u}>Flat {labels[u] ?? ''}</option>)}
             </select>
           )}
@@ -135,14 +135,14 @@ export const MyRequests: React.FC<{ societyId: string; userId: string; flats: My
 
       {ownedUnits.length > 0 && (
         <div className="space-y-2">
-          <h3 className="font-bold text-white text-sm">Tenants</h3>
+          <h3 className="font-semibold text-fg text-sm">Tenants</h3>
           <Tenancies societyId={societyId} unitIds={ownedUnits} labels={labels} canEnd showPast={false} refreshKey={refresh}
             onRenew={t => { setTenantFor({ unit: t.unit_id, renews: t }); setDone(null); setRefresh(x => x + 1); }} />
         </div>
       )}
 
       {form && (
-        <div className="p-4 rounded-2xl bg-slate-900 border border-sky-500/40 space-y-2">
+        <div className="p-4 rounded-xl bg-surface border border-brand/40 space-y-2">
           <Banner tone="error">{error}</Banner>
           {unitIds.length > 1 && (
             <select value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value, type: allowed(e.target.value)[0]?.id ?? '' })} className={inputClass}>
@@ -155,15 +155,15 @@ export const MyRequests: React.FC<{ societyId: string; userId: string; flats: My
           <input value={form.purpose} onChange={e => setForm({ ...form, purpose: e.target.value })} maxLength={300} placeholder="Purpose, e.g. Home loan from SBI" className={inputClass} />
           <input value={form.addressee} onChange={e => setForm({ ...form, addressee: e.target.value })} maxLength={160} placeholder="Addressed to (optional), e.g. The Branch Manager, SBI Kothrud" className={inputClass} />
           {(() => { const t = types.find(x => x.id === form.type); return t && t.checklist.length > 0
-            ? <div className="text-slate-400">You will be asked for: {t.checklist.map(c => c.label + (c.required ? '' : ' (optional)')).join(', ')}</div> : null; })()}
+            ? <div className="text-fg-muted">You will be asked for: {t.checklist.map(c => c.label + (c.required ? '' : ' (optional)')).join(', ')}</div> : null; })()}
           <div className="flex gap-2">
-            <button onClick={submit} disabled={busy || !form.type} className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold disabled:opacity-50 cursor-pointer">{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Send request'}</button>
-            <button onClick={() => setForm(null)} className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 cursor-pointer">Cancel</button>
+            <button onClick={submit} disabled={busy || !form.type} className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold disabled:opacity-50 cursor-pointer">{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Send request'}</button>
+            <button onClick={() => setForm(null)} className="px-4 py-2 rounded-lg bg-surface-muted text-fg cursor-pointer">Cancel</button>
           </div>
         </div>
       )}
 
-      {loading && <Loader2 className="w-4 h-4 animate-spin text-slate-500" />}
+      {loading && <Loader2 className="w-4 h-4 animate-spin text-fg-subtle" />}
       {!loading && requests.length === 0 && !form && <EmptyState icon={FileSignature} title="No requests yet" description="Ask for a NOC for a loan, a sale, the electricity meter, a passport and more." />}
       {requests.map(r => (
         <RequestDetail key={r.id} request={r} title={typeName(r)} flatLabel={labels[r.unit_id] ?? ''} canDecide={false} canEdit isCommittee={false} onChanged={load} />

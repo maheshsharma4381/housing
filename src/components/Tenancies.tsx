@@ -15,7 +15,7 @@ export interface TenancyRow {
 }
 
 const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
-const TONE: Record<string, string> = { active: 'text-emerald-300', ending: 'text-amber-300', expired: 'text-rose-300', ended: 'text-slate-500', renewed: 'text-slate-500' };
+const TONE: Record<string, string> = { active: 'text-success', ending: 'text-warning', expired: 'text-danger', ended: 'text-fg-subtle', renewed: 'text-fg-subtle' };
 
 export const Tenancies: React.FC<{
   societyId: string; unitIds?: string[]; labels: Record<string, string>; canEnd: boolean; showPast: boolean;
@@ -48,7 +48,7 @@ export const Tenancies: React.FC<{
     void load();
   };
 
-  if (loading) return <Loader2 className="w-4 h-4 animate-spin text-slate-500" />;
+  if (loading) return <Loader2 className="w-4 h-4 animate-spin text-fg-subtle" />;
   if (rows.length === 0) return <EmptyState icon={Home} title="No tenants" description="Registered tenants appear here with their agreement dates." />;
   const now = today();
   return (
@@ -57,18 +57,18 @@ export const Tenancies: React.FC<{
       {rows.map(t => {
         const state = tenancyState(t, now);
         return (
-          <div key={t.id} className="p-3 rounded-xl bg-slate-900 border border-slate-800 flex flex-wrap items-start justify-between gap-2">
+          <div key={t.id} className="p-3 rounded-xl bg-surface border border-border flex flex-wrap items-start justify-between gap-2">
             <div>
-              <div className="text-white font-semibold">Flat {labels[t.unit_id] ?? ''} · {t.tenant_name}</div>
-              <div className="text-slate-400">{formatMobile(t.tenant_mobile)}{t.tenant_email ? ` · ${t.tenant_email}` : ''} · {t.occupants} {t.occupants === 1 ? 'person' : 'people'}</div>
-              <div className="text-slate-400">Agreement {t.start_date} to {t.end_date}{t.ended_on ? ` · ended ${t.ended_on}` : ''}{t.police_ref ? ` · police ref ${t.police_ref}` : ''}</div>
+              <div className="text-fg font-semibold">Flat {labels[t.unit_id] ?? ''} · {t.tenant_name}</div>
+              <div className="text-fg-muted">{formatMobile(t.tenant_mobile)}{t.tenant_email ? ` · ${t.tenant_email}` : ''} · {t.occupants} {t.occupants === 1 ? 'person' : 'people'}</div>
+              <div className="text-fg-muted">Agreement {t.start_date} to {t.end_date}{t.ended_on ? ` · ended ${t.ended_on}` : ''}{t.police_ref ? ` · police ref ${t.police_ref}` : ''}</div>
             </div>
             <div className="text-right space-y-1">
               <div className={`font-semibold ${TONE[state]}`}>{TENANCY_STATE_LABELS[state]}</div>
               {t.status === 'active' && (
                 <div className="flex gap-3 justify-end">
-                  {onRenew && <button onClick={() => onRenew(t)} className="text-sky-300 cursor-pointer">Renew</button>}
-                  {canEnd && <button onClick={() => end(t)} disabled={busy !== null} className="text-rose-300 cursor-pointer">{busy === t.id ? 'Ending…' : 'Tenant moved out'}</button>}
+                  {onRenew && <button onClick={() => onRenew(t)} className="text-brand cursor-pointer">Renew</button>}
+                  {canEnd && <button onClick={() => end(t)} disabled={busy !== null} className="text-danger cursor-pointer">{busy === t.id ? 'Ending…' : 'Tenant moved out'}</button>}
                 </div>
               )}
             </div>

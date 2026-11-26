@@ -36,13 +36,13 @@ const OTHER_QUESTION = 'Is this for work or a service (contractor, AMC, repair),
 const OTHER_ANSWERS: [typeof emptyForm.otherNature, string][] = [['contract', 'Work or a service'], ['professional', 'A professional'], ['goods', 'Goods']];
 
 const SOURCE_STYLE: Record<Source, string> = {
-  invoice: 'bg-sky-500/15 text-sky-300',
-  rule: 'bg-violet-500/15 text-violet-300',
-  you: 'bg-slate-800 text-slate-400',
+  invoice: 'bg-brand-soft text-brand',
+  rule: 'bg-brand-soft text-brand-ink',
+  you: 'bg-surface-muted text-fg-muted',
 };
 
 const Tag: React.FC<{ source?: Source }> = ({ source }) =>
-  source ? <span className={`ml-1 px-1.5 py-px rounded-full text-[9px] font-bold uppercase ${SOURCE_STYLE[source]}`}>{source}</span> : null;
+  source ? <span className={`ml-1 px-1.5 py-px rounded-full text-xs font-semibold uppercase ${SOURCE_STYLE[source]}`}>{source}</span> : null;
 
 export const ExpenseBillForm: React.FC<ExpenseBillFormProps> = ({ societyId, vendors, categories, requiredApprovals, onVendorsChanged, onCreated }) => {
   // Asset types are the society's fixed-asset ledgers with their own rates (028)
@@ -261,18 +261,18 @@ export const ExpenseBillForm: React.FC<ExpenseBillFormProps> = ({ societyId, ven
     onCreated(`${mode === 'none' ? 'Voucher' : 'Bill'} submitted. ${requiredApprovals === 2 ? 'Two other committee members' : 'Another committee member'} must approve it.`);
   };
 
-  const inputClass = 'w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-sky-500';
+  const inputClass = 'w-full bg-surface border border-border-strong rounded-lg px-3 py-2 text-fg outline-none focus:border-brand';
   const labelClass = 'space-y-1 block';
   const gross = form.subtotal + (mode === 'none' ? 0 : form.gst);
 
   return (
-    <form onSubmit={submit} className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
+    <form onSubmit={submit} className="p-5 rounded-xl bg-surface border border-border space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="font-bold text-white text-sm flex items-center gap-2"><Receipt className="w-4 h-4 text-sky-400" /> Add a bill</div>
-        <div role="radiogroup" className="flex gap-1 p-1 rounded-xl bg-slate-950 border border-slate-800">
+        <div className="font-semibold text-fg text-sm flex items-center gap-2"><Receipt className="w-4 h-4 text-brand" /> Add a bill</div>
+        <div role="radiogroup" className="flex gap-1 p-1 rounded-xl bg-canvas border border-border">
           {([['invoice', 'With invoice'], ['pending', 'Invoice comes later'], ['none', 'No invoice (voucher)']] as [Mode, string][]).map(([m, label]) => (
             <button key={m} type="button" role="radio" aria-checked={mode === m} onClick={() => switchMode(m)}
-              className={`px-3 py-1.5 rounded-lg font-semibold cursor-pointer ${mode === m ? 'bg-sky-600 text-white' : 'text-slate-400 hover:text-white'}`}>
+              className={`px-3 py-1.5 rounded-lg font-semibold cursor-pointer ${mode === m ? 'bg-brand text-on-brand' : 'text-fg-muted hover:text-on-brand'}`}>
               {label}
             </button>
           ))}
@@ -283,14 +283,14 @@ export const ExpenseBillForm: React.FC<ExpenseBillFormProps> = ({ societyId, ven
       <Banner tone="info">{info}</Banner>
 
       {mode !== 'pending' && (
-        <label className="flex flex-col items-center justify-center gap-2 p-5 rounded-2xl border-2 border-dashed border-slate-700 bg-slate-950 text-center cursor-pointer hover:border-sky-600">
+        <label className="flex flex-col items-center justify-center gap-2 p-5 rounded-xl border-2 border-dashed border-border-strong bg-canvas text-center cursor-pointer hover:border-brand">
           {busy === 'upload' || busy === 'read'
-            ? <Loader2 className="w-6 h-6 text-sky-400 animate-spin" />
-            : mode === 'none' ? <Camera className="w-6 h-6 text-sky-400" /> : <FileUp className="w-6 h-6 text-sky-400" />}
-          <span className="text-sm font-bold text-white">
+            ? <Loader2 className="w-6 h-6 text-brand animate-spin" />
+            : mode === 'none' ? <Camera className="w-6 h-6 text-brand" /> : <FileUp className="w-6 h-6 text-brand" />}
+          <span className="text-sm font-semibold text-fg">
             {busy === 'read' ? 'Reading the invoice…' : fileName ?? (mode === 'none' ? 'Photo of the work or handwritten receipt' : 'Upload the vendor\'s invoice (photo or PDF)')}
           </span>
-          <span className="text-slate-500">{mode === 'none' ? 'Required for a voucher' : 'We fill the bill from it — you check and send for approval'}</span>
+          <span className="text-fg-subtle">{mode === 'none' ? 'Required for a voucher' : 'We fill the bill from it — you check and send for approval'}</span>
           <input ref={fileInput} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" capture={mode === 'none' ? 'environment' : undefined}
             onChange={e => pickFile(e.target.files?.[0])} className="sr-only" disabled={busy !== null} />
         </label>
@@ -299,43 +299,43 @@ export const ExpenseBillForm: React.FC<ExpenseBillFormProps> = ({ societyId, ven
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {mode === 'none' ? (
           <>
-            <label className={labelClass}><span className="text-slate-400">Paid to</span>
+            <label className={labelClass}><span className="text-fg-muted">Paid to</span>
               <input value={form.payeeName} onChange={e => set('payeeName', e.target.value)} placeholder="e.g. Ramesh Pawar (plumber)" className={inputClass} /></label>
-            <label className={labelClass}><span className="text-slate-400">Payee phone</span>
+            <label className={labelClass}><span className="text-fg-muted">Payee phone</span>
               <input value={form.payeePhone} onChange={e => set('payeePhone', e.target.value)} placeholder="Optional" className={inputClass} /></label>
           </>
         ) : (
           <div className="sm:col-span-2 space-y-1">
-            <span className="text-slate-400">Vendor<Tag source={sources.vendor} /></span>
+            <span className="text-fg-muted">Vendor<Tag source={sources.vendor} /></span>
             <div className="flex gap-2">
               <select value={form.vendorId} onChange={e => set('vendorId', e.target.value, 'vendor')} className={inputClass}>
                 <option value="">No vendor</option>
                 {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
               </select>
               <button type="button" onClick={() => setNewVendor(v => v ? null : { name: '', phone: '', gstin: '', pan: '' })} title="Add vendor"
-                className="px-2.5 rounded-xl bg-slate-800 text-slate-300 hover:text-white cursor-pointer"><Store className="w-4 h-4" /></button>
+                className="px-2.5 rounded-xl bg-surface-muted text-fg hover:text-fg cursor-pointer"><Store className="w-4 h-4" /></button>
             </div>
             {vendor && (
-              <div className="text-slate-500">
-                {pan ? <>PAN {pan} · <span className="text-violet-300">{panEntity(pan) === 'individual' ? 'individual / HUF' : 'company / firm'}</span></> : <span className="text-amber-300">No PAN or GSTIN — TDS at the no-PAN rate if it applies</span>}
+              <div className="text-fg-subtle">
+                {pan ? <>PAN {pan} · <span className="text-brand-ink">{panEntity(pan) === 'individual' ? 'individual / HUF' : 'company / firm'}</span></> : <span className="text-warning">No PAN or GSTIN — TDS at the no-PAN rate if it applies</span>}
                 {vendor.tds_override_rate != null && <> · certificate {vendor.tds_override_rate}%</>}
               </div>
             )}
           </div>
         )}
-        <label className={labelClass}><span className="text-slate-400">Bill type<Tag source={sources.category} /></span>
+        <label className={labelClass}><span className="text-fg-muted">Bill type<Tag source={sources.category} /></span>
           <select value={form.category} onChange={e => set('category', e.target.value, 'category')} className={inputClass}>
             {categories.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
           </select></label>
       </div>
 
       {form.category === 'other' && (
-        <div role="radiogroup" aria-label={OTHER_QUESTION} className="p-3 rounded-xl bg-slate-950 border border-violet-900 space-y-2">
-          <div className="text-violet-200">{OTHER_QUESTION}</div>
+        <div role="radiogroup" aria-label={OTHER_QUESTION} className="p-3 rounded-xl bg-canvas border border-brand space-y-2">
+          <div className="text-brand-ink">{OTHER_QUESTION}</div>
           <div className="flex flex-wrap gap-2">
             {OTHER_ANSWERS.map(([value, label]) => (
               <button key={value} type="button" role="radio" aria-checked={form.otherNature === value} onClick={() => set('otherNature', value)}
-                className={`px-3 py-1.5 rounded-xl border cursor-pointer ${form.otherNature === value ? 'bg-violet-600 border-violet-500 text-white' : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-violet-700'}`}>
+                className={`px-3 py-1.5 rounded-lg border cursor-pointer ${form.otherNature === value ? 'bg-brand border-brand text-on-brand' : 'bg-surface border-border-strong text-fg hover:border-brand'}`}>
                 {label}
               </button>
             ))}
@@ -344,83 +344,83 @@ export const ExpenseBillForm: React.FC<ExpenseBillFormProps> = ({ societyId, ven
       )}
 
       {newVendor && (
-        <div className="p-3 rounded-xl bg-slate-950 border border-sky-900 grid grid-cols-2 sm:grid-cols-5 gap-2">
-          <div className="col-span-2 sm:col-span-5 text-sky-300 font-semibold">{extraction ? 'New vendor found on the invoice — save it' : 'New vendor'}</div>
+        <div className="p-3 rounded-xl bg-canvas border border-brand grid grid-cols-2 sm:grid-cols-5 gap-2">
+          <div className="col-span-2 sm:col-span-5 text-brand font-semibold">{extraction ? 'New vendor found on the invoice — save it' : 'New vendor'}</div>
           <input value={newVendor.name} onChange={e => setNewVendor({ ...newVendor, name: e.target.value })} placeholder="Vendor name" className={`col-span-2 ${inputClass}`} />
           <input value={newVendor.phone} onChange={e => setNewVendor({ ...newVendor, phone: e.target.value })} placeholder="Phone" className={inputClass} />
           <input value={newVendor.gstin} onChange={e => setNewVendor({ ...newVendor, gstin: e.target.value })} placeholder="GSTIN (gives PAN)" maxLength={15} className={inputClass} />
-          <button type="button" onClick={saveVendor} className="rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold cursor-pointer">Save vendor</button>
+          <button type="button" onClick={saveVendor} className="rounded-xl bg-brand hover:bg-brand-hover text-on-brand font-semibold cursor-pointer">Save vendor</button>
         </div>
       )}
 
       <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
-        <label className={`col-span-2 sm:col-span-3 ${labelClass}`}><span className="text-slate-400">What is it for<Tag source={sources.title} /></span>
+        <label className={`col-span-2 sm:col-span-3 ${labelClass}`}><span className="text-fg-muted">What is it for<Tag source={sources.title} /></span>
           <input value={form.title} onChange={e => set('title', e.target.value, 'title')} placeholder="e.g. Security guards — October" className={inputClass} /></label>
         {mode !== 'none' && (
           <>
-            <label className={labelClass}><span className="text-slate-400">Invoice no.<Tag source={sources.invoiceNumber} /></span>
+            <label className={labelClass}><span className="text-fg-muted">Invoice no.<Tag source={sources.invoiceNumber} /></span>
               <input value={form.invoiceNumber} onChange={e => set('invoiceNumber', e.target.value, 'invoiceNumber')} className={inputClass} /></label>
-            <label className={`col-span-1 sm:col-span-2 ${labelClass}`}><span className="text-slate-400">Invoice date<Tag source={sources.invoiceDate} /></span>
+            <label className={`col-span-1 sm:col-span-2 ${labelClass}`}><span className="text-fg-muted">Invoice date<Tag source={sources.invoiceDate} /></span>
               <input type="date" value={form.invoiceDate} onChange={e => set('invoiceDate', e.target.value, 'invoiceDate')} className={inputClass} /></label>
           </>
         )}
-        <label className={`col-span-1 sm:col-span-2 ${labelClass}`}><span className="text-slate-400">{mode === 'none' ? 'Amount (₹)' : 'Taxable amount (₹)'}<Tag source={sources.subtotal} /></span>
+        <label className={`col-span-1 sm:col-span-2 ${labelClass}`}><span className="text-fg-muted">{mode === 'none' ? 'Amount (₹)' : 'Taxable amount (₹)'}<Tag source={sources.subtotal} /></span>
           <input type="number" min={0} step="0.01" value={form.subtotal || ''} onChange={e => set('subtotal', Number(e.target.value), 'subtotal')} className={inputClass} /></label>
         {mode !== 'none' && (
-          <label className={`col-span-1 sm:col-span-2 ${labelClass}`}><span className="text-slate-400">GST (₹)<Tag source={sources.gst} /></span>
+          <label className={`col-span-1 sm:col-span-2 ${labelClass}`}><span className="text-fg-muted">GST (₹)<Tag source={sources.gst} /></span>
             <input type="number" min={0} step="0.01" value={form.gst || ''} onChange={e => set('gst', Number(e.target.value), 'gst')} className={inputClass} /></label>
         )}
-        <div className="col-span-2 sm:col-span-2 flex items-end text-slate-300">Total: <strong className="ml-1 text-white">{formatINR(gross)}</strong></div>
+        <div className="col-span-2 sm:col-span-2 flex items-end text-fg">Total: <strong className="ml-1 text-fg">{formatINR(gross)}</strong></div>
       </div>
 
       {mode !== 'none' && (
         <div className="space-y-2">
-          <div className="text-white font-semibold">What is this bill for?<Tag source={sources.type} /></div>
+          <div className="text-fg font-semibold">What is this bill for?<Tag source={sources.type} /></div>
           <div role="radiogroup" className="grid grid-cols-2 gap-2">
             {([['revenue', 'Regular expense', 'Security, cleaning, repairs, AMC — goes to Income & Expenditure'],
                ['capital', 'New asset', 'Lasts years — goes to the Balance Sheet, depreciated yearly']] as const).map(([value, label, hint]) => (
               <button key={value} type="button" role="radio" aria-checked={form.expenseType === value}
                 onClick={() => { set('expenseType', value, 'type'); if (value === 'capital' && !form.assetCode) set('assetCode', category?.asset_account_code ?? assetOptions[0]?.code ?? '', 'assetCode'); }}
-                className={`p-3 rounded-xl text-left cursor-pointer border ${form.expenseType === value ? 'border-sky-500 bg-sky-950 text-white' : 'border-slate-800 bg-slate-950 text-slate-300'}`}>
-                <div className="font-bold">{label}{form.expenseType === value ? ' ✓' : ''}</div>
-                <div className="text-slate-400">{hint}</div>
+                className={`p-3 rounded-xl text-left cursor-pointer border ${form.expenseType === value ? 'border-brand bg-brand-soft text-fg' : 'border-border bg-canvas text-fg'}`}>
+                <div className="font-semibold">{label}{form.expenseType === value ? ' ✓' : ''}</div>
+                <div className="text-fg-muted">{hint}</div>
               </button>
             ))}
           </div>
           {sources.type === 'rule' && form.expenseType === 'capital' && (
-            <div className="px-3 py-2 rounded-xl bg-amber-500/10 text-amber-200">
+            <div className="px-3 py-2 rounded-lg bg-warning-soft text-warning">
               {formatINR(gross)} for {category?.label ?? 'this'} usually counts as an asset. It won&apos;t reduce this year&apos;s surplus.
             </div>
           )}
           {form.expenseType === 'capital' && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <label className={labelClass}><span className="text-slate-400">Asset type<Tag source={sources.assetCode} /></span>
+              <label className={labelClass}><span className="text-fg-muted">Asset type<Tag source={sources.assetCode} /></span>
                 <select value={form.assetCode} onChange={e => set('assetCode', e.target.value as AssetAccountCode, 'assetCode')} className={inputClass}>
                   {assetOptions.map(a => <option key={a.code} value={a.code}>{a.label} ({a.rate}%)</option>)}
                 </select></label>
-              <label className={labelClass}><span className="text-slate-400">Paid from</span>
+              <label className={labelClass}><span className="text-fg-muted">Paid from</span>
                 <select value={form.fundedFrom} onChange={e => set('fundedFrom', e.target.value as typeof form.fundedFrom)} className={inputClass}>
                   <option value="general">General funds</option>
                   <option value="sinking_fund">Sinking fund</option>
                   <option value="repair_fund">Repair fund</option>
                 </select></label>
-              <label className={labelClass}><span className="text-slate-400">Location</span>
+              <label className={labelClass}><span className="text-fg-muted">Location</span>
                 <input value={form.location} onChange={e => set('location', e.target.value)} placeholder="e.g. Gate + lobbies" className={inputClass} /></label>
             </div>
           )}
         </div>
       )}
 
-      <div className="p-3 rounded-xl bg-violet-950/40 border border-violet-900 space-y-2">
+      <div className="p-3 rounded-xl bg-brand-soft border border-brand space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="text-white font-bold flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5 text-violet-300" /> TDS<Tag source={sources.tds} /></div>
-          <label className="flex items-center gap-2 text-slate-300">₹
-            <input type="number" min={0} step="1" value={form.tds || ''} onChange={e => set('tds', Number(e.target.value), 'tds')} className="w-28 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-white outline-none focus:border-violet-500" />
+          <div className="text-fg font-semibold flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5 text-brand-ink" /> TDS<Tag source={sources.tds} /></div>
+          <label className="flex items-center gap-2 text-fg">₹
+            <input type="number" min={0} step="1" value={form.tds || ''} onChange={e => set('tds', Number(e.target.value), 'tds')} className="w-28 bg-surface border border-border-strong rounded-lg px-2 py-1 text-fg outline-none focus:border-brand" />
           </label>
         </div>
-        <div className="text-violet-200">{suggestion ? explainTds(suggestion) : 'Enter the amount to work out TDS.'}</div>
+        <div className="text-brand-ink">{suggestion ? explainTds(suggestion) : 'Enter the amount to work out TDS.'}</div>
         {extraction?.material_shown_separately && suggestion?.applies && (
-          <div className="text-amber-200">The invoice lists material separately — TDS may apply only on the labour part. Change the amount if your CA agrees.</div>
+          <div className="text-warning">The invoice lists material separately — TDS may apply only on the labour part. Change the amount if your CA agrees.</div>
         )}
         {suggestion && form.tds !== Number(suggestion.amount) && (
           <input value={form.tdsReason} onChange={e => set('tdsReason', e.target.value)} placeholder="Why is TDS different? (required, logged)" className={inputClass} />
@@ -428,16 +428,16 @@ export const ExpenseBillForm: React.FC<ExpenseBillFormProps> = ({ societyId, ven
       </div>
 
       {mode !== 'none' && (
-        <label className="flex items-center gap-2 text-slate-300 cursor-pointer">
+        <label className="flex items-center gap-2 text-fg cursor-pointer">
           <input type="checkbox" checked={form.gstClaimable} onChange={e => set('gstClaimable', e.target.checked)} className="accent-sky-500" />
-          Claim GST input credit <span className="text-slate-500">— off for most society purchases; your CA decides</span>
+          Claim GST input credit <span className="text-fg-subtle">— off for most society purchases; your CA decides</span>
         </label>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-2 text-slate-300">
-        <span>Net payable: <strong className="text-white">{formatINR(Math.max(gross - form.tds, 0))}</strong>{mode === 'none' && <span className="text-slate-500"> · a payment voucher number is created</span>}</span>
+      <div className="flex flex-wrap items-center justify-between gap-2 text-fg">
+        <span>Net payable: <strong className="text-fg">{formatINR(Math.max(gross - form.tds, 0))}</strong>{mode === 'none' && <span className="text-fg-subtle"> · a payment voucher number is created</span>}</span>
       </div>
-      <button type="submit" disabled={busy !== null} className="w-full py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50">
+      <button type="submit" disabled={busy !== null} className="w-full py-2.5 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50">
         {busy === 'save' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Receipt className="w-4 h-4" />} Send for approval ({requiredApprovals} needed)
       </button>
     </form>

@@ -19,10 +19,10 @@ interface ImportResult {
 }
 
 const STATUS_INFO: Record<string, { label: string; cls: string; hint: string }> = {
-  exact_match: { label: 'Matched', cls: 'bg-emerald-500/10 text-emerald-300', hint: 'Invoice and amounts agree' },
-  partial_match: { label: 'Amount mismatch', cls: 'bg-amber-500/10 text-amber-300', hint: 'Same invoice, taxable or tax differs by more than ₹1' },
-  missing_in_books: { label: 'Not in books', cls: 'bg-sky-500/10 text-sky-300', hint: 'Supplier reported it; society has not recorded the bill' },
-  missing_in_2b: { label: 'Not in 2B', cls: 'bg-rose-500/10 text-rose-300', hint: 'Recorded in books but supplier has not filed — ITC at risk' },
+  exact_match: { label: 'Matched', cls: 'bg-success-soft text-success', hint: 'Invoice and amounts agree' },
+  partial_match: { label: 'Amount mismatch', cls: 'bg-warning-soft text-warning', hint: 'Same invoice, taxable or tax differs by more than ₹1' },
+  missing_in_books: { label: 'Not in books', cls: 'bg-brand-soft text-brand', hint: 'Supplier reported it; society has not recorded the bill' },
+  missing_in_2b: { label: 'Not in 2B', cls: 'bg-danger-soft text-danger', hint: 'Recorded in books but supplier has not filed — ITC at risk' },
 };
 
 const toPeriod = (month: string) => { const [y, m] = month.split('-'); return `${m}${y}`; }; // 2026-10 -> 102026
@@ -111,15 +111,15 @@ export const Gstr2bPanel: React.FC<{ societyId: string; societyName?: string }> 
   };
 
   const shown = detail.filter(d => (filter === 'all' ? true : filter === 'issues' ? d.status !== 'exact_match' : d.status === filter));
-  const inputClass = 'bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-amber-500';
+  const inputClass = 'bg-surface border border-border-strong rounded-lg px-3 py-2 text-fg outline-none focus:border-brand';
 
   return (
     <div className="space-y-5 text-xs">
-      <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex items-start gap-3 text-slate-300">
-        <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+      <div className="p-4 rounded-xl bg-surface border border-border flex items-start gap-3 text-fg">
+        <ShieldCheck className="w-5 h-5 text-success shrink-0 mt-0.5" />
         <div>
-          <div className="font-semibold text-white">GSTR-2B Offline Matching</div>
-          <div className="text-slate-400 mt-0.5">
+          <div className="font-semibold text-fg">GSTR-2B Offline Matching</div>
+          <div className="text-fg-muted mt-0.5">
             No GST portal password is ever stored. Download GSTR-2B (JSON, or the B2B sheet saved as CSV) from gst.gov.in and upload it here.
             Supplier GSTIN + invoice number are matched against the society&apos;s recorded vendor bills.
           </div>
@@ -127,36 +127,36 @@ export const Gstr2bPanel: React.FC<{ societyId: string; societyName?: string }> 
       </div>
       <Banner tone="error">{error}</Banner>
 
-      <section className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
+      <section className="p-5 rounded-xl bg-surface border border-border space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="font-bold text-white text-sm flex items-center gap-2"><FileSpreadsheet className="w-4 h-4 text-amber-400" /> Upload GSTR-2B</div>
-          <a href={`data:text/csv;charset=utf-8,${encodeURIComponent(GSTR2B_CSV_TEMPLATE)}`} download="gstr2b-template.csv" className="flex items-center gap-1 text-sky-400 hover:underline">
+          <div className="font-semibold text-fg text-sm flex items-center gap-2"><FileSpreadsheet className="w-4 h-4 text-warning" /> Upload GSTR-2B</div>
+          <a href={`data:text/csv;charset=utf-8,${encodeURIComponent(GSTR2B_CSV_TEMPLATE)}`} download="gstr2b-template.csv" className="flex items-center gap-1 text-brand hover:underline">
             <FileDown className="w-3.5 h-3.5" /> CSV template
           </a>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-slate-400">Return period</span>
+          <span className="text-fg-muted">Return period</span>
           <input type="month" value={month} onChange={e => setMonth(e.target.value)} className={inputClass} />
           <input type="file" accept=".json,.csv,application/json,text/csv" onChange={e => onFile(e.target.files?.[0])}
-            className="text-slate-300 file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-slate-800 file:text-slate-200 file:cursor-pointer" />
+            className="text-fg file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-slate-800 file:text-slate-200 file:cursor-pointer" />
         </div>
 
         {parsed && (
           <div className="space-y-2">
-            <div className="text-slate-300">
-              <strong className="text-white">{parsed.invoices.length}</strong> B2B invoices read from {fileName}
-              {parsed.returnPeriod && <> for <strong className="text-white">{periodLabel(parsed.returnPeriod)}</strong></>}
-              {parsed.returnPeriod && parsed.returnPeriod !== toPeriod(month) && <span className="text-amber-300"> — file period differs from the selected month</span>}
+            <div className="text-fg">
+              <strong className="text-fg">{parsed.invoices.length}</strong> B2B invoices read from {fileName}
+              {parsed.returnPeriod && <> for <strong className="text-fg">{periodLabel(parsed.returnPeriod)}</strong></>}
+              {parsed.returnPeriod && parsed.returnPeriod !== toPeriod(month) && <span className="text-warning"> — file period differs from the selected month</span>}
             </div>
             {Object.keys(parsed.skipped).length > 0 && (
-              <div className="text-slate-500">Not reconciled yet: {Object.entries(parsed.skipped).map(([k, n]) => `${k.toUpperCase()} (${n})`).join(', ')}</div>
+              <div className="text-fg-subtle">Not reconciled yet: {Object.entries(parsed.skipped).map(([k, n]) => `${k.toUpperCase()} (${n})`).join(', ')}</div>
             )}
             {parsed.errors.length > 0 && (
-              <ul className="max-h-28 overflow-y-auto p-3 rounded-xl bg-rose-500/5 border border-rose-500/20 text-rose-300 space-y-0.5">
+              <ul className="max-h-28 overflow-y-auto p-3 rounded-xl bg-danger-soft border border-danger/20 text-danger space-y-0.5">
                 {parsed.errors.slice(0, 30).map(e => <li key={e}>{e}</li>)}
               </ul>
             )}
-            <button onClick={runImport} disabled={busy || parsed.invoices.length === 0} className="w-full py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50">
+            <button onClick={runImport} disabled={busy || parsed.invoices.length === 0} className="w-full py-2.5 rounded-lg bg-warning-solid hover:bg-warning-solid text-on-brand font-semibold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50">
               {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Reconcile {periodLabel(toPeriod(month))}
             </button>
           </div>
@@ -166,15 +166,15 @@ export const Gstr2bPanel: React.FC<{ societyId: string; societyName?: string }> 
       {result && (
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
           {[
-            ['Matched', result.exact_match, 'text-emerald-400'],
-            ['Amount mismatch', result.partial_match, 'text-amber-300'],
-            ['Not in books', result.missing_in_books, 'text-sky-300'],
-            ['Not in 2B', result.missing_in_2b, 'text-rose-400'],
-            ['ITC at risk', formatINR(result.itc_at_risk), 'text-rose-400'],
+            ['Matched', result.exact_match, 'text-success'],
+            ['Amount mismatch', result.partial_match, 'text-warning'],
+            ['Not in books', result.missing_in_books, 'text-brand'],
+            ['Not in 2B', result.missing_in_2b, 'text-danger'],
+            ['ITC at risk', formatINR(result.itc_at_risk), 'text-danger'],
           ].map(([label, value, cls]) => (
-            <div key={label as string} className="p-3 rounded-2xl bg-slate-900 border border-slate-800">
-              <div className="text-slate-400">{label}</div>
-              <div className={`text-base font-bold ${cls}`}>{value}</div>
+            <div key={label as string} className="p-3 rounded-xl bg-surface border border-border">
+              <div className="text-fg-muted">{label}</div>
+              <div className={`text-base font-semibold ${cls}`}>{value}</div>
             </div>
           ))}
         </div>
@@ -183,9 +183,9 @@ export const Gstr2bPanel: React.FC<{ societyId: string; societyName?: string }> 
       {uploads.length > 0 && (
         <section className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-bold text-white text-sm">Reconciliations</span>
+            <span className="font-semibold text-fg text-sm">Reconciliations</span>
             {uploads.map(u => (
-              <button key={u.id} onClick={() => loadDetail(u.id)} className={`px-3 py-1.5 rounded-xl cursor-pointer ${selected === u.id ? 'bg-amber-600 text-white' : 'bg-slate-900 border border-slate-800 text-slate-300'}`}>
+              <button key={u.id} onClick={() => loadDetail(u.id)} className={`px-3 py-1.5 rounded-lg cursor-pointer ${selected === u.id ? 'bg-warning-solid text-on-brand' : 'bg-surface border border-border text-fg'}`}>
                 {periodLabel(u.return_period)}
               </button>
             ))}
@@ -194,27 +194,27 @@ export const Gstr2bPanel: React.FC<{ societyId: string; societyName?: string }> 
           {selected && (
             <>
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <select value={filter} onChange={e => setFilter(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-xl px-2 py-1.5 text-white">
+                <select value={filter} onChange={e => setFilter(e.target.value)} className="bg-surface border border-border-strong rounded-lg px-2 py-1.5 text-fg">
                   <option value="issues">Needs attention</option>
                   <option value="all">All lines</option>
                   {Object.entries(STATUS_INFO).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                 </select>
-                <button onClick={exportDetail} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-200 cursor-pointer">
+                <button onClick={exportDetail} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface border border-border-strong text-fg cursor-pointer">
                   <Download className="w-3.5 h-3.5" /> Export CSV
                 </button>
               </div>
-              <div className="rounded-2xl bg-slate-900 border border-slate-800 overflow-x-auto">
+              <div className="rounded-xl bg-surface border border-border overflow-x-auto">
                 <table className="w-full text-left">
-                  <thead className="bg-slate-950 text-slate-400">
+                  <thead className="bg-canvas text-fg-muted">
                     <tr><th className="p-2">Status</th><th className="p-2">Supplier</th><th className="p-2">Invoice</th><th className="p-2 text-right">2B taxable / tax</th><th className="p-2 text-right">Books taxable / tax</th></tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800 text-slate-300">
-                    {shown.length === 0 && <tr><td className="p-3 text-slate-500" colSpan={5}>Nothing to show — all invoices matched. ✓</td></tr>}
+                  <tbody className="divide-y divide-border text-fg">
+                    {shown.length === 0 && <tr><td className="p-3 text-fg-subtle" colSpan={5}>Nothing to show — all invoices matched. ✓</td></tr>}
                     {shown.map((d, i) => (
                       <tr key={i} title={STATUS_INFO[d.status]?.hint}>
-                        <td className="p-2"><span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap ${STATUS_INFO[d.status]?.cls}`}>{STATUS_INFO[d.status]?.label ?? d.status}</span></td>
-                        <td className="p-2"><div className="text-white">{d.supplier_name}</div><div className="font-mono text-[10px] text-slate-500">{d.supplier_gstin}</div></td>
-                        <td className="p-2"><div className="text-white">{d.invoice_number}</div><div className="text-slate-500">{d.invoice_date}{d.expense_number && ` • ${d.expense_number}`}</div></td>
+                        <td className="p-2"><span className={`px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap ${STATUS_INFO[d.status]?.cls}`}>{STATUS_INFO[d.status]?.label ?? d.status}</span></td>
+                        <td className="p-2"><div className="text-fg">{d.supplier_name}</div><div className="font-mono text-xs text-fg-subtle">{d.supplier_gstin}</div></td>
+                        <td className="p-2"><div className="text-fg">{d.invoice_number}</div><div className="text-fg-subtle">{d.invoice_date}{d.expense_number && ` • ${d.expense_number}`}</div></td>
                         <td className="p-2 text-right whitespace-nowrap">{d.portal_taxable !== null ? `${formatINR(d.portal_taxable)} / ${formatINR(d.portal_tax)}` : '—'}</td>
                         <td className="p-2 text-right whitespace-nowrap">{d.books_taxable !== null ? `${formatINR(d.books_taxable)} / ${formatINR(d.books_tax)}` : '—'}</td>
                       </tr>

@@ -47,21 +47,21 @@ export const SocietyProfile: React.FC<{ societyId: string }> = ({ societyId }) =
   };
 
   return (
-    <section className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3 text-xs">
-      <div className="font-bold text-white text-sm flex items-center gap-2"><Building2 className="w-4 h-4 text-sky-400" /> Society profile</div>
-      <p className="text-slate-400">Printed at the top of every bill and receipt.</p>
+    <section className="p-5 rounded-xl bg-surface border border-border space-y-3 text-xs">
+      <div className="font-semibold text-fg text-sm flex items-center gap-2"><Building2 className="w-4 h-4 text-brand" /> Society profile</div>
+      <p className="text-fg-muted">Printed at the top of every bill and receipt.</p>
       <Banner tone="error">{error}</Banner>
       <Banner tone="success">{notice}</Banner>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {FIELDS.map(f => (
           <label key={f.key} className={`space-y-1 ${f.key === 'address_line1' ? 'sm:col-span-2' : ''}`}>
-            <span className="text-slate-400">{f.label}</span>
-            <input className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-sky-500"
+            <span className="text-fg-muted">{f.label}</span>
+            <input className="w-full bg-surface border border-border-strong rounded-lg px-3 py-2 text-fg outline-none focus:border-brand"
               value={form[f.key]} onChange={e => setForm({ ...form, [f.key]: e.target.value })} />
           </label>
         ))}
       </div>
-      <button onClick={save} disabled={busy} className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold cursor-pointer disabled:opacity-50 flex items-center gap-1.5">
+      <button onClick={save} disabled={busy} className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold cursor-pointer disabled:opacity-50 flex items-center gap-1.5">
         {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Save profile
       </button>
     </section>

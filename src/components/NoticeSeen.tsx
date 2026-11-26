@@ -31,18 +31,18 @@ export const NoticeSeen: React.FC<{ noticeId: string }> = ({ noticeId }) => {
 
   return (
     <div className="pt-1">
-      <button onClick={load} className="flex items-center gap-1.5 text-[11px] text-slate-400 hover:text-sky-300 cursor-pointer">
+      <button onClick={load} className="flex items-center gap-1.5 text-xs text-fg-muted hover:text-brand cursor-pointer">
         {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Eye className="w-3.5 h-3.5" />}
         {summary ? `Seen by ${summary.seen} of ${summary.total}` : 'Who has seen it'}
       </button>
-      {error && <div className="text-rose-300 text-[11px]">{error}</div>}
+      {error && <div className="text-danger text-xs">{error}</div>}
       {open && summary && (
         people.length === 0
-          ? <div className="text-emerald-300 text-[11px] mt-1">{summary.total === 0 ? 'Nobody outside the committee is in this notice’s audience.' : 'Everyone has seen it.'}</div>
+          ? <div className="text-success text-xs mt-1">{summary.total === 0 ? 'Nobody outside the committee is in this notice’s audience.' : 'Everyone has seen it.'}</div>
           : (
-            <div className="mt-1.5 p-2.5 rounded-xl bg-slate-950 border border-slate-800">
-              <div className="text-[11px] font-semibold text-slate-300 mb-1">Not seen yet</div>
-              <ul className="space-y-0.5 text-[11px] text-slate-400">
+            <div className="mt-1.5 p-2.5 rounded-xl bg-canvas border border-border">
+              <div className="text-xs font-semibold text-fg mb-1">Not seen yet</div>
+              <ul className="space-y-0.5 text-xs text-fg-muted">
                 {people.map((p, i) => (
                   <li key={i}>{p.name}{p.unit_number ? ` · Flat ${labels[li++]}` : ''}</li>
                 ))}

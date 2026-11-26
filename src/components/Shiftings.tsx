@@ -70,45 +70,45 @@ export const Shiftings: React.FC<{ societyId: string; labels: Record<string, str
     void load();
   };
 
-  if (loading) return <Loader2 className="w-4 h-4 animate-spin text-slate-500" />;
+  if (loading) return <Loader2 className="w-4 h-4 animate-spin text-fg-subtle" />;
   if (rows.length === 0) return <EmptyState icon={Truck} title="No shifting yet" description="Approved move-ins and move-outs appear here." />;
   return (
     <div className="space-y-2 text-xs">
       <Banner tone="error">{error}</Banner>
       <Banner tone="success">{done}</Banner>
       {rows.map(r => (
-        <div key={r.id} className="p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
+        <div key={r.id} className="p-3 rounded-xl bg-surface border border-border space-y-1">
           <div className="flex flex-wrap justify-between gap-2">
-            <span className="text-white font-semibold">Flat {labels[r.unit_id] ?? ''} · {DIRECTION_LABELS[r.direction]} · {r.shift_date} {r.shift_time.slice(0, 5)}</span>
-            <span className={r.deposit_status === 'held' ? 'text-amber-300' : 'text-slate-400'}>{Number(r.deposit_amount) > 0 || r.deposit_status === 'cancelled' ? DEPOSIT_LABELS[r.deposit_status] : ''}</span>
+            <span className="text-fg font-semibold">Flat {labels[r.unit_id] ?? ''} · {DIRECTION_LABELS[r.direction]} · {r.shift_date} {r.shift_time.slice(0, 5)}</span>
+            <span className={r.deposit_status === 'held' ? 'text-warning' : 'text-fg-muted'}>{Number(r.deposit_amount) > 0 || r.deposit_status === 'cancelled' ? DEPOSIT_LABELS[r.deposit_status] : ''}</span>
           </div>
-          <div className="text-slate-400">
+          <div className="text-fg-muted">
             {Number(r.charge_amount) > 0 && `Charges ${formatINR(Number(r.charge_amount))}`}
             {Number(r.charge_amount) > 0 && Number(r.deposit_amount) > 0 && ' · '}
             {Number(r.deposit_amount) > 0 && `Deposit ${formatINR(Number(r.deposit_amount))}`}
             {r.vehicle ? ` · ${r.vehicle}` : ''}
-            {r.bill_id && <> · <Link href={`/bill/${r.bill_id}`} className="text-sky-300">Bill{paid[r.bill_id] ? ' (paid)' : ' (not paid yet)'}</Link></>}
+            {r.bill_id && <> · <Link href={`/bill/${r.bill_id}`} className="text-brand">Bill{paid[r.bill_id] ? ' (paid)' : ' (not paid yet)'}</Link></>}
           </div>
           {r.deposit_status === 'refunded' && (
-            <div className="text-slate-400">Refunded {formatINR(Number(r.deposit_amount) - Number(r.kept_amount ?? 0))} on {r.refunded_on}{Number(r.kept_amount) > 0 ? ` · kept ${formatINR(Number(r.kept_amount))}: ${r.kept_reason}` : ''}</div>
+            <div className="text-fg-muted">Refunded {formatINR(Number(r.deposit_amount) - Number(r.kept_amount ?? 0))} on {r.refunded_on}{Number(r.kept_amount) > 0 ? ` · kept ${formatINR(Number(r.kept_amount))}: ${r.kept_reason}` : ''}</div>
           )}
           {canManage && r.deposit_status === 'held' && (
             refunding?.id === r.id ? (
               <div className="flex flex-wrap gap-2 items-center">
-                <label className="text-slate-300">Keep ₹<input type="number" min={0} max={Number(r.deposit_amount)} value={refunding.kept} onChange={e => setRefunding({ ...refunding, kept: e.target.value })} className="w-24 ml-1 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-white" /></label>
-                <input value={refunding.reason} onChange={e => setRefunding({ ...refunding, reason: e.target.value })} maxLength={200} placeholder="Why (needed when keeping some)" className="flex-1 min-w-40 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-white" />
-                <label className="text-slate-300">Paid on<input type="date" value={refunding.paidOn} onChange={e => setRefunding({ ...refunding, paidOn: e.target.value })} className="ml-1 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-white" /></label>
-                <select value={refunding.ledger} onChange={e => setRefunding({ ...refunding, ledger: e.target.value })} className="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-white">
+                <label className="text-fg">Keep ₹<input type="number" min={0} max={Number(r.deposit_amount)} value={refunding.kept} onChange={e => setRefunding({ ...refunding, kept: e.target.value })} className="w-24 ml-1 bg-surface border border-border-strong rounded px-2 py-1 text-fg" /></label>
+                <input value={refunding.reason} onChange={e => setRefunding({ ...refunding, reason: e.target.value })} maxLength={200} placeholder="Why (needed when keeping some)" className="flex-1 min-w-40 bg-surface border border-border-strong rounded px-2 py-1 text-fg" />
+                <label className="text-fg">Paid on<input type="date" value={refunding.paidOn} onChange={e => setRefunding({ ...refunding, paidOn: e.target.value })} className="ml-1 bg-surface border border-border-strong rounded px-2 py-1 text-fg" /></label>
+                <select value={refunding.ledger} onChange={e => setRefunding({ ...refunding, ledger: e.target.value })} className="bg-surface border border-border-strong rounded px-2 py-1 text-fg">
                   {payFrom.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
-                <input value={refunding.reference} onChange={e => setRefunding({ ...refunding, reference: e.target.value })} maxLength={60} placeholder="Cheque / UTR no." className="w-32 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-white" />
-                <button onClick={refund} disabled={busy} className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white font-bold disabled:opacity-50 cursor-pointer">{busy ? 'Saving…' : 'Record refund'}</button>
-                <button onClick={() => setRefunding(null)} className="text-slate-400 cursor-pointer">Cancel</button>
+                <input value={refunding.reference} onChange={e => setRefunding({ ...refunding, reference: e.target.value })} maxLength={60} placeholder="Cheque / UTR no." className="w-32 bg-surface border border-border-strong rounded px-2 py-1 text-fg" />
+                <button onClick={refund} disabled={busy} className="px-3 py-1.5 rounded-lg bg-success text-on-brand font-semibold disabled:opacity-50 cursor-pointer">{busy ? 'Saving…' : 'Record refund'}</button>
+                <button onClick={() => setRefunding(null)} className="text-fg-muted cursor-pointer">Cancel</button>
               </div>
             ) : (
               <button onClick={() => { setRefunding({ id: r.id, kept: '0', reason: '', paidOn: new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date()), ledger: payFrom[0]?.id ?? '', reference: '' }); setDone(null); }} disabled={!r.bill_id || !paid[r.bill_id]}
                 title={r.bill_id && !paid[r.bill_id] ? 'The deposit has not been paid yet' : undefined}
-                className="text-sky-300 disabled:text-slate-600 cursor-pointer">Refund deposit</button>
+                className="text-brand disabled:text-fg-subtle cursor-pointer">Refund deposit</button>
             )
           )}
         </div>

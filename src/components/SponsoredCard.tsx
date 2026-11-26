@@ -2,7 +2,9 @@
 
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase/client';
-import { Megaphone } from 'lucide-react';
+import { ExternalLink, Info, Megaphone } from 'lucide-react';
+import { Badge } from './ui/Badge';
+import { Button } from './ui/Button';
 
 interface AdCard { id: string; sponsor_name: string; title: string; body: string | null; image_path: string | null; cta_label: string | null; cta_url: string | null; is_house: boolean }
 
@@ -68,32 +70,44 @@ export const SponsoredCard: React.FC<{ societyId: string; placement: 'home_feed'
           if (a.cta_url) window.open(a.cta_url, '_blank', 'noopener,noreferrer');
         };
         return (
-          <section key={a.id} aria-label="Sponsored" className="p-3 rounded-xl bg-slate-950 border border-slate-700 space-y-2 text-xs">
-            <div className="flex items-center justify-between text-[10px] text-slate-500">
-              <span className="font-bold uppercase tracking-wider">{a.is_house ? 'From Sahvaas' : 'Sponsored'}</span>
-              <button onClick={() => setWhy(w => !w)} className="underline cursor-pointer">Why am I seeing this?</button>
-            </div>
-            <div className="flex gap-3 items-center">
-              {image
-                ? <img src={image} alt="" className="w-14 h-14 rounded-lg object-cover shrink-0" loading="lazy" />
-                : <div className="w-14 h-14 rounded-lg bg-slate-800 flex items-center justify-center shrink-0"><Megaphone className="w-5 h-5 text-slate-400" /></div>}
-              <div className="min-w-0">
-                <div className="font-bold text-white">{a.title}</div>
-                <div className="text-slate-400">{a.body ?? a.sponsor_name}</div>
-                {!a.is_house && a.body && <div className="text-slate-500">{a.sponsor_name}</div>}
+          <section key={a.id} aria-label={a.is_house ? 'From Sahvaas' : 'Sponsored'}
+            className="rounded-xl bg-surface border border-border shadow-card overflow-hidden">
+            {image && (
+              // a wide creative on top, cropped to the same shape everywhere
+              <img src={image} alt="" loading="lazy" className="w-full aspect-[2/1] object-cover bg-surface-muted" />
+            )}
+            <div className="p-4 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <Badge tone={a.is_house ? 'brand' : 'neutral'}>{a.is_house ? 'From Sahvaas' : 'Sponsored'}</Badge>
+                <button type="button" onClick={() => setWhy(w => !w)} aria-expanded={why}
+                  className="flex items-center gap-1 text-xs text-fg-subtle hover:text-fg cursor-pointer">
+                  <Info className="w-3.5 h-3.5" aria-hidden="true" /> Why this?
+                </button>
               </div>
+              <div className="flex gap-3 items-start">
+                {!image && (
+                  <span className="w-11 h-11 shrink-0 rounded-full bg-brand-soft text-brand flex items-center justify-center">
+                    <Megaphone className="w-5 h-5" aria-hidden="true" />
+                  </span>
+                )}
+                <div className="min-w-0 space-y-0.5">
+                  <h3 className="text-[15px] font-semibold text-fg leading-snug">{a.title}</h3>
+                  {a.body && <p className="text-sm text-fg-muted leading-relaxed">{a.body}</p>}
+                  {!a.is_house && <p className="text-xs text-fg-subtle">by {a.sponsor_name}</p>}
+                </div>
+              </div>
+              {a.cta_url && (
+                <Button variant="secondary" className="w-full" onClick={open} rightIcon={<ExternalLink className="w-4 h-4" aria-hidden="true" />}>
+                  {a.cta_label || 'Learn more'}
+                </Button>
+              )}
+              {why && (
+                <p className="p-3 rounded-lg bg-surface-muted text-xs leading-relaxed text-fg-muted">
+                  Your society uses the free Sahvaas plan, so a few local offers appear here. They are never shown on payments,
+                  bills or receipts, and advertisers get no information about you — only how many times a card was seen in a city.
+                </p>
+              )}
             </div>
-            {a.cta_url && (
-              <button onClick={open} className="w-full py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-100 font-semibold cursor-pointer">
-                {a.cta_label || 'Learn more'}
-              </button>
-            )}
-            {why && (
-              <p className="text-[11px] leading-relaxed text-slate-400">
-                Your society uses the free Sahvaas plan, so a few local offers appear here. They are never shown on payments,
-                bills or receipts, and advertisers get no information about you — only how many times a card was seen in a city.
-              </p>
-            )}
           </section>
         );
       })}

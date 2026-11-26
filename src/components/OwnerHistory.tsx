@@ -50,31 +50,31 @@ export const OwnerHistory: React.FC<{ societyId: string; unitId: string }> = ({ 
     setOpen({ index, statement: data as Statement });
   };
 
-  if (!periods) return <div className="flex items-center gap-2 text-slate-400"><Loader2 className="w-4 h-4 animate-spin" /> Loading owners…</div>;
+  if (!periods) return <div className="flex items-center gap-2 text-fg-muted"><Loader2 className="w-4 h-4 animate-spin" /> Loading owners…</div>;
 
   return (
-    <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
-      <div className="font-semibold text-white flex items-center gap-1.5"><Users className="w-3.5 h-3.5 text-sky-400" /> Owners</div>
+    <div className="p-3 rounded-xl bg-canvas border border-border space-y-2">
+      <div className="font-semibold text-fg flex items-center gap-1.5"><Users className="w-3.5 h-3.5 text-brand" /> Owners</div>
       <Banner tone="error">{error}</Banner>
-      {periods.length === 0 && <p className="text-slate-400">No owner has joined for this flat yet.</p>}
+      {periods.length === 0 && <p className="text-fg-muted">No owner has joined for this flat yet.</p>}
       <ul className="space-y-1">
         {periods.map((p, i) => (
           <li key={p.id} className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-slate-200">
+            <span className="text-fg">
               {p.owner_name} · {showDate(p.from_date)} – {p.to_date ? showDate(p.to_date) : 'now'}{p.joined ? '' : ' · invited'}
             </span>
-            <button onClick={() => showStatement(i)} className="text-sky-400 hover:underline cursor-pointer">Statement</button>
+            <button onClick={() => showStatement(i)} className="text-brand hover:underline cursor-pointer">Statement</button>
           </li>
         ))}
       </ul>
       {open && periods[open.index] && (
         <div className="space-y-2 print:text-black">
           {!open.statement ? (
-            <div className="flex items-center gap-2 text-slate-400"><Loader2 className="w-4 h-4 animate-spin" /> Loading statement…</div>
+            <div className="flex items-center gap-2 text-fg-muted"><Loader2 className="w-4 h-4 animate-spin" /> Loading statement…</div>
           ) : (
             <>
               <div className="flex items-center justify-between">
-                <div className="text-white font-semibold">{open.statement.name} · {periods[open.index].owner_name}</div>
+                <div className="text-fg font-semibold">{open.statement.name} · {periods[open.index].owner_name}</div>
                 <button onClick={() => {
                   // The statement prints on a page of its own, not the whole Flats screen
                   const w = window.open('', '_blank');
@@ -85,32 +85,32 @@ export const OwnerHistory: React.FC<{ societyId: string; unitId: string }> = ({ 
                     statement: open.statement,
                   }));
                   w.document.close();
-                }} className="flex items-center gap-1 text-slate-300 hover:text-white cursor-pointer">
+                }} className="flex items-center gap-1 text-fg hover:text-fg cursor-pointer">
                   <Printer className="w-3.5 h-3.5" /> Print
                 </button>
               </div>
               <table className="w-full">
-                <thead className="text-slate-500 text-left">
+                <thead className="text-fg-subtle text-left">
                   <tr><th className="py-1">Date</th><th className="py-1">Entry</th><th className="py-1">Narration</th><th className="py-1 text-right">Debit</th><th className="py-1 text-right">Credit</th><th className="py-1 text-right">Balance</th></tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800">
+                <tbody className="divide-y divide-border">
                   <tr>
-                    <td className="py-1 text-slate-400" colSpan={5}>{open.index > 0 ? 'Brought forward from previous owner' : 'Opening balance'}</td>
-                    <td className="py-1 text-right text-white">{formatINR(n(open.statement.opening))}</td>
+                    <td className="py-1 text-fg-muted" colSpan={5}>{open.index > 0 ? 'Brought forward from previous owner' : 'Opening balance'}</td>
+                    <td className="py-1 text-right text-fg">{formatINR(n(open.statement.opening))}</td>
                   </tr>
                   {open.statement.lines.map((l, i) => (
                     <tr key={`${l.entry_number}-${i}`}>
-                      <td className="py-1 text-slate-300">{l.date}</td>
-                      <td className="py-1 text-slate-400">{l.entry_number}</td>
-                      <td className="py-1 text-slate-300">{l.narration}</td>
-                      <td className="py-1 text-right text-slate-200">{l.debit ? formatINR(n(l.debit)) : ''}</td>
-                      <td className="py-1 text-right text-slate-200">{l.credit ? formatINR(n(l.credit)) : ''}</td>
-                      <td className="py-1 text-right text-white">{formatINR(n(l.balance))}</td>
+                      <td className="py-1 text-fg">{l.date}</td>
+                      <td className="py-1 text-fg-muted">{l.entry_number}</td>
+                      <td className="py-1 text-fg">{l.narration}</td>
+                      <td className="py-1 text-right text-fg">{l.debit ? formatINR(n(l.debit)) : ''}</td>
+                      <td className="py-1 text-right text-fg">{l.credit ? formatINR(n(l.credit)) : ''}</td>
+                      <td className="py-1 text-right text-fg">{formatINR(n(l.balance))}</td>
                     </tr>
                   ))}
                   <tr className="font-semibold">
-                    <td className="py-1 text-white" colSpan={5}>Closing balance</td>
-                    <td className="py-1 text-right text-white">{formatINR(n(open.statement.closing))}</td>
+                    <td className="py-1 text-fg" colSpan={5}>Closing balance</td>
+                    <td className="py-1 text-right text-fg">{formatINR(n(open.statement.closing))}</td>
                   </tr>
                 </tbody>
               </table>

@@ -65,42 +65,42 @@ export const FlatStatement: React.FC<{ unitId: string; societyName: string }> = 
       <div className="flex flex-wrap items-center gap-2">
         {(['this', 'last', 'custom'] as const).map(p => (
           <button key={p} onClick={() => setPeriod(p)}
-            className={`px-3 py-1.5 rounded-full border cursor-pointer ${period === p ? 'bg-sky-600 border-sky-500 text-white' : 'border-slate-700 text-slate-300'}`}>
+            className={`px-3 py-1.5 rounded-full border cursor-pointer ${period === p ? 'bg-brand border-brand text-on-brand' : 'border-border-strong text-fg'}`}>
             {p === 'this' ? 'This year' : p === 'last' ? 'Last year' : 'Custom'}
           </button>
         ))}
       </div>
       {period === 'custom' && (
         <div className="flex gap-2">
-          <input type="date" value={custom.from} onChange={e => setCustom({ ...custom, from: e.target.value })} className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-2 py-1.5 text-white" />
-          <input type="date" value={custom.to} onChange={e => setCustom({ ...custom, to: e.target.value })} className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-2 py-1.5 text-white" />
+          <input type="date" value={custom.from} onChange={e => setCustom({ ...custom, from: e.target.value })} className="flex-1 bg-surface border border-border-strong rounded-lg px-2 py-1.5 text-fg" />
+          <input type="date" value={custom.to} onChange={e => setCustom({ ...custom, to: e.target.value })} className="flex-1 bg-surface border border-border-strong rounded-lg px-2 py-1.5 text-fg" />
         </div>
       )}
       <Banner tone="error">{error}</Banner>
-      {loading && <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-sky-400" /></div>}
+      {loading && <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-brand" /></div>}
       {st && !loading && (
-        <div className="rounded-2xl bg-slate-900 border border-slate-800 divide-y divide-slate-800">
-          <div className="p-3 flex justify-between text-slate-300">
-            <span>{st.opening_label} · {fmt(st.from)}</span><strong className="text-white">{balanceText(Number(st.opening))}</strong>
+        <div className="rounded-xl bg-surface border border-border divide-y divide-border">
+          <div className="p-3 flex justify-between text-fg">
+            <span>{st.opening_label} · {fmt(st.from)}</span><strong className="text-fg">{balanceText(Number(st.opening))}</strong>
           </div>
           {st.lines.map((l, i) => {
             const href = link(l);
             return (
               <div key={i} className="p-3 flex justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="text-slate-400">{fmt(l.date)}</div>
-                  {href ? <Link href={href} className="text-sky-400 hover:underline">{l.narration}</Link> : <div className="text-white">{l.narration}</div>}
+                  <div className="text-fg-muted">{fmt(l.date)}</div>
+                  {href ? <Link href={href} className="text-brand hover:underline">{l.narration}</Link> : <div className="text-fg">{l.narration}</div>}
                 </div>
                 <div className="text-right shrink-0">
-                  {l.debit ? <div className="text-rose-300">+ {formatINR(l.debit)}</div> : <div className="text-emerald-300">− {formatINR(l.credit ?? 0)}</div>}
-                  <div className="text-slate-500">{balanceText(Number(l.balance))}</div>
+                  {l.debit ? <div className="text-danger">+ {formatINR(l.debit)}</div> : <div className="text-success">− {formatINR(l.credit ?? 0)}</div>}
+                  <div className="text-fg-subtle">{balanceText(Number(l.balance))}</div>
                 </div>
               </div>
             );
           })}
-          {st.lines.length === 0 && <p className="p-3 text-slate-500">No entries in this period.</p>}
+          {st.lines.length === 0 && <p className="p-3 text-fg-subtle">No entries in this period.</p>}
           {/* a period that runs past today shows today's balance, not a forecast for its last day */}
-          <div className="p-3 flex justify-between font-bold text-white">
+          <div className="p-3 flex justify-between font-semibold text-fg">
             <span>{st.to >= localIso(new Date()) ? 'Balance today' : `Closing balance · ${fmt(st.to)}`}</span>
             <span>{balanceText(Number(st.closing))}</span>
           </div>
@@ -108,11 +108,11 @@ export const FlatStatement: React.FC<{ unitId: string; societyName: string }> = 
       )}
       {st && (
         <div className="flex gap-2">
-          <button onClick={print} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold cursor-pointer">
+          <button onClick={print} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold cursor-pointer">
             <Printer className="w-3.5 h-3.5" /> Download PDF
           </button>
           <a href={whatsappLink(`${societyName}: Flat ${st.flat} statement ${fmt(st.from)} – ${fmt(st.to)}. Closing balance: ${balanceText(Number(st.closing))}.`)}
-            target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold">
+            target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-success hover:bg-success/90 text-on-brand font-semibold">
             <MessageCircle className="w-3.5 h-3.5" /> Share on WhatsApp
           </a>
         </div>

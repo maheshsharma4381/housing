@@ -24,12 +24,12 @@ export const TransferForm: React.FC<{ unitId: string; flatLabel: string; onDone:
     if (err) return setError(err.message);
     onDone();
   };
-  const inputClass = 'w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-sky-500';
+  const inputClass = 'w-full bg-surface border border-border-strong rounded-lg px-3 py-2 text-fg outline-none focus:border-brand';
 
   return (
-    <div className="p-4 rounded-2xl bg-slate-900 border border-sky-500/40 space-y-2 text-xs">
-      <div className="font-bold text-white text-sm">Transfer flat {flatLabel} to a buyer</div>
-      <p className="text-slate-400">The committee approves the transfer once the documents are in, the original share certificate is handed over and the flat has no dues. The buyer then joins with their {PHONE_LOGIN_ON ? 'mobile number' : 'email'}.</p>
+    <div className="p-4 rounded-xl bg-surface border border-brand/40 space-y-2 text-xs">
+      <div className="font-semibold text-fg text-sm">Transfer flat {flatLabel} to a buyer</div>
+      <p className="text-fg-muted">The committee approves the transfer once the documents are in, the original share certificate is handed over and the flat has no dues. The buyer then joins with their {PHONE_LOGIN_ON ? 'mobile number' : 'email'}.</p>
       <Banner tone="error">{error}</Banner>
       <input value={d.buyer_name} onChange={e => setD({ ...d, buyer_name: e.target.value })} maxLength={120} placeholder="Buyer's full name (as on the sale deed)" className={inputClass} />
       <div className="grid sm:grid-cols-2 gap-2">
@@ -37,12 +37,12 @@ export const TransferForm: React.FC<{ unitId: string; flatLabel: string; onDone:
         <input value={d.buyer_email} onChange={e => setD({ ...d, buyer_email: e.target.value })} maxLength={160} type="email" placeholder={PHONE_LOGIN_ON ? "Buyer's email (optional)" : "Buyer's email (they join with it)"} className={inputClass} />
       </div>
       <div className="grid sm:grid-cols-2 gap-2">
-        <label className="text-slate-400">Sale deed date<input type="date" value={d.deed_date} max={today()} onChange={e => setD({ ...d, deed_date: e.target.value })} className={`${inputClass} mt-1`} /></label>
-        <label className="text-slate-400">Registration No. (optional)<input value={d.deed_number} onChange={e => setD({ ...d, deed_number: e.target.value })} maxLength={40} placeholder="As on the Index II" className={`${inputClass} mt-1`} /></label>
+        <label className="text-fg-muted">Sale deed date<input type="date" value={d.deed_date} max={today()} onChange={e => setD({ ...d, deed_date: e.target.value })} className={`${inputClass} mt-1`} /></label>
+        <label className="text-fg-muted">Registration No. (optional)<input value={d.deed_number} onChange={e => setD({ ...d, deed_number: e.target.value })} maxLength={40} placeholder="As on the Index II" className={`${inputClass} mt-1`} /></label>
       </div>
       <div className="flex gap-2">
-        <button onClick={submit} disabled={busy} className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold disabled:opacity-50 cursor-pointer">{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Send to the committee'}</button>
-        <button onClick={onCancel} className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 cursor-pointer">Cancel</button>
+        <button onClick={submit} disabled={busy} className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold disabled:opacity-50 cursor-pointer">{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Send to the committee'}</button>
+        <button onClick={onCancel} className="px-4 py-2 rounded-lg bg-surface-muted text-fg cursor-pointer">Cancel</button>
       </div>
     </div>
   );

@@ -139,76 +139,76 @@ export const ProfessionalsTab: React.FC<ProfessionalsTabProps> = ({ societyId, c
 
   const nameOf = (userId: string) => grants.find(g => g.professional_user_id === userId)?.profiles?.full_name ?? 'Professional';
   const isExpired = (g: GrantRow) => Boolean(g.expires_at && new Date(g.expires_at) < new Date());
-  const inputClass = 'w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-sky-500';
+  const inputClass = 'w-full bg-surface border border-border-strong rounded-lg px-3 py-2 text-fg outline-none focus:border-brand';
 
   return (
-    <div className="space-y-6 text-xs">
+    <div className="space-y-6 text-sm">
       <div>
-        <h2 className="text-lg font-bold text-white">CA & Auditor Access</h2>
-        <p className="text-slate-400">Give your CA read-only access to exactly what they need, for a fixed period. Resident contact details and complaints are never shared.</p>
+        <h2 className="text-2xl font-semibold tracking-tight text-fg">CA &amp; auditor</h2>
+        <p className="text-fg-muted">Give your CA read-only access to exactly what they need, for a fixed period. Resident contact details and complaints are never shared.</p>
       </div>
       <Banner tone="error">{error}</Banner>
       <Banner tone="success">{notice}</Banner>
 
-      <form onSubmit={invite} className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
-        <div className="font-bold text-white text-sm flex items-center gap-2"><UserPlus className="w-4 h-4 text-amber-400" /> Invite a Professional</div>
+      <form onSubmit={invite} className="p-5 rounded-xl bg-surface border border-border space-y-3">
+        <div className="font-semibold text-fg text-sm flex items-center gap-2"><UserPlus className="w-4 h-4 text-warning" /> Invite a Professional</div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <input inputMode="tel" value={mobile} onChange={e => setMobile(e.target.value)} placeholder="Mobile, e.g. 98765 43210" aria-label="Mobile" className={inputClass} />
           <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder={mobile.trim() && PHONE_LOGIN_ON ? 'Email (optional)' : 'ca@firm.in'} aria-label="Email" className={inputClass} />
           <select value={role} onChange={e => { const r = e.target.value as ProfessionalRole; setRole(r); setPerms(ROLE_PRESETS[r]); }} className={inputClass}>
             {PROFESSIONAL_ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
           </select>
-          <label className="flex items-center gap-2 text-slate-400">
+          <label className="flex items-center gap-2 text-fg-muted">
             <span className="shrink-0">Access until</span>
             <input type="date" value={accessUntil} onChange={e => setAccessUntil(e.target.value)} className={inputClass} />
           </label>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
           {PROFESSIONAL_PERMISSIONS.map(p => (
-            <label key={p.key} className="flex items-start gap-2 p-2 rounded-lg hover:bg-slate-800/50 cursor-pointer">
+            <label key={p.key} className="flex items-start gap-2 p-2 rounded-lg hover:bg-surface-muted/50 cursor-pointer">
               <input type="checkbox" checked={perms.includes(p.key)} onChange={() => setPerms(togglePerm(perms, p.key) as ProfessionalPermission[])} className="mt-0.5" />
-              <span><span className="text-white">{p.label}</span> <span className="text-slate-500">— {p.hint}</span></span>
+              <span><span className="text-fg">{p.label}</span> <span className="text-fg-subtle">— {p.hint}</span></span>
             </label>
           ))}
         </div>
-        <button type="submit" disabled={busy === 'invite'} className="w-full py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50">
+        <button type="submit" disabled={busy === 'invite'} className="w-full py-2.5 rounded-lg bg-warning-solid hover:bg-warning-solid text-on-brand font-semibold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50">
           {busy === 'invite' ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />} Save Invite
         </button>
       </form>
 
       {invites.length > 0 && (
         <section className="space-y-2">
-          <h3 className="font-semibold text-slate-400 uppercase tracking-wider text-[11px]">Pending Invites</h3>
+          <h3 className="font-semibold text-fg-muted text-xs">Pending Invites</h3>
           {invites.map(i => (
-            <div key={i.id} className="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between gap-3">
+            <div key={i.id} className="p-3 rounded-xl bg-surface border border-border flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <div className="font-semibold text-white truncate">{[i.invited_mobile ? formatMobile(i.invited_mobile) : null, i.invited_email].filter(Boolean).join(' · ')}</div>
-                <div className="text-slate-400">{roleLabel(i.role)} • {i.permissions.length} permissions • invite expires {new Date(i.expires_at).toLocaleDateString('en-IN')}</div>
+                <div className="font-semibold text-fg truncate">{[i.invited_mobile ? formatMobile(i.invited_mobile) : null, i.invited_email].filter(Boolean).join(' · ')}</div>
+                <div className="text-fg-muted">{roleLabel(i.role)} • {i.permissions.length} permissions • invite expires {new Date(i.expires_at).toLocaleDateString('en-IN')}</div>
               </div>
-              <button onClick={() => cancelInvite(i.id)} className="flex items-center gap-1 text-rose-400 hover:text-rose-300 cursor-pointer shrink-0"><XCircle className="w-3.5 h-3.5" /> Cancel</button>
+              <button onClick={() => cancelInvite(i.id)} className="flex items-center gap-1 text-danger hover:text-danger cursor-pointer shrink-0"><XCircle className="w-3.5 h-3.5" /> Cancel</button>
             </div>
           ))}
         </section>
       )}
 
       <section className="space-y-2">
-        <h3 className="font-semibold text-slate-400 uppercase tracking-wider text-[11px]">Access Grants</h3>
+        <h3 className="font-semibold text-fg-muted text-xs">Access Grants</h3>
         {grants.length === 0 ? (
           <EmptyState icon={Briefcase} title="No Professionals Yet" description="Invite your CA or statutory auditor above." />
         ) : grants.map(g => {
           const draft = editing[g.id];
           const active = g.status === 'active' && !isExpired(g);
           return (
-            <div key={g.id} className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
+            <div key={g.id} className="p-4 rounded-xl bg-surface border border-border space-y-2">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="font-bold text-white">{g.profiles?.full_name ?? 'Professional'} {contactText(g.profiles) && <span className="text-slate-500 font-normal">• {contactText(g.profiles)}</span>}</div>
-                  <div className="text-slate-400">
+                  <div className="font-semibold text-fg">{g.profiles?.full_name ?? 'Professional'} {contactText(g.profiles) && <span className="text-fg-subtle font-normal">• {contactText(g.profiles)}</span>}</div>
+                  <div className="text-fg-muted">
                     {roleLabel(g.role)} • since {new Date(g.granted_at).toLocaleDateString('en-IN')}
                     {g.expires_at && ` • until ${new Date(g.expires_at).toLocaleDateString('en-IN')}`}
                   </div>
                 </div>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-semibold shrink-0 ${active ? 'bg-emerald-500/10 text-emerald-300' : 'bg-rose-500/10 text-rose-300'}`}>
+                <span className={`px-2 py-0.5 rounded-full text-xs uppercase font-semibold shrink-0 ${active ? 'bg-success-soft text-success' : 'bg-danger-soft text-danger'}`}>
                   {g.status === 'active' && isExpired(g) ? 'expired' : g.status}
                 </span>
               </div>
@@ -216,7 +216,7 @@ export const ProfessionalsTab: React.FC<ProfessionalsTabProps> = ({ societyId, c
               {draft ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
                   {PROFESSIONAL_PERMISSIONS.map(p => (
-                    <label key={p.key} className="flex items-center gap-2 text-slate-300 cursor-pointer">
+                    <label key={p.key} className="flex items-center gap-2 text-fg cursor-pointer">
                       <input type="checkbox" checked={draft.includes(p.key)} onChange={() => setEditing({ ...editing, [g.id]: togglePerm(draft, p.key) })} />
                       {p.label}
                     </label>
@@ -224,19 +224,19 @@ export const ProfessionalsTab: React.FC<ProfessionalsTabProps> = ({ societyId, c
                 </div>
               ) : (
                 <div className="flex flex-wrap gap-1">
-                  {g.permissions.map(p => <span key={p} className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 text-[10px]">{permissionLabel(p)}</span>)}
+                  {g.permissions.map(p => <span key={p} className="px-2 py-0.5 rounded-full bg-surface-muted text-fg text-xs">{permissionLabel(p)}</span>)}
                 </div>
               )}
 
               <div className="flex flex-wrap gap-3">
                 {draft ? (
-                  <button onClick={() => savePermissions(g)} disabled={busy !== null} className="flex items-center gap-1 text-sky-400 hover:underline cursor-pointer"><Save className="w-3.5 h-3.5" /> Save permissions</button>
+                  <button onClick={() => savePermissions(g)} disabled={busy !== null} className="flex items-center gap-1 text-brand hover:underline cursor-pointer"><Save className="w-3.5 h-3.5" /> Save permissions</button>
                 ) : (
-                  <button onClick={() => setEditing({ ...editing, [g.id]: g.permissions })} className="text-sky-400 hover:underline cursor-pointer">Edit permissions</button>
+                  <button onClick={() => setEditing({ ...editing, [g.id]: g.permissions })} className="text-brand hover:underline cursor-pointer">Edit permissions</button>
                 )}
                 {g.status === 'active'
-                  ? <button onClick={() => setStatus(g, 'revoked')} disabled={busy !== null} className="text-rose-400 hover:underline cursor-pointer">Revoke access</button>
-                  : <button onClick={() => setStatus(g, 'active')} disabled={busy !== null} className="text-emerald-400 hover:underline cursor-pointer">Restore access</button>}
+                  ? <button onClick={() => setStatus(g, 'revoked')} disabled={busy !== null} className="text-danger hover:underline cursor-pointer">Revoke access</button>
+                  : <button onClick={() => setStatus(g, 'active')} disabled={busy !== null} className="text-success hover:underline cursor-pointer">Restore access</button>}
               </div>
             </div>
           );
@@ -246,15 +246,15 @@ export const ProfessionalsTab: React.FC<ProfessionalsTabProps> = ({ societyId, c
       <RemarksPanel societyId={societyId} currentUserId={currentUserId} mode="committee" />
 
       <section className="space-y-2">
-        <h3 className="font-semibold text-slate-400 uppercase tracking-wider text-[11px] flex items-center gap-1.5"><Eye className="w-3.5 h-3.5" /> Recent Professional Activity</h3>
+        <h3 className="font-semibold text-fg-muted text-xs flex items-center gap-1.5"><Eye className="w-3.5 h-3.5" /> Recent Professional Activity</h3>
         {logs.length === 0 ? (
-          <p className="text-slate-500">No activity recorded yet.</p>
+          <p className="text-fg-subtle">No activity recorded yet.</p>
         ) : (
-          <div className="rounded-2xl bg-slate-900 border border-slate-800 divide-y divide-slate-800">
+          <div className="rounded-xl bg-surface border border-border divide-y divide-border">
             {logs.map(l => (
-              <div key={l.id} className="p-2.5 flex justify-between gap-3 text-slate-300">
-                <span>{nameOf(l.professional_user_id)} {l.action_performed} <strong className="text-white">{l.module_accessed.replace('_', ' ')}</strong></span>
-                <span className="text-slate-500 shrink-0">{new Date(l.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</span>
+              <div key={l.id} className="p-2.5 flex justify-between gap-3 text-fg">
+                <span>{nameOf(l.professional_user_id)} {l.action_performed} <strong className="text-fg">{l.module_accessed.replace('_', ' ')}</strong></span>
+                <span className="text-fg-subtle shrink-0">{new Date(l.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</span>
               </div>
             ))}
           </div>

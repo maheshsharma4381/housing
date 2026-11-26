@@ -12,7 +12,7 @@ const todayIso = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
-const inputClass = 'w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-sky-500';
+const inputClass = 'w-full bg-surface border border-border-strong rounded-lg px-3 py-2 text-fg outline-none focus:border-brand';
 
 /**
  * Owner change (029): the old owner loses the flat, the new owner is invited, and the flat keeps its ledger.
@@ -55,30 +55,30 @@ export const OwnerChange: React.FC<{ societyId: string; unitId: string; unitLabe
   };
 
   return (
-    <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
-      <div className="font-semibold text-white flex items-center gap-1.5"><UserRoundCog className="w-3.5 h-3.5 text-sky-400" /> Owner change</div>
+    <div className="p-3 rounded-xl bg-canvas border border-border space-y-2">
+      <div className="font-semibold text-fg flex items-center gap-1.5"><UserRoundCog className="w-3.5 h-3.5 text-brand" /> Owner change</div>
       <Banner tone="error">{error}</Banner>
       <Banner tone="success">{notice}</Banner>
       {balance && balance.dues > 0 && (
-        <div className="px-3 py-2 rounded-xl bg-amber-500/10 text-amber-200">
+        <div className="px-3 py-2 rounded-lg bg-warning-soft text-warning">
           {unitLabel} has {formatINR(balance.dues)} due. Usually the old owner clears dues before selling; if not, the dues stay with the flat and the new owner pays them.
         </div>
       )}
       {balance && balance.advance > 0 && (
-        <div className="px-3 py-2 rounded-xl bg-sky-500/10 text-sky-200">{unitLabel} has {formatINR(balance.advance)} paid in advance; it stays with the flat.</div>
+        <div className="px-3 py-2 rounded-lg bg-brand-soft text-brand-ink">{unitLabel} has {formatINR(balance.advance)} paid in advance; it stays with the flat.</div>
       )}
       {!notice && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <label className="space-y-1"><span className="text-slate-400">New owner&apos;s name</span>
+          <label className="space-y-1"><span className="text-fg-muted">New owner&apos;s name</span>
             <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className={inputClass} /></label>
-          <label className="space-y-1"><span className="text-slate-400">Mobile (they log in with it)</span>
+          <label className="space-y-1"><span className="text-fg-muted">Mobile (they log in with it)</span>
             <input inputMode="tel" value={form.mobile} onChange={e => setForm({ ...form, mobile: e.target.value })} className={inputClass} /></label>
-          <label className="space-y-1"><span className="text-slate-400">{PHONE_LOGIN_ON ? 'Email (optional)' : 'Email (they join with it)'}</span>
+          <label className="space-y-1"><span className="text-fg-muted">{PHONE_LOGIN_ON ? 'Email (optional)' : 'Email (they join with it)'}</span>
             <input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className={inputClass} /></label>
-          <label className="space-y-1"><span className="text-slate-400">Transfer date</span>
+          <label className="space-y-1"><span className="text-fg-muted">Transfer date</span>
             <input type="date" max={todayIso()} value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className={inputClass} /></label>
           <button onClick={save} disabled={busy || form.name.trim().length < 2 || ((!PHONE_LOGIN_ON || !form.mobile.trim()) && !form.email.includes('@')) || !form.date}
-            className="sm:col-span-2 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold cursor-pointer disabled:opacity-50">
+            className="sm:col-span-2 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold cursor-pointer disabled:opacity-50">
             {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Record owner change
           </button>
         </div>

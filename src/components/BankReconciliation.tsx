@@ -235,7 +235,7 @@ export const BankReconciliation: React.FC<BankReconciliationProps> = ({ societyI
     return null;
   };
 
-  const inputClass = 'w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-sky-500';
+  const inputClass = 'w-full bg-surface border border-border-strong rounded-lg px-3 py-2 text-fg outline-none focus:border-brand';
   const account = accounts.find(a => a.id === accountId);
   const bankName = (id: string) => banks.find(b => b.id === id)?.name ?? 'Bank';
   // A new statement account most likely belongs to a bank ledger no other account uses yet
@@ -254,14 +254,14 @@ export const BankReconciliation: React.FC<BankReconciliationProps> = ({ societyI
   };
   const difference = summary?.statement_balance != null ? Number(summary.statement_balance) - Number(summary.book_balance) : null;
 
-  if (loading) return <div className="flex justify-center py-10"><Loader2 className="w-5 h-5 animate-spin text-slate-500" /></div>;
+  if (loading) return <div className="flex justify-center py-10"><Loader2 className="w-5 h-5 animate-spin text-fg-subtle" /></div>;
 
   return (
     <div className="space-y-5 text-xs">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-bold text-white flex items-center gap-2"><Landmark className="w-4 h-4 text-sky-300" /> Bank statement match</h2>
-          <p className="text-slate-400 max-w-2xl">
+          <h2 className="text-lg font-semibold text-fg flex items-center gap-2"><Landmark className="w-4 h-4 text-brand" /> Bank statement match</h2>
+          <p className="text-fg-muted max-w-2xl">
             Upload the bank statement CSV. Resident UTRs, vendor payments and TDS deposits are matched automatically; you confirm the rest.
             Verified payments issue receipts as usual. Nothing is posted to the books from the statement itself.
           </p>
@@ -273,17 +273,17 @@ export const BankReconciliation: React.FC<BankReconciliationProps> = ({ societyI
             </select>
           )}
           {account && (canManage && banks.length > 1 ? (
-            <label className="flex items-center gap-1 text-slate-400">
+            <label className="flex items-center gap-1 text-fg-muted">
               In the books as
               <select value={account.ledger_id} disabled={busy !== null} onChange={e => repoint(e.target.value)} className={`${inputClass} w-auto`}>
                 {banks.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
             </label>
           ) : (
-            <span className="text-slate-400">In the books as {bankName(account.ledger_id)}</span>
+            <span className="text-fg-muted">In the books as {bankName(account.ledger_id)}</span>
           ))}
           {canManage && !newAccount && (
-            <button onClick={() => setNewAccount({ ...ACCOUNT_BLANK, ledger_id: unusedBank() })} className="flex items-center gap-1 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold cursor-pointer">
+            <button onClick={() => setNewAccount({ ...ACCOUNT_BLANK, ledger_id: unusedBank() })} className="flex items-center gap-1 px-3 py-2 rounded-lg bg-surface-muted hover:bg-border text-fg font-semibold cursor-pointer">
               <Plus className="w-3.5 h-3.5" /> Bank account
             </button>
           )}
@@ -293,13 +293,13 @@ export const BankReconciliation: React.FC<BankReconciliationProps> = ({ societyI
       <Banner tone="success">{notice}</Banner>
 
       {newAccount && (
-        <form onSubmit={addAccount} className="p-4 rounded-2xl bg-slate-900 border border-slate-800 grid grid-cols-1 sm:grid-cols-4 gap-2">
+        <form onSubmit={addAccount} className="p-4 rounded-xl bg-surface border border-border grid grid-cols-1 sm:grid-cols-4 gap-2">
           <input required value={newAccount.bank_name} onChange={e => setNewAccount({ ...newAccount, bank_name: e.target.value })} placeholder="Bank (e.g. HDFC Bank)" className={inputClass} />
           <input required value={newAccount.account_number} onChange={e => setNewAccount({ ...newAccount, account_number: e.target.value.replace(/\s/g, '') })} placeholder="Account number" inputMode="numeric" className={inputClass} />
           <input required value={newAccount.ifsc_code} onChange={e => setNewAccount({ ...newAccount, ifsc_code: e.target.value })} placeholder="IFSC" pattern="[A-Za-z]{4}0[A-Za-z0-9]{6}" title="11 characters, e.g. HDFC0001234" className={inputClass} />
           <input required value={newAccount.branch_name} onChange={e => setNewAccount({ ...newAccount, branch_name: e.target.value })} placeholder="Branch" className={inputClass} />
           {banks.length > 1 && (
-            <label className="sm:col-span-4 flex items-center gap-2 text-slate-400">
+            <label className="sm:col-span-4 flex items-center gap-2 text-fg-muted">
               Bank in the books
               <select value={newAccount.ledger_id} onChange={e => setNewAccount({ ...newAccount, ledger_id: e.target.value })} className={`${inputClass} w-auto`}>
                 {banks.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
@@ -307,8 +307,8 @@ export const BankReconciliation: React.FC<BankReconciliationProps> = ({ societyI
             </label>
           )}
           <div className="sm:col-span-4 flex justify-end gap-2">
-            <button type="button" onClick={() => setNewAccount(null)} className="px-3 py-2 text-slate-400 hover:text-white cursor-pointer">Cancel</button>
-            <button type="submit" disabled={busy === 'account'} className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold cursor-pointer disabled:opacity-50">Save account</button>
+            <button type="button" onClick={() => setNewAccount(null)} className="px-3 py-2 text-fg-muted hover:text-fg cursor-pointer">Cancel</button>
+            <button type="submit" disabled={busy === 'account'} className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold cursor-pointer disabled:opacity-50">Save account</button>
           </div>
         </form>
       )}
@@ -318,77 +318,77 @@ export const BankReconciliation: React.FC<BankReconciliationProps> = ({ societyI
       ) : (
         <>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
-              <div className="text-slate-400">Bank statement balance</div>
-              <div className="text-lg font-black text-white">{summary?.statement_balance != null ? formatINR(summary.statement_balance) : '—'}</div>
-              <div className="text-slate-500">{summary?.statement_date ? `as on ${fmtDate(summary.statement_date)}` : 'upload a statement'}</div>
+            <div className="p-4 rounded-xl bg-surface border border-border">
+              <div className="text-fg-muted">Bank statement balance</div>
+              <div className="text-lg font-semibold text-fg">{summary?.statement_balance != null ? formatINR(summary.statement_balance) : '—'}</div>
+              <div className="text-fg-subtle">{summary?.statement_date ? `as on ${fmtDate(summary.statement_date)}` : 'upload a statement'}</div>
             </div>
-            <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
-              <div className="text-slate-400">Books (Bank Accounts)</div>
-              <div className="text-lg font-black text-white">{summary ? formatINR(summary.book_balance) : '—'}</div>
-              <div className={difference == null ? 'text-slate-500' : Math.abs(difference) < 0.01 ? 'text-emerald-300' : 'text-amber-300'}>
+            <div className="p-4 rounded-xl bg-surface border border-border">
+              <div className="text-fg-muted">Books (Bank Accounts)</div>
+              <div className="text-lg font-semibold text-fg">{summary ? formatINR(summary.book_balance) : '—'}</div>
+              <div className={difference == null ? 'text-fg-subtle' : Math.abs(difference) < 0.01 ? 'text-success' : 'text-warning'}>
                 {difference == null ? 'same date as the statement' : Math.abs(difference) < 0.01 ? 'agrees with the bank' : `differs by ${formatINR(Math.abs(difference))}`}
               </div>
             </div>
-            <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
-              <div className="text-slate-400">Money in, not matched</div>
-              <div className="text-lg font-black text-emerald-300">{formatINR(summary?.open_credit_total ?? 0)}</div>
-              <div className="text-slate-500">{summary?.open_credits ?? 0} line{summary?.open_credits === 1 ? '' : 's'}</div>
+            <div className="p-4 rounded-xl bg-surface border border-border">
+              <div className="text-fg-muted">Money in, not matched</div>
+              <div className="text-lg font-semibold text-success">{formatINR(summary?.open_credit_total ?? 0)}</div>
+              <div className="text-fg-subtle">{summary?.open_credits ?? 0} line{summary?.open_credits === 1 ? '' : 's'}</div>
             </div>
-            <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
-              <div className="text-slate-400">Money out, not matched</div>
-              <div className="text-lg font-black text-rose-300">{formatINR(summary?.open_debit_total ?? 0)}</div>
-              <div className="text-slate-500">{summary?.open_debits ?? 0} line{summary?.open_debits === 1 ? '' : 's'}</div>
+            <div className="p-4 rounded-xl bg-surface border border-border">
+              <div className="text-fg-muted">Money out, not matched</div>
+              <div className="text-lg font-semibold text-danger">{formatINR(summary?.open_debit_total ?? 0)}</div>
+              <div className="text-fg-subtle">{summary?.open_debits ?? 0} line{summary?.open_debits === 1 ? '' : 's'}</div>
             </div>
           </div>
           {difference != null && Math.abs(difference) >= 0.01 && (
-            <p className="text-slate-500">
+            <p className="text-fg-subtle">
               A difference is normal while lines are open: bank charges and interest not yet booked, cheques issued but not cleared, or payments still waiting to be verified.
               The books combine all the society&apos;s bank accounts.
             </p>
           )}
 
           {canVerify && Number(summary?.ready_to_verify) > 0 && (
-            <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex flex-wrap items-center justify-between gap-3">
-              <div className="text-emerald-200">
-                <span className="font-bold">{summary!.ready_to_verify} resident payment{summary!.ready_to_verify === 1 ? '' : 's'}</span> found in the bank with the same UTR and amount.
+            <div className="p-4 rounded-xl bg-success-soft border border-success/30 flex flex-wrap items-center justify-between gap-3">
+              <div className="text-success">
+                <span className="font-semibold">{summary!.ready_to_verify} resident payment{summary!.ready_to_verify === 1 ? '' : 's'}</span> found in the bank with the same UTR and amount.
               </div>
-              <button onClick={verifyAll} disabled={busy !== null} className="flex items-center gap-1 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold cursor-pointer disabled:opacity-50">
+              <button onClick={verifyAll} disabled={busy !== null} className="flex items-center gap-1 px-4 py-2 rounded-lg bg-success hover:bg-success/90 text-on-brand font-semibold cursor-pointer disabled:opacity-50">
                 {busy === 'verify' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />} Verify all {summary!.ready_to_verify}
               </button>
             </div>
           )}
 
           {canManage && (
-            <div className="p-4 rounded-2xl bg-slate-900 border border-dashed border-slate-700 space-y-3">
+            <div className="p-4 rounded-xl bg-surface border border-dashed border-border-strong space-y-3">
               <label className="flex flex-wrap items-center gap-3 cursor-pointer">
-                <span className="flex items-center gap-1 px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold"><FileUp className="w-3.5 h-3.5" /> Upload statement</span>
-                <span className="text-slate-400">CSV from net banking — SBI, HDFC, ICICI, Axis, Kotak and most others. Re-uploading the same lines is safe.</span>
+                <span className="flex items-center gap-1 px-3 py-2 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold"><FileUp className="w-3.5 h-3.5" /> Upload statement</span>
+                <span className="text-fg-muted">CSV from net banking — SBI, HDFC, ICICI, Axis, Kotak and most others. Re-uploading the same lines is safe.</span>
                 <input type="file" accept=".csv,.txt,text/csv" className="hidden" onChange={e => { pickFile(e.target.files?.[0]); e.target.value = ''; }} />
               </label>
               {file && (
                 <div className="space-y-2">
-                  <div className="text-white">
-                    <span className="font-bold">{file.name}</span> · {file.parsed.format.toUpperCase()} layout · {file.parsed.rows.length} lines
+                  <div className="text-fg">
+                    <span className="font-semibold">{file.name}</span> · {file.parsed.format.toUpperCase()} layout · {file.parsed.rows.length} lines
                     {file.parsed.rows.length > 0 && ` · ${fmtDate(file.parsed.rows[0].date)} – ${fmtDate(file.parsed.rows[file.parsed.rows.length - 1].date)}`}
                     {' · in '}{formatINR(file.parsed.rows.reduce((s, r) => s + r.credit, 0))}{' · out '}{formatINR(file.parsed.rows.reduce((s, r) => s + r.debit, 0))}
                   </div>
-                  {file.parsed.warnings.slice(0, 5).map((w, i) => <div key={i} className="text-amber-300">{w}</div>)}
-                  <table className="w-full text-slate-300">
+                  {file.parsed.warnings.slice(0, 5).map((w, i) => <div key={i} className="text-warning">{w}</div>)}
+                  <table className="w-full text-fg">
                     <tbody>
                       {file.parsed.rows.slice(0, 5).map((r, i) => (
-                        <tr key={i} className="border-t border-slate-800">
+                        <tr key={i} className="border-t border-border">
                           <td className="py-1 pr-2 whitespace-nowrap">{fmtDate(r.date)}</td>
                           <td className="py-1 pr-2 truncate max-w-xs">{r.description}</td>
-                          <td className="py-1 text-right text-rose-300">{r.debit ? formatINR(r.debit) : ''}</td>
-                          <td className="py-1 text-right text-emerald-300">{r.credit ? formatINR(r.credit) : ''}</td>
+                          <td className="py-1 text-right text-danger">{r.debit ? formatINR(r.debit) : ''}</td>
+                          <td className="py-1 text-right text-success">{r.credit ? formatINR(r.credit) : ''}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                   <div className="flex justify-end gap-2">
-                    <button onClick={() => setFile(null)} className="px-3 py-2 text-slate-400 hover:text-white cursor-pointer">Cancel</button>
-                    <button onClick={importFile} disabled={busy !== null || file.parsed.rows.length === 0} className="flex items-center gap-1 px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold cursor-pointer disabled:opacity-50">
+                    <button onClick={() => setFile(null)} className="px-3 py-2 text-fg-muted hover:text-fg cursor-pointer">Cancel</button>
+                    <button onClick={importFile} disabled={busy !== null || file.parsed.rows.length === 0} className="flex items-center gap-1 px-4 py-2 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold cursor-pointer disabled:opacity-50">
                       {busy === 'import' && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Import {file.parsed.rows.length} lines & match
                     </button>
                   </div>
@@ -397,7 +397,7 @@ export const BankReconciliation: React.FC<BankReconciliationProps> = ({ societyI
             </div>
           )}
 
-          <div role="tablist" className="flex flex-wrap gap-1 p-1 rounded-xl bg-slate-900 border border-slate-800 w-fit">
+          <div role="tablist" className="flex flex-wrap gap-1 p-1 rounded-xl bg-surface border border-border w-fit">
             {([
               ['open', `Open (${(summary?.open_credits ?? 0) + (summary?.open_debits ?? 0)})`],
               ['suggested', `Suggested (${summary?.suggested ?? 0})`],
@@ -406,7 +406,7 @@ export const BankReconciliation: React.FC<BankReconciliationProps> = ({ societyI
               ['all', 'All'],
             ] as const).map(([k, label]) => (
               <button key={k} role="tab" aria-selected={filter === k} onClick={() => setFilter(k)}
-                className={`px-3 py-1.5 rounded-lg font-semibold cursor-pointer ${filter === k ? 'bg-sky-600 text-white' : 'text-slate-400 hover:text-white'}`}>{label}</button>
+                className={`px-3 py-1.5 rounded-lg font-semibold cursor-pointer ${filter === k ? 'bg-brand text-on-brand' : 'text-fg-muted hover:text-on-brand'}`}>{label}</button>
             ))}
           </div>
 
@@ -421,27 +421,27 @@ export const BankReconciliation: React.FC<BankReconciliationProps> = ({ societyI
                 const options = candidates.filter(c => Math.abs(c.amount - Number(l.amount)) < 0.01 && (l.type === 'credit' ? c.kind === 'payment' : c.kind !== 'payment'));
                 const acting = action?.lineId === l.id ? action : null;
                 return (
-                  <div key={l.id} className={`p-3 rounded-2xl bg-slate-900 border ${l.match_kind ? 'border-slate-800' : suggestion ? 'border-sky-500/30' : 'border-amber-500/20'} space-y-2`}>
+                  <div key={l.id} className={`p-3 rounded-xl bg-surface border ${l.match_kind ? 'border-border' : suggestion ? 'border-brand/30' : 'border-warning/20'} space-y-2`}>
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div className="min-w-0 flex items-start gap-2">
-                        {l.type === 'credit' ? <ArrowDownLeft className="w-4 h-4 text-emerald-300 shrink-0" /> : <ArrowUpRight className="w-4 h-4 text-rose-300 shrink-0" />}
+                        {l.type === 'credit' ? <ArrowDownLeft className="w-4 h-4 text-success shrink-0" /> : <ArrowUpRight className="w-4 h-4 text-danger shrink-0" />}
                         <div className="min-w-0">
-                          <div className="text-white break-words">{l.description}</div>
-                          <div className="text-slate-500">{fmtDate(l.transaction_date)}{l.reference_number && ` · ref ${l.reference_number}`}</div>
+                          <div className="text-fg break-words">{l.description}</div>
+                          <div className="text-fg-subtle">{fmtDate(l.transaction_date)}{l.reference_number && ` · ref ${l.reference_number}`}</div>
                         </div>
                       </div>
-                      <div className={`font-bold text-sm ${l.type === 'credit' ? 'text-emerald-300' : 'text-rose-300'}`}>{l.type === 'credit' ? '+' : '−'}{formatINR(l.amount)}</div>
+                      <div className={`font-semibold text-sm ${l.type === 'credit' ? 'text-success' : 'text-danger'}`}>{l.type === 'credit' ? '+' : '−'}{formatINR(l.amount)}</div>
                     </div>
 
                     {label && (
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className={l.match_kind === 'ignored' ? 'text-slate-400' : 'text-emerald-300'}>
+                        <span className={l.match_kind === 'ignored' ? 'text-fg-muted' : 'text-success'}>
                           {l.match_kind === 'ignored' ? <EyeOff className="w-3.5 h-3.5 inline mr-1" /> : <CheckCircle2 className="w-3.5 h-3.5 inline mr-1" />}
                           {label}{l.match_method && l.match_method !== 'manual' && l.match_kind !== 'ignored' && ` · ${l.match_method === 'recorded' ? 'recorded from statement' : `auto (${l.match_method === 'utr' ? 'UTR' : 'reference'})`}`}
                         </span>
                         {canManage && l.match_method !== 'recorded' && (
                           <button onClick={async () => { if (await rpc(l.id, 'unlink_bank_line', { p_line_id: l.id })) done('Line reopened.'); }} disabled={busy !== null}
-                            className="flex items-center gap-1 text-slate-500 hover:text-rose-300 cursor-pointer"><Unlink className="w-3.5 h-3.5" /> Unlink</button>
+                            className="flex items-center gap-1 text-fg-subtle hover:text-danger cursor-pointer"><Unlink className="w-3.5 h-3.5" /> Unlink</button>
                         )}
                       </div>
                     )}
@@ -450,25 +450,25 @@ export const BankReconciliation: React.FC<BankReconciliationProps> = ({ societyI
                       <div className="flex flex-wrap items-center gap-2">
                         {suggestion && (
                           <button onClick={async () => { if (await rpc(l.id, 'confirm_bank_suggestion', { p_line_id: l.id })) done(`Matched with ${suggestion.label}.`); }} disabled={busy !== null}
-                            className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold cursor-pointer disabled:opacity-50">
+                            className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold cursor-pointer disabled:opacity-50">
                             {busy === l.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} Same as {suggestion.label}
                           </button>
                         )}
                         {options.length > 0 && (
-                          <button onClick={() => setAction(acting?.kind === 'link' ? null : { lineId: l.id, kind: 'link', value: '' })} className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-800 text-slate-200 font-semibold cursor-pointer">
+                          <button onClick={() => setAction(acting?.kind === 'link' ? null : { lineId: l.id, kind: 'link', value: '' })} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-surface-muted text-fg font-semibold cursor-pointer">
                             <Link2 className="w-3.5 h-3.5" /> Match with…
                           </button>
                         )}
                         {l.type === 'credit' && (
-                          <button onClick={() => setAction(acting?.kind === 'record' ? null : { lineId: l.id, kind: 'record', value: '' })} className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-800 text-emerald-300 font-semibold cursor-pointer">
+                          <button onClick={() => setAction(acting?.kind === 'record' ? null : { lineId: l.id, kind: 'record', value: '' })} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-surface-muted text-success font-semibold cursor-pointer">
                             <Plus className="w-3.5 h-3.5" /> Record as a flat&apos;s payment
                           </button>
                         )}
-                        <button onClick={() => setAction(acting?.kind === 'ignore' ? null : { lineId: l.id, kind: 'ignore', value: '' })} className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-800 text-slate-400 font-semibold cursor-pointer">
+                        <button onClick={() => setAction(acting?.kind === 'ignore' ? null : { lineId: l.id, kind: 'ignore', value: '' })} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-surface-muted text-fg-muted font-semibold cursor-pointer">
                           <EyeOff className="w-3.5 h-3.5" /> No match needed
                         </button>
                         {!suggestion && options.length === 0 && l.type === 'debit' && (
-                          <span className="text-slate-500">No vendor payment or TDS challan of {formatINR(l.amount)} — record it in Expenses first, or mark it (e.g. bank charges).</span>
+                          <span className="text-fg-subtle">No vendor payment or TDS challan of {formatINR(l.amount)} — record it in Expenses first, or mark it (e.g. bank charges).</span>
                         )}
                       </div>
                     )}
@@ -492,19 +492,19 @@ export const BankReconciliation: React.FC<BankReconciliationProps> = ({ societyI
                             placeholder="Why? e.g. bank charges, interest, transfer between our accounts" className={`flex-1 ${inputClass}`} />
                         )}
                         <button onClick={() => submitAction(l)} disabled={busy !== null || (acting.kind === 'ignore' ? acting.value.trim().length < 3 : !acting.value)}
-                          className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1">
+                          className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1">
                           {busy === l.id && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                           {acting.kind === 'record' ? 'Record & verify' : 'Save'}
                         </button>
                       </div>
                     )}
                     {acting?.kind === 'record' && (
-                      <p className="text-slate-500">Creates a verified payment for the flat&apos;s owner dated {fmtDate(l.transaction_date)}, settles the oldest dues and issues a receipt.</p>
+                      <p className="text-fg-subtle">Creates a verified payment for the flat&apos;s owner dated {fmtDate(l.transaction_date)}, settles the oldest dues and issues a receipt.</p>
                     )}
                   </div>
                 );
               })}
-              {lines.length === 500 && <p className="text-slate-500">Showing the latest 500 lines.</p>}
+              {lines.length === 500 && <p className="text-fg-subtle">Showing the latest 500 lines.</p>}
             </div>
           )}
         </>

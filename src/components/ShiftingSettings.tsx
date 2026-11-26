@@ -41,22 +41,22 @@ export const ShiftingSettings: React.FC<{ societyId: string }> = ({ societyId })
   };
 
   return (
-    <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-2 text-xs">
-      <div className="font-bold text-white">Shifting charges and hours</div>
+    <div className="p-4 rounded-xl bg-surface border border-border space-y-2 text-xs">
+      <div className="font-semibold text-fg">Shifting charges and hours</div>
       <Banner tone="info">{SHIFTING_WARNING}</Banner>
       <Banner tone="error">{error}</Banner>
       <Banner tone="success">{done}</Banner>
       <div className="grid sm:grid-cols-2 gap-2">
         {FIELDS.map(([k, label]) => (
-          <label key={k} className="text-slate-400">{label} (₹)
-            <input type="number" min={0} max={100000} value={v[k]} onChange={e => setV({ ...v, [k]: e.target.value })} className="w-full mt-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white" />
+          <label key={k} className="text-fg-muted">{label} (₹)
+            <input type="number" min={0} max={100000} value={v[k]} onChange={e => setV({ ...v, [k]: e.target.value })} className="w-full mt-1 bg-surface border border-border-strong rounded-lg px-3 py-2 text-fg" />
           </label>
         ))}
-        <label className="text-slate-400">Shifting allowed from<input type="time" value={v.shifting_from} onChange={e => setV({ ...v, shifting_from: e.target.value })} className="w-full mt-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white" /></label>
-        <label className="text-slate-400">until<input type="time" value={v.shifting_to} onChange={e => setV({ ...v, shifting_to: e.target.value })} className="w-full mt-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white" /></label>
+        <label className="text-fg-muted">Shifting allowed from<input type="time" value={v.shifting_from} onChange={e => setV({ ...v, shifting_from: e.target.value })} className="w-full mt-1 bg-surface border border-border-strong rounded-lg px-3 py-2 text-fg" /></label>
+        <label className="text-fg-muted">until<input type="time" value={v.shifting_to} onChange={e => setV({ ...v, shifting_to: e.target.value })} className="w-full mt-1 bg-surface border border-border-strong rounded-lg px-3 py-2 text-fg" /></label>
       </div>
-      <p className="text-slate-400">The refundable deposit is kept in the ledger &ldquo;Deposits received&rdquo; until it is refunded; any amount kept goes to &ldquo;Damage recovery&rdquo;.</p>
-      <button onClick={save} disabled={busy} className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold disabled:opacity-50 cursor-pointer">{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save'}</button>
+      <p className="text-fg-muted">The refundable deposit is kept in the ledger &ldquo;Deposits received&rdquo; until it is refunded; any amount kept goes to &ldquo;Damage recovery&rdquo;.</p>
+      <button onClick={save} disabled={busy} className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold disabled:opacity-50 cursor-pointer">{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save'}</button>
     </div>
   );
 };

@@ -133,17 +133,17 @@ export const BillingConsole: React.FC = () => {
     ['On Free (ads)', String(rows.filter(r => r.plan_code === 'free' && !r.in_trial).length)],
     ['Overdue invoices', String(overdue.length), formatINR(overdue.reduce((s, i) => s + Number(i.total), 0))],
   ];
-  const cell = 'bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-white outline-none focus:border-purple-500';
+  const cell = 'bg-surface border border-border-strong rounded-lg px-2 py-1 text-fg outline-none focus:border-brand';
 
   return (
     <div className="space-y-6 text-xs">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-lg font-bold text-white">Billing</h2>
-          <p className="text-slate-400">Per-flat SaaS pricing. The daily job (01:00 IST) ends trials, sends renewal invoices and moves unpaid societies to Free.</p>
+          <h2 className="text-lg font-semibold text-fg">Billing</h2>
+          <p className="text-fg-muted">Per-flat SaaS pricing. The daily job (01:00 IST) ends trials, sends renewal invoices and moves unpaid societies to Free.</p>
         </div>
         <button onClick={() => run('lifecycle', () => supabase!.rpc('run_subscription_lifecycle'), 'Lifecycle job ran.')} disabled={busy !== null}
-          className="flex items-center gap-1 px-3 py-2 rounded-xl bg-slate-800 text-slate-200 cursor-pointer disabled:opacity-50">
+          className="flex items-center gap-1 px-3 py-2 rounded-lg bg-surface-muted text-fg cursor-pointer disabled:opacity-50">
           {busy === 'lifecycle' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />} Run daily job now
         </button>
       </div>
@@ -152,56 +152,56 @@ export const BillingConsole: React.FC = () => {
 
       <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
         {kpis.map(([label, value, sub]) => (
-          <div key={label} className="p-3 rounded-2xl bg-slate-950 border border-slate-800">
-            <div className="text-slate-400">{label}</div><div className="text-lg font-bold text-white">{value}</div>{sub && <div className="text-slate-500">{sub}</div>}
+          <div key={label} className="p-3 rounded-xl bg-canvas border border-border">
+            <div className="text-fg-muted">{label}</div><div className="text-lg font-semibold text-fg">{value}</div>{sub && <div className="text-fg-subtle">{sub}</div>}
           </div>
         ))}
       </div>
 
-      <section className="bg-slate-950 border border-slate-800 rounded-2xl overflow-x-auto">
-        <div className="p-3 font-bold text-white border-b border-slate-800">Societies</div>
+      <section className="bg-canvas border border-border rounded-xl overflow-x-auto">
+        <div className="p-3 font-semibold text-fg border-b border-border">Societies</div>
         <table className="w-full min-w-[860px] text-left">
-          <thead className="text-slate-400"><tr><th className="p-2">Society</th><th className="p-2">Flats</th><th className="p-2">Plan</th><th className="p-2">Status</th><th className="p-2">Until</th><th className="p-2 text-right">₹ / month</th><th className="p-2 text-right">Open invoice</th><th className="p-2" /></tr></thead>
-          <tbody className="divide-y divide-slate-800 text-slate-200">
+          <thead className="text-fg-muted"><tr><th className="p-2">Society</th><th className="p-2">Flats</th><th className="p-2">Plan</th><th className="p-2">Status</th><th className="p-2">Until</th><th className="p-2 text-right">₹ / month</th><th className="p-2 text-right">Open invoice</th><th className="p-2" /></tr></thead>
+          <tbody className="divide-y divide-border text-fg">
             {rows.map(r => (
               <React.Fragment key={r.society_id}>
                 <tr>
-                  <td className="p-2"><div className="font-semibold text-white">{r.name}</div><div className="text-slate-500">{r.city}{r.has_override && ' · custom price'}</div></td>
+                  <td className="p-2"><div className="font-semibold text-fg">{r.name}</div><div className="text-fg-subtle">{r.city}{r.has_override && ' · custom price'}</div></td>
                   <td className="p-2">{r.units}</td>
-                  <td className="p-2">{r.in_trial && r.status === 'trial' ? 'Trial' : r.plan_code}{r.next_plan_code && <span className="text-slate-500"> → {r.next_plan_code}</span>}</td>
-                  <td className="p-2"><span className={r.status === 'past_due' ? 'text-rose-300' : r.plan_code === 'free' ? 'text-amber-300' : 'text-emerald-300'}>{r.status}</span></td>
-                  <td className="p-2 text-slate-400">{r.in_trial ? `trial till ${r.trial_ends_on}` : r.period_end ?? '—'}</td>
+                  <td className="p-2">{r.in_trial && r.status === 'trial' ? 'Trial' : r.plan_code}{r.next_plan_code && <span className="text-fg-subtle"> → {r.next_plan_code}</span>}</td>
+                  <td className="p-2"><span className={r.status === 'past_due' ? 'text-danger' : r.plan_code === 'free' ? 'text-warning' : 'text-success'}>{r.status}</span></td>
+                  <td className="p-2 text-fg-muted">{r.in_trial ? `trial till ${r.trial_ends_on}` : r.period_end ?? '—'}</td>
                   <td className="p-2 text-right">{Number(r.monthly_value) ? formatINR(r.monthly_value) : '—'}</td>
-                  <td className="p-2 text-right">{r.open_invoice_total ? <span className={r.open_invoice_due && r.open_invoice_due < today() ? 'text-rose-300' : ''}>{formatINR(r.open_invoice_total)} · due {r.open_invoice_due}</span> : '—'}</td>
-                  <td className="p-2 text-right"><button onClick={() => startOverride(r)} className="text-purple-300 hover:underline cursor-pointer">{open === r.society_id ? 'Close' : 'Price & invoices'}</button></td>
+                  <td className="p-2 text-right">{r.open_invoice_total ? <span className={r.open_invoice_due && r.open_invoice_due < today() ? 'text-danger' : ''}>{formatINR(r.open_invoice_total)} · due {r.open_invoice_due}</span> : '—'}</td>
+                  <td className="p-2 text-right"><button onClick={() => startOverride(r)} className="text-brand-ink hover:underline cursor-pointer">{open === r.society_id ? 'Close' : 'Price & invoices'}</button></td>
                 </tr>
                 {open === r.society_id && override && (
-                  <tr className="bg-slate-900/60">
+                  <tr className="bg-surface/60">
                     <td colSpan={8} className="p-3 space-y-3">
                       <div className="flex flex-wrap items-end gap-2">
-                        <label className="space-y-1"><span className="block text-slate-400">₹ / flat (blank = plan price)</span><input value={override.custom_rate} onChange={e => setOverride({ ...override, custom_rate: e.target.value })} className={`w-28 ${cell}`} /></label>
-                        <label className="space-y-1"><span className="block text-slate-400">Discount %</span><input value={override.discount_percent} onChange={e => setOverride({ ...override, discount_percent: e.target.value })} className={`w-20 ${cell}`} /></label>
-                        <label className="space-y-1"><span className="block text-slate-400">Free months (first plan)</span><input value={override.free_months} onChange={e => setOverride({ ...override, free_months: e.target.value })} className={`w-20 ${cell}`} /></label>
-                        <label className="space-y-1"><span className="block text-slate-400">Flats not billable</span><input value={override.excluded_units} onChange={e => setOverride({ ...override, excluded_units: e.target.value })} className={`w-20 ${cell}`} /></label>
-                        <label className="space-y-1"><span className="block text-slate-400">Valid till</span><input type="date" value={override.valid_till} onChange={e => setOverride({ ...override, valid_till: e.target.value })} className={cell} /></label>
-                        <label className="space-y-1 flex-1 min-w-[200px]"><span className="block text-slate-400">Reason (internal)</span><input value={override.reason} onChange={e => setOverride({ ...override, reason: e.target.value })} className={`w-full ${cell}`} /></label>
-                        <button onClick={() => saveOverride(r.society_id)} disabled={busy !== null || override.reason.trim().length < 3} className="px-3 py-1.5 rounded-lg bg-purple-600 text-white cursor-pointer disabled:opacity-50">Save price</button>
-                        {r.has_override && <button onClick={() => removeOverride(r.society_id)} className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 cursor-pointer">Remove</button>}
+                        <label className="space-y-1"><span className="block text-fg-muted">₹ / flat (blank = plan price)</span><input value={override.custom_rate} onChange={e => setOverride({ ...override, custom_rate: e.target.value })} className={`w-28 ${cell}`} /></label>
+                        <label className="space-y-1"><span className="block text-fg-muted">Discount %</span><input value={override.discount_percent} onChange={e => setOverride({ ...override, discount_percent: e.target.value })} className={`w-20 ${cell}`} /></label>
+                        <label className="space-y-1"><span className="block text-fg-muted">Free months (first plan)</span><input value={override.free_months} onChange={e => setOverride({ ...override, free_months: e.target.value })} className={`w-20 ${cell}`} /></label>
+                        <label className="space-y-1"><span className="block text-fg-muted">Flats not billable</span><input value={override.excluded_units} onChange={e => setOverride({ ...override, excluded_units: e.target.value })} className={`w-20 ${cell}`} /></label>
+                        <label className="space-y-1"><span className="block text-fg-muted">Valid till</span><input type="date" value={override.valid_till} onChange={e => setOverride({ ...override, valid_till: e.target.value })} className={cell} /></label>
+                        <label className="space-y-1 flex-1 min-w-[200px]"><span className="block text-fg-muted">Reason (internal)</span><input value={override.reason} onChange={e => setOverride({ ...override, reason: e.target.value })} className={`w-full ${cell}`} /></label>
+                        <button onClick={() => saveOverride(r.society_id)} disabled={busy !== null || override.reason.trim().length < 3} className="px-3 py-1.5 rounded-lg bg-brand text-on-brand cursor-pointer disabled:opacity-50">Save price</button>
+                        {r.has_override && <button onClick={() => removeOverride(r.society_id)} className="px-3 py-1.5 rounded-lg bg-surface-muted text-fg cursor-pointer">Remove</button>}
                       </div>
                       <div className="space-y-1">
                         {invoices.filter(i => i.society_id === r.society_id).map(i => (
-                          <div key={i.id} className="flex flex-wrap items-center justify-between gap-2 p-2 rounded-lg bg-slate-950">
-                            <button onClick={() => setViewing(i)} className="text-left cursor-pointer"><span className="font-mono text-white">{i.invoice_number}</span> <span className="text-slate-400">· {i.kind} · {i.plan_code} · {formatINR(i.total)} · {i.status}{i.paid_on ? ` ${i.paid_on} (${i.payment_method})` : ` · due ${i.due_on}`}</span></button>
+                          <div key={i.id} className="flex flex-wrap items-center justify-between gap-2 p-2 rounded-lg bg-canvas">
+                            <button onClick={() => setViewing(i)} className="text-left cursor-pointer"><span className="font-mono text-fg">{i.invoice_number}</span> <span className="text-fg-muted">· {i.kind} · {i.plan_code} · {formatINR(i.total)} · {i.status}{i.paid_on ? ` ${i.paid_on} (${i.payment_method})` : ` · due ${i.due_on}`}</span></button>
                             {i.status === 'issued' && (
                               <span className="flex gap-1">
                                 <input value={paidRef[i.id] ?? ''} onChange={e => setPaidRef({ ...paidRef, [i.id]: e.target.value })} placeholder="Bank UTR" className={`w-36 ${cell}`} />
                                 <button onClick={() => run(i.id, () => supabase!.rpc('platform_mark_invoice_paid', { p_invoice_id: i.id, p_reference: paidRef[i.id] ?? '', p_paid_on: today() }), `${i.invoice_number} marked paid.`)}
-                                  disabled={busy !== null || !(paidRef[i.id] ?? '').trim()} className="px-3 py-1 rounded-lg bg-emerald-600 text-white cursor-pointer disabled:opacity-50">Mark NEFT paid</button>
+                                  disabled={busy !== null || !(paidRef[i.id] ?? '').trim()} className="px-3 py-1 rounded-lg bg-success text-on-brand cursor-pointer disabled:opacity-50">Mark NEFT paid</button>
                               </span>
                             )}
                           </div>
                         ))}
-                        {invoices.every(i => i.society_id !== r.society_id) && <div className="text-slate-500">No invoices yet.</div>}
+                        {invoices.every(i => i.society_id !== r.society_id) && <div className="text-fg-subtle">No invoices yet.</div>}
                       </div>
                     </td>
                   </tr>
@@ -212,14 +212,14 @@ export const BillingConsole: React.FC = () => {
         </table>
       </section>
 
-      <section className="bg-slate-950 border border-slate-800 rounded-2xl overflow-x-auto">
-        <div className="p-3 font-bold text-white border-b border-slate-800">Plans & features</div>
+      <section className="bg-canvas border border-border rounded-xl overflow-x-auto">
+        <div className="p-3 font-semibold text-fg border-b border-border">Plans & features</div>
         <table className="w-full min-w-[760px] text-left">
-          <thead className="text-slate-400"><tr><th className="p-2">Plan</th><th className="p-2">₹ / flat / month</th>{FEATURES.map(f => <th key={f.key} className="p-2">{f.label}</th>)}<th className="p-2">Ads</th><th className="p-2">Storage MB</th><th className="p-2">On</th></tr></thead>
-          <tbody className="divide-y divide-slate-800 text-slate-200">
+          <thead className="text-fg-muted"><tr><th className="p-2">Plan</th><th className="p-2">₹ / flat / month</th>{FEATURES.map(f => <th key={f.key} className="p-2">{f.label}</th>)}<th className="p-2">Ads</th><th className="p-2">Storage MB</th><th className="p-2">On</th></tr></thead>
+          <tbody className="divide-y divide-border text-fg">
             {plans.map(p => (
               <tr key={p.id}>
-                <td className="p-2 font-bold text-white">{p.name}</td>
+                <td className="p-2 font-semibold text-fg">{p.name}</td>
                 <td className="p-2"><input type="number" min={0} step="0.5" value={p.monthly_rate_per_unit_inr} disabled={p.tier_code === 'free'} onChange={e => editPlan(p.id, { monthly_rate_per_unit_inr: Number(e.target.value) })} className={`w-20 ${cell}`} /></td>
                 {FEATURES.map(f => (
                   <td key={f.key} className="p-2 text-center"><input type="checkbox" className="accent-purple-500" checked={p.feature_keys.includes(f.key)}
@@ -232,42 +232,42 @@ export const BillingConsole: React.FC = () => {
             ))}
           </tbody>
         </table>
-        <div className="p-3 border-t border-slate-800 flex justify-end">
-          <button onClick={savePlans} disabled={busy !== null} className="flex items-center gap-1 px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold cursor-pointer disabled:opacity-50"><Save className="w-3.5 h-3.5" /> Save plans</button>
+        <div className="p-3 border-t border-border flex justify-end">
+          <button onClick={savePlans} disabled={busy !== null} className="flex items-center gap-1 px-4 py-2 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold cursor-pointer disabled:opacity-50"><Save className="w-3.5 h-3.5" /> Save plans</button>
         </div>
       </section>
 
-      <section className="bg-slate-950 border border-slate-800 rounded-2xl p-3 space-y-3">
-        <div className="font-bold text-white">Billing rules & invoice details</div>
+      <section className="bg-canvas border border-border rounded-xl p-3 space-y-3">
+        <div className="font-semibold text-fg">Billing rules & invoice details</div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
           {SETTING_FIELDS.map(f => (
-            <label key={f.key} className="space-y-1"><span className="block text-slate-400">{f.label}</span>
+            <label key={f.key} className="space-y-1"><span className="block text-fg-muted">{f.label}</span>
               <input type={f.numeric ? 'number' : 'text'} value={settings[f.key] ?? ''} className={`w-full ${cell}`}
                 onChange={e => setSettings({ ...settings, [f.key]: f.numeric ? Number(e.target.value) : e.target.value })} /></label>
           ))}
         </div>
         <div className="flex justify-end">
-          <button onClick={saveSettings} disabled={busy !== null} className="flex items-center gap-1 px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold cursor-pointer disabled:opacity-50"><Save className="w-3.5 h-3.5" /> Save settings</button>
+          <button onClick={saveSettings} disabled={busy !== null} className="flex items-center gap-1 px-4 py-2 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold cursor-pointer disabled:opacity-50"><Save className="w-3.5 h-3.5" /> Save settings</button>
         </div>
       </section>
 
-      <section className="bg-slate-950 border border-slate-800 rounded-2xl p-3 space-y-2">
-        <div className="font-bold text-white flex items-center gap-2"><KeyRound className="w-4 h-4 text-purple-300" /> Online payments (Razorpay)</div>
-        <p className="text-slate-400">Vercel needs <span className="font-mono">RAZORPAY_KEY_ID</span>, <span className="font-mono">RAZORPAY_KEY_SECRET</span>, <span className="font-mono">RAZORPAY_WEBHOOK_SECRET</span> and <span className="font-mono">SAHVAAS_GATEWAY_SECRET</span>. Save the same gateway secret here — only its hash is stored. Webhook URL: <span className="font-mono">/api/billing/webhook</span> (events payment.captured, order.paid).</p>
+      <section className="bg-canvas border border-border rounded-xl p-3 space-y-2">
+        <div className="font-semibold text-fg flex items-center gap-2"><KeyRound className="w-4 h-4 text-brand-ink" /> Online payments (Razorpay)</div>
+        <p className="text-fg-muted">Vercel needs <span className="font-mono">RAZORPAY_KEY_ID</span>, <span className="font-mono">RAZORPAY_KEY_SECRET</span>, <span className="font-mono">RAZORPAY_WEBHOOK_SECRET</span> and <span className="font-mono">SAHVAAS_GATEWAY_SECRET</span>. Save the same gateway secret here — only its hash is stored. Webhook URL: <span className="font-mono">/api/billing/webhook</span> (events payment.captured, order.paid).</p>
         <div className="flex flex-wrap gap-2">
           <input value={secret} onChange={e => setSecret(e.target.value)} placeholder="Gateway secret (32+ characters)" className={`flex-1 min-w-[260px] font-mono ${cell}`} />
-          <button onClick={generateSecret} className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-200 cursor-pointer">Generate</button>
+          <button onClick={generateSecret} className="px-3 py-1.5 rounded-lg bg-surface-muted text-fg cursor-pointer">Generate</button>
           <button onClick={() => run('secret', () => supabase!.rpc('platform_set_gateway_secret', { p_secret: secret }), 'Gateway secret saved. Put the same value in Vercel as SAHVAAS_GATEWAY_SECRET.')}
-            disabled={busy !== null || secret.length < 32} className="px-3 py-1.5 rounded-lg bg-purple-600 text-white cursor-pointer disabled:opacity-50">Save secret</button>
+            disabled={busy !== null || secret.length < 32} className="px-3 py-1.5 rounded-lg bg-brand text-on-brand cursor-pointer disabled:opacity-50">Save secret</button>
         </div>
       </section>
 
       {viewing && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 flex items-start justify-center p-4 overflow-y-auto print:static print:bg-white print:p-0" role="dialog" aria-label="Invoice">
+        <div className="fixed inset-0 z-50 bg-canvas/80 flex items-start justify-center p-4 overflow-y-auto print:static print:bg-white print:p-0" role="dialog" aria-label="Invoice">
           <div className="w-full max-w-2xl space-y-2">
             <div className="flex justify-end gap-2 print:hidden">
-              <button onClick={() => window.print()} className="flex items-center gap-1 px-3 py-2 rounded-xl bg-slate-800 text-slate-200 cursor-pointer"><Printer className="w-3.5 h-3.5" /> Print / PDF</button>
-              <button onClick={() => setViewing(null)} className="p-2 rounded-xl bg-slate-800 text-slate-200 cursor-pointer" aria-label="Close"><X className="w-4 h-4" /></button>
+              <button onClick={() => window.print()} className="flex items-center gap-1 px-3 py-2 rounded-lg bg-surface-muted text-fg cursor-pointer"><Printer className="w-3.5 h-3.5" /> Print / PDF</button>
+              <button onClick={() => setViewing(null)} className="p-2 rounded-xl bg-surface-muted text-fg cursor-pointer" aria-label="Close"><X className="w-4 h-4" /></button>
             </div>
             <InvoiceView invoice={viewing} />
           </div>

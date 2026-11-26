@@ -60,14 +60,14 @@ export const OpeningBalanceReview: React.FC<{ societyId: string; canDecide: bool
     const lines = (ob?.audited_lines ?? []).filter(l => l.side === side);
     return (
       <div className="space-y-1">
-        <div className="font-semibold text-slate-300">{title}</div>
+        <div className="font-semibold text-fg">{title}</div>
         {lines.map((l, i) => (
           <div key={`${l.code}-${i}`} className="flex justify-between gap-2">
-            <span className="text-slate-300">{ledgerLabel(l.code, l.label)}</span>
-            <span className="text-white">{formatINR(signed(side, n(l.amount)))}</span>
+            <span className="text-fg">{ledgerLabel(l.code, l.label)}</span>
+            <span className="text-fg">{formatINR(signed(side, n(l.amount)))}</span>
           </div>
         ))}
-        <div className="flex justify-between border-t border-slate-800 pt-1 font-semibold text-white">
+        <div className="flex justify-between border-t border-border pt-1 font-semibold text-fg">
           <span>Total</span><span>{formatINR(sideTotal(ob?.audited_lines ?? [], side))}</span>
         </div>
       </div>
@@ -78,18 +78,18 @@ export const OpeningBalanceReview: React.FC<{ societyId: string; canDecide: bool
   const vendorName = (id: string) => ob?.vendors.find(v => v.vendor_id === id)?.name ?? '—';
 
   return (
-    <section className="rounded-2xl bg-slate-900 border border-slate-800 p-4 space-y-3 text-xs">
-      <h3 className="font-semibold text-white flex items-center gap-2"><BookOpen className="w-4 h-4 text-sky-400" /> Opening balance</h3>
+    <section className="rounded-xl bg-surface border border-border p-4 space-y-3 text-xs">
+      <h3 className="font-semibold text-fg flex items-center gap-2"><BookOpen className="w-4 h-4 text-brand" /> Opening balance</h3>
       <Banner tone="error">{error}</Banner>
       {!ob ? (
-        <div className="flex items-center gap-2 text-slate-400"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</div>
+        <div className="flex items-center gap-2 text-fg-muted"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</div>
       ) : ob.status === 'approved' ? (
-        <p className="text-emerald-300">Approved on {showDate(ob.decided_at)}.</p>
+        <p className="text-success">Approved on {showDate(ob.decided_at)}.</p>
       ) : ob.status !== 'submitted' ? (
-        <p className="text-slate-400">Your CA has not submitted the opening balance yet.</p>
+        <p className="text-fg-muted">Your CA has not submitted the opening balance yet.</p>
       ) : (
         <>
-          <p className="text-slate-400">
+          <p className="text-fg-muted">
             Prepared by {ob.prepared_by_name ?? 'your CA'}, submitted {showDate(ob.submitted_at)}.
             Audited balance sheet as on {showDate(ob.audited_as_of)}; society started using Sahvaas on {showDate(ob.live_on)}.
           </p>
@@ -100,15 +100,15 @@ export const OpeningBalanceReview: React.FC<{ societyId: string; canDecide: bool
 
           {ob.catchup_lines.length > 0 && (
             <div className="space-y-1">
-              <div className="font-semibold text-slate-300">Catch-up entry</div>
+              <div className="font-semibold text-fg">Catch-up entry</div>
               <table className="w-full">
-                <thead className="text-slate-500 text-left"><tr><th>Ledger</th><th className="text-right">Debit</th><th className="text-right">Credit</th></tr></thead>
+                <thead className="text-fg-subtle text-left"><tr><th>Ledger</th><th className="text-right">Debit</th><th className="text-right">Credit</th></tr></thead>
                 <tbody>
                   {ob.catchup_lines.map((l, i) => (
                     <tr key={`${l.code}-${i}`}>
-                      <td className="text-slate-300">{ledgerLabel(l.code)}</td>
-                      <td className="text-right text-white">{n(l.amount) > 0 ? formatINR(n(l.amount)) : ''}</td>
-                      <td className="text-right text-white">{n(l.amount) < 0 ? formatINR(-n(l.amount)) : ''}</td>
+                      <td className="text-fg">{ledgerLabel(l.code)}</td>
+                      <td className="text-right text-fg">{n(l.amount) > 0 ? formatINR(n(l.amount)) : ''}</td>
+                      <td className="text-right text-fg">{n(l.amount) < 0 ? formatINR(-n(l.amount)) : ''}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -118,20 +118,20 @@ export const OpeningBalanceReview: React.FC<{ societyId: string; canDecide: bool
 
           {ob.flat_lines.length > 0 && (
             <div className="space-y-1">
-              <div className="font-semibold text-slate-300">Flat-wise on {showDate(ob.live_on)}</div>
+              <div className="font-semibold text-fg">Flat-wise on {showDate(ob.live_on)}</div>
               <table className="w-full">
-                <thead className="text-slate-500 text-left"><tr><th>Flat</th><th>Owner</th><th className="text-right">Dues</th><th className="text-right">Advance</th></tr></thead>
-                <tbody className="divide-y divide-slate-800">
+                <thead className="text-fg-subtle text-left"><tr><th>Flat</th><th>Owner</th><th className="text-right">Dues</th><th className="text-right">Advance</th></tr></thead>
+                <tbody className="divide-y divide-border">
                   {ob.flat_lines.map(l => (
                     <tr key={l.unit_id}>
-                      <td className="py-1 text-white">{flatName(l.unit_id)?.name ?? '—'}</td>
-                      <td className="py-1 text-slate-400">{flatName(l.unit_id)?.owner_name ?? '—'}</td>
-                      <td className="py-1 text-right text-white">{n(l.amount) > 0 ? formatINR(n(l.amount)) : ''}</td>
-                      <td className="py-1 text-right text-white">{n(l.amount) < 0 ? formatINR(-n(l.amount)) : ''}</td>
+                      <td className="py-1 text-fg">{flatName(l.unit_id)?.name ?? '—'}</td>
+                      <td className="py-1 text-fg-muted">{flatName(l.unit_id)?.owner_name ?? '—'}</td>
+                      <td className="py-1 text-right text-fg">{n(l.amount) > 0 ? formatINR(n(l.amount)) : ''}</td>
+                      <td className="py-1 text-right text-fg">{n(l.amount) < 0 ? formatINR(-n(l.amount)) : ''}</td>
                     </tr>
                   ))}
                 </tbody>
-                <tfoot className="font-semibold text-white">
+                <tfoot className="font-semibold text-fg">
                   <tr><td colSpan={2} className="pt-1">Total</td><td className="pt-1 text-right">{formatINR(n(ob.checks.dues_entered))}</td><td className="pt-1 text-right">{formatINR(n(ob.checks.advance_entered))}</td></tr>
                 </tfoot>
               </table>
@@ -140,9 +140,9 @@ export const OpeningBalanceReview: React.FC<{ societyId: string; canDecide: bool
 
           {ob.vendor_lines.length > 0 && (
             <div className="space-y-1">
-              <div className="font-semibold text-slate-300">Vendor payables on {showDate(ob.live_on)}</div>
+              <div className="font-semibold text-fg">Vendor payables on {showDate(ob.live_on)}</div>
               {ob.vendor_lines.map(l => (
-                <div key={l.vendor_id} className="flex justify-between"><span className="text-slate-300">{vendorName(l.vendor_id)}</span><span className="text-white">{formatINR(n(l.amount))}</span></div>
+                <div key={l.vendor_id} className="flex justify-between"><span className="text-fg">{vendorName(l.vendor_id)}</span><span className="text-fg">{formatINR(n(l.amount))}</span></div>
               ))}
             </div>
           )}
@@ -151,20 +151,20 @@ export const OpeningBalanceReview: React.FC<{ societyId: string; canDecide: bool
             <div className="space-y-2">
               {sendingBack && (
                 <textarea value={reason} onChange={e => setReason(e.target.value)} rows={2} placeholder="What should the CA correct?"
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-white outline-none focus:border-sky-500" />
+                  className="w-full bg-surface border border-border-strong rounded-lg px-2 py-1 text-fg outline-none focus:border-brand" />
               )}
               <div className="flex flex-wrap gap-2">
-                <button onClick={() => decide(true)} disabled={busy} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer disabled:opacity-50">
+                <button onClick={() => decide(true)} disabled={busy} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-success hover:bg-success/90 text-on-brand cursor-pointer disabled:opacity-50">
                   {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Approve
                 </button>
                 <button onClick={() => (sendingBack ? decide(false) : setSendingBack(true))} disabled={busy || (sendingBack && reason.trim() === '')}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white cursor-pointer disabled:opacity-50">
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-surface-muted hover:bg-border text-fg cursor-pointer disabled:opacity-50">
                   <Undo2 className="w-3.5 h-3.5" /> Send back
                 </button>
               </div>
             </div>
           ) : (
-            <p className="text-slate-500">A secretary, chairman or treasurer approves this.</p>
+            <p className="text-fg-subtle">A secretary, chairman or treasurer approves this.</p>
           )}
         </>
       )}

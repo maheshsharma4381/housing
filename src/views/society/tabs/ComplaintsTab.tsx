@@ -9,16 +9,16 @@ import { Complaint, ComplaintStatus, Unit } from '../../../types/database';
 import { MessageSquare, ChevronDown, ChevronUp } from 'lucide-react';
 
 const STATUS_STYLES: Record<ComplaintStatus, string> = {
-  open: 'bg-rose-500/10 text-rose-300',
-  in_progress: 'bg-amber-500/10 text-amber-300',
-  resolved: 'bg-emerald-500/10 text-emerald-300',
-  closed: 'bg-slate-800 text-slate-400',
+  open: 'bg-danger-soft text-danger',
+  in_progress: 'bg-warning-soft text-warning',
+  resolved: 'bg-success-soft text-success',
+  closed: 'bg-surface-muted text-fg-muted',
 };
 const PRIORITY_STYLES: Record<Complaint['priority'], string> = {
-  low: 'text-slate-400',
-  medium: 'text-sky-300',
-  high: 'text-amber-300',
-  urgent: 'text-rose-400 font-bold',
+  low: 'text-fg-muted',
+  medium: 'text-brand',
+  high: 'text-warning',
+  urgent: 'text-danger font-semibold',
 };
 
 interface ComplaintsTabProps {
@@ -55,13 +55,13 @@ export const ComplaintsTab: React.FC<ComplaintsTabProps> = ({ societyId, current
   );
 
   return (
-    <div className="space-y-4 text-xs">
+    <div className="space-y-4 text-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="text-lg font-bold text-white">Helpdesk Tickets</h2>
-          <p className="text-slate-400">Residents raise tickets from their phone; reply, assign and resolve here.</p>
+          <h2 className="text-2xl font-semibold tracking-tight text-fg">Complaints</h2>
+          <p className="text-fg-muted">Residents raise tickets from their phone; reply, assign and resolve here.</p>
         </div>
-        <select value={filter} onChange={e => setFilter(e.target.value as typeof filter)} className="bg-slate-900 border border-slate-700 rounded-xl px-2 py-1.5 text-white">
+        <select value={filter} onChange={e => setFilter(e.target.value as typeof filter)} className="bg-surface border border-border-strong rounded-lg px-2 py-1.5 text-fg">
           <option value="active">Open & in progress</option>
           <option value="resolved">Resolved</option>
           <option value="closed">Closed</option>
@@ -73,21 +73,21 @@ export const ComplaintsTab: React.FC<ComplaintsTabProps> = ({ societyId, current
         <EmptyState icon={MessageSquare} title="No Tickets Here" description="No complaints match this filter." />
       ) : (
         visible.map(c => (
-          <div key={c.id} className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
+          <div key={c.id} className="p-4 rounded-xl bg-surface border border-border">
             <button onClick={() => setOpenId(openId === c.id ? null : c.id)} className="w-full flex items-start justify-between gap-3 text-left cursor-pointer">
               <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-fg-muted">
                   <span className="font-mono">{c.ticket_number}</span>
                   <span>• Flat {unitNumber(c.unit_id)}</span>
                   <span>• {c.category}</span>
                   <span className={PRIORITY_STYLES[c.priority]}>• {c.priority}</span>
                   <span>• {new Date(c.created_at).toLocaleDateString('en-IN')}</span>
                 </div>
-                <h4 className="font-bold text-white text-sm truncate">{c.title}</h4>
+                <h4 className="font-semibold text-fg text-sm truncate">{c.title}</h4>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-semibold ${STATUS_STYLES[c.status]}`}>{c.status.replace('_', ' ')}</span>
-                {openId === c.id ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+                <span className={`px-2 py-0.5 rounded-full text-xs uppercase font-semibold ${STATUS_STYLES[c.status]}`}>{c.status.replace('_', ' ')}</span>
+                {openId === c.id ? <ChevronUp className="w-4 h-4 text-fg-muted" /> : <ChevronDown className="w-4 h-4 text-fg-muted" />}
               </div>
             </button>
             {openId === c.id && (

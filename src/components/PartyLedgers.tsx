@@ -23,12 +23,12 @@ const fyStart = (d = new Date()) => `${d.getMonth() >= 3 ? d.getFullYear() : d.g
 const n = (v: unknown) => Number(v ?? 0);
 const same = (a: number, b: number) => Math.abs(a - b) < 0.005;
 const amount = (v: number) => (same(v, 0) ? '—' : formatINR(v));
-const inputClass = 'bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-white outline-none focus:border-sky-500';
+const inputClass = 'bg-surface border border-border-strong rounded-lg px-2 py-1 text-fg outline-none focus:border-brand';
 
 const Tie: React.FC<{ ok: boolean; label: string; diff: number }> = ({ ok, label, diff }) =>
   ok
-    ? <span className="flex items-center gap-1 text-emerald-300"><CheckCircle2 className="w-3.5 h-3.5" /> Matches {label}</span>
-    : <span className="text-rose-300">Differs from {label} by {formatINR(Math.abs(diff))}</span>;
+    ? <span className="flex items-center gap-1 text-success"><CheckCircle2 className="w-3.5 h-3.5" /> Matches {label}</span>
+    : <span className="text-danger">Differs from {label} by {formatINR(Math.abs(diff))}</span>;
 
 /**
  * Flat-wise and vendor-wise ledgers (025). They are worked out from the bills, payments and vendor
@@ -74,7 +74,7 @@ export const PartyLedgers: React.FC<{ societyId: string }> = ({ societyId }) => 
     setOpen(o => (o && o.kind === kind && o.key === key ? null : { kind, key }));
   };
   const rowClass = (kind: Kind, key: string) =>
-    `cursor-pointer hover:bg-slate-800/60 ${open?.kind === kind && open.key === key ? 'bg-slate-800/80' : ''}`;
+    `cursor-pointer hover:bg-surface-muted/60 ${open?.kind === kind && open.key === key ? 'bg-surface-muted/80' : ''}`;
 
   const dues = (flats?.parties ?? []).reduce((s, p) => s + n(p.dues), 0);
   const advance = (flats?.parties ?? []).reduce((s, p) => s + n(p.advance), 0);
@@ -84,25 +84,25 @@ export const PartyLedgers: React.FC<{ societyId: string }> = ({ societyId }) => 
     <div className="space-y-4 text-xs">
       <Banner tone="error">{error}</Banner>
       {loading && !flats ? (
-        <div className="flex items-center gap-2 text-slate-400"><Loader2 className="w-4 h-4 animate-spin" /> Loading party ledgers…</div>
+        <div className="flex items-center gap-2 text-fg-muted"><Loader2 className="w-4 h-4 animate-spin" /> Loading party ledgers…</div>
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
-          <section className="rounded-2xl bg-slate-900 border border-slate-800 overflow-hidden">
-            <div className="p-3 font-semibold text-white flex items-center gap-2"><Users className="w-3.5 h-3.5 text-sky-400" /> Members (flat-wise)</div>
+          <section className="rounded-xl bg-surface border border-border overflow-hidden">
+            <div className="p-3 font-semibold text-fg flex items-center gap-2"><Users className="w-3.5 h-3.5 text-brand" /> Members (flat-wise)</div>
             <table className="w-full">
-              <thead className="text-slate-500 text-left"><tr><th className="px-3 py-1">Flat</th><th className="px-3 py-1">Owner</th><th className="px-3 py-1 text-right">Dues</th><th className="px-3 py-1 text-right">Advance</th></tr></thead>
-              <tbody className="divide-y divide-slate-800">
+              <thead className="text-fg-subtle text-left"><tr><th className="px-3 py-1">Flat</th><th className="px-3 py-1">Owner</th><th className="px-3 py-1 text-right">Dues</th><th className="px-3 py-1 text-right">Advance</th></tr></thead>
+              <tbody className="divide-y divide-border">
                 {(flats?.parties ?? []).map(p => (
                   <tr key={p.key} onClick={() => pick('flat', p.key)} className={rowClass('flat', p.key)}>
-                    <td className="px-3 py-1.5 text-white">{p.name}</td>
-                    <td className="px-3 py-1.5 text-slate-400">{p.owner_name ?? '—'}</td>
-                    <td className="px-3 py-1.5 text-right text-slate-200">{amount(n(p.dues))}</td>
-                    <td className="px-3 py-1.5 text-right text-slate-200">{amount(n(p.advance))}</td>
+                    <td className="px-3 py-1.5 text-fg">{p.name}</td>
+                    <td className="px-3 py-1.5 text-fg-muted">{p.owner_name ?? '—'}</td>
+                    <td className="px-3 py-1.5 text-right text-fg">{amount(n(p.dues))}</td>
+                    <td className="px-3 py-1.5 text-right text-fg">{amount(n(p.advance))}</td>
                   </tr>
                 ))}
               </tbody>
-              <tfoot className="border-t border-slate-700 font-semibold">
-                <tr><td className="px-3 py-1.5 text-white" colSpan={2}>Total</td><td className="px-3 py-1.5 text-right text-white">{formatINR(dues)}</td><td className="px-3 py-1.5 text-right text-white">{formatINR(advance)}</td></tr>
+              <tfoot className="border-t border-border-strong font-semibold">
+                <tr><td className="px-3 py-1.5 text-fg" colSpan={2}>Total</td><td className="px-3 py-1.5 text-right text-fg">{formatINR(dues)}</td><td className="px-3 py-1.5 text-right text-fg">{formatINR(advance)}</td></tr>
               </tfoot>
             </table>
             {flats && (
@@ -113,20 +113,20 @@ export const PartyLedgers: React.FC<{ societyId: string }> = ({ societyId }) => 
             )}
           </section>
 
-          <section className="rounded-2xl bg-slate-900 border border-slate-800 overflow-hidden">
-            <div className="p-3 font-semibold text-white flex items-center gap-2"><Store className="w-3.5 h-3.5 text-sky-400" /> Vendors</div>
+          <section className="rounded-xl bg-surface border border-border overflow-hidden">
+            <div className="p-3 font-semibold text-fg flex items-center gap-2"><Store className="w-3.5 h-3.5 text-brand" /> Vendors</div>
             <table className="w-full">
-              <thead className="text-slate-500 text-left"><tr><th className="px-3 py-1">Vendor</th><th className="px-3 py-1 text-right">Payable</th></tr></thead>
-              <tbody className="divide-y divide-slate-800">
+              <thead className="text-fg-subtle text-left"><tr><th className="px-3 py-1">Vendor</th><th className="px-3 py-1 text-right">Payable</th></tr></thead>
+              <tbody className="divide-y divide-border">
                 {(vendors?.parties ?? []).map(p => (
                   <tr key={p.key} onClick={() => pick('vendor', p.key)} className={rowClass('vendor', p.key)}>
-                    <td className="px-3 py-1.5 text-white">{p.name}</td>
-                    <td className="px-3 py-1.5 text-right text-slate-200">{amount(n(p.balance))}</td>
+                    <td className="px-3 py-1.5 text-fg">{p.name}</td>
+                    <td className="px-3 py-1.5 text-right text-fg">{amount(n(p.balance))}</td>
                   </tr>
                 ))}
               </tbody>
-              <tfoot className="border-t border-slate-700 font-semibold">
-                <tr><td className="px-3 py-1.5 text-white">Total</td><td className="px-3 py-1.5 text-right text-white">{formatINR(payable)}</td></tr>
+              <tfoot className="border-t border-border-strong font-semibold">
+                <tr><td className="px-3 py-1.5 text-fg">Total</td><td className="px-3 py-1.5 text-right text-fg">{formatINR(payable)}</td></tr>
               </tfoot>
             </table>
             {vendors && (
@@ -139,39 +139,39 @@ export const PartyLedgers: React.FC<{ societyId: string }> = ({ societyId }) => 
       )}
 
       {open && (
-        <section className="rounded-2xl bg-slate-900 border border-slate-800 overflow-hidden">
+        <section className="rounded-xl bg-surface border border-border overflow-hidden">
           <div className="p-3 flex flex-wrap items-center justify-between gap-2">
-            <div className="font-semibold text-white">{statement?.name ?? 'Statement'}</div>
-            <div className="flex items-center gap-2 text-slate-400">
+            <div className="font-semibold text-fg">{statement?.name ?? 'Statement'}</div>
+            <div className="flex items-center gap-2 text-fg-muted">
               From <input type="date" value={range.from} max={range.to} onChange={e => setRange(r => ({ ...r, from: e.target.value }))} className={inputClass} />
               to <input type="date" value={range.to} min={range.from} onChange={e => setRange(r => ({ ...r, to: e.target.value }))} className={inputClass} />
-              <button onClick={() => setOpen(null)} className="p-1 rounded-lg hover:bg-slate-800 cursor-pointer" title="Close"><X className="w-3.5 h-3.5" /></button>
+              <button onClick={() => setOpen(null)} className="p-1 rounded-lg hover:bg-surface-muted cursor-pointer" title="Close"><X className="w-3.5 h-3.5" /></button>
             </div>
           </div>
           {!statement ? (
-            <div className="p-3 flex items-center gap-2 text-slate-400"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</div>
+            <div className="p-3 flex items-center gap-2 text-fg-muted"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</div>
           ) : (
             <table className="w-full">
-              <thead className="text-slate-500 text-left">
+              <thead className="text-fg-subtle text-left">
                 <tr><th className="px-3 py-1">Date</th><th className="px-3 py-1">Entry</th><th className="px-3 py-1">Narration</th><th className="px-3 py-1 text-right">Debit</th><th className="px-3 py-1 text-right">Credit</th><th className="px-3 py-1 text-right">Balance</th></tr>
               </thead>
-              <tbody className="divide-y divide-slate-800">
-                <tr><td className="px-3 py-1.5 text-slate-400" colSpan={5}>Opening balance</td><td className="px-3 py-1.5 text-right text-white">{formatINR(n(statement.opening))}</td></tr>
+              <tbody className="divide-y divide-border">
+                <tr><td className="px-3 py-1.5 text-fg-muted" colSpan={5}>Opening balance</td><td className="px-3 py-1.5 text-right text-fg">{formatINR(n(statement.opening))}</td></tr>
                 {statement.lines.map((l, i) => (
                   <tr key={`${l.entry_number}-${i}`}>
-                    <td className="px-3 py-1.5 text-slate-300">{l.date}</td>
-                    <td className="px-3 py-1.5 text-slate-400">{l.entry_number}</td>
-                    <td className="px-3 py-1.5 text-slate-300">{l.narration}</td>
-                    <td className="px-3 py-1.5 text-right text-slate-200">{l.debit ? formatINR(n(l.debit)) : ''}</td>
-                    <td className="px-3 py-1.5 text-right text-slate-200">{l.credit ? formatINR(n(l.credit)) : ''}</td>
-                    <td className="px-3 py-1.5 text-right text-white">{formatINR(n(l.balance))}</td>
+                    <td className="px-3 py-1.5 text-fg">{l.date}</td>
+                    <td className="px-3 py-1.5 text-fg-muted">{l.entry_number}</td>
+                    <td className="px-3 py-1.5 text-fg">{l.narration}</td>
+                    <td className="px-3 py-1.5 text-right text-fg">{l.debit ? formatINR(n(l.debit)) : ''}</td>
+                    <td className="px-3 py-1.5 text-right text-fg">{l.credit ? formatINR(n(l.credit)) : ''}</td>
+                    <td className="px-3 py-1.5 text-right text-fg">{formatINR(n(l.balance))}</td>
                   </tr>
                 ))}
-                <tr className="font-semibold"><td className="px-3 py-1.5 text-white" colSpan={5}>Closing balance</td><td className="px-3 py-1.5 text-right text-white">{formatINR(n(statement.closing))}</td></tr>
+                <tr className="font-semibold"><td className="px-3 py-1.5 text-fg" colSpan={5}>Closing balance</td><td className="px-3 py-1.5 text-right text-fg">{formatINR(n(statement.closing))}</td></tr>
               </tbody>
             </table>
           )}
-          <p className="px-3 pb-3 text-slate-500">
+          <p className="px-3 pb-3 text-fg-subtle">
             {open.kind === 'flat' ? 'A positive balance is what the flat owes; negative is an advance.' : 'The balance is what the society owes the vendor.'}
           </p>
         </section>

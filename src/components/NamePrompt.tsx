@@ -30,14 +30,14 @@ export const NamePrompt: React.FC = () => {
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-50 p-3 sm:p-4">
-      <form onSubmit={save} className="max-w-md mx-auto p-4 rounded-2xl bg-slate-900 border border-sky-500/40 shadow-2xl space-y-2 text-xs">
-        <div className="font-bold text-white text-sm">What is your name?</div>
-        <p className="text-slate-400">Your committee sees it on bills, receipts and requests.</p>
-        {error && <p className="text-rose-300">{error}</p>}
+      <form onSubmit={save} className="max-w-md mx-auto p-4 rounded-xl bg-surface border border-brand/40 shadow-card space-y-2 text-xs">
+        <div className="font-semibold text-fg text-sm">What is your name?</div>
+        <p className="text-fg-muted">Your committee sees it on bills, receipts and requests.</p>
+        {error && <p className="text-danger">{error}</p>}
         <div className="flex gap-2">
           <input autoFocus value={name} onChange={e => setName(e.target.value)} placeholder="Your full name"
-            className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-sky-500" />
-          <button type="submit" disabled={busy} className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold cursor-pointer disabled:opacity-50 flex items-center gap-1.5">
+            className="flex-1 bg-surface border border-border-strong rounded-lg px-3 py-2 text-fg outline-none focus:border-brand" />
+          <button type="submit" disabled={busy} className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold cursor-pointer disabled:opacity-50 flex items-center gap-1.5">
             {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Save
           </button>
         </div>

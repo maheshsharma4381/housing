@@ -93,16 +93,16 @@ export const NoticesTab: React.FC<NoticesTabProps> = ({ societyId, currentUserId
 
   const sorted = [...notices].sort((a, b) => Number(b.is_pinned) - Number(a.is_pinned) || b.published_at.localeCompare(a.published_at));
   const isExpired = (n: Notice) => Boolean(n.expires_at && new Date(n.expires_at) < new Date());
-  const inputClass = 'w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-sky-500';
+  const inputClass = 'w-full bg-surface border border-border-strong rounded-lg px-3 py-2 text-fg outline-none focus:border-brand';
 
   return (
-    <div className="space-y-6 text-xs">
+    <div className="space-y-6 text-sm">
       <div>
-        <h2 className="text-lg font-bold text-white">Notice Board</h2>
-        <p className="text-slate-400">Official circulars replace WhatsApp forwards — members see only notices meant for them.</p>
+        <h2 className="text-2xl font-semibold tracking-tight text-fg">Notices</h2>
+        <p className="text-fg-muted">Official circulars replace WhatsApp forwards — members see only notices meant for them.</p>
       </div>
 
-      <form onSubmit={publish} className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
+      <form onSubmit={publish} className="p-5 rounded-xl bg-surface border border-border space-y-3">
         <Banner tone="error">{error}</Banner>
         <Banner tone="success">{notice}</Banner>
         <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Title, e.g. Water supply interruption on Sunday" className={inputClass} />
@@ -117,11 +117,11 @@ export const NoticesTab: React.FC<NoticesTabProps> = ({ societyId, currentUserId
           <select value={expiryDays} onChange={e => setExpiryDays(Number(e.target.value))} className={inputClass}>
             {EXPIRY_OPTIONS.map(o => <option key={o.days} value={o.days}>{o.label}</option>)}
           </select>
-          <label className="flex items-center gap-2 text-slate-300 cursor-pointer">
+          <label className="flex items-center gap-2 text-fg cursor-pointer">
             <input type="checkbox" checked={pinned} onChange={e => setPinned(e.target.checked)} /> Pin to top
           </label>
         </div>
-        <button type="submit" disabled={saving} className="w-full py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50">
+        <button type="submit" disabled={saving} className="w-full py-2.5 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50">
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} Publish Notice
         </button>
       </form>
@@ -131,27 +131,27 @@ export const NoticesTab: React.FC<NoticesTabProps> = ({ societyId, currentUserId
       ) : (
         <div className="space-y-2">
           {sorted.map(n => (
-            <div key={n.id} className={`p-4 rounded-2xl bg-slate-900 border space-y-1.5 ${n.is_pinned ? 'border-sky-500/40' : 'border-slate-800'} ${isExpired(n) ? 'opacity-50' : ''}`}>
+            <div key={n.id} className={`p-4 rounded-xl bg-surface border space-y-1.5 ${n.is_pinned ? 'border-brand/40' : 'border-border'} ${isExpired(n) ? 'opacity-50' : ''}`}>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
-                    <span className="font-semibold text-sky-400">{CATEGORIES.find(c => c.value === n.category)?.label}</span>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-fg-muted">
+                    <span className="font-semibold text-brand">{CATEGORIES.find(c => c.value === n.category)?.label}</span>
                     <span>• {AUDIENCES.find(a => a.value === n.target_audience)?.label}</span>
                     <span>• {new Date(n.published_at).toLocaleDateString('en-IN')}</span>
-                    {isExpired(n) && <span className="text-rose-300">• expired</span>}
+                    {isExpired(n) && <span className="text-danger">• expired</span>}
                   </div>
-                  <h4 className="font-bold text-white text-sm">{n.title}</h4>
+                  <h4 className="font-semibold text-fg text-sm">{n.title}</h4>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <button onClick={() => togglePin(n)} title={n.is_pinned ? 'Unpin' : 'Pin'} className="text-slate-400 hover:text-sky-300 cursor-pointer">
+                  <button onClick={() => togglePin(n)} title={n.is_pinned ? 'Unpin' : 'Pin'} className="text-fg-muted hover:text-brand cursor-pointer">
                     {n.is_pinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
                   </button>
-                  <button onClick={() => remove(n)} title="Delete" className="text-slate-500 hover:text-rose-400 cursor-pointer">
+                  <button onClick={() => remove(n)} title="Delete" className="text-fg-subtle hover:text-danger cursor-pointer">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
               </div>
-              <p className="text-slate-300 whitespace-pre-line">{n.content}</p>
+              <p className="text-fg whitespace-pre-line">{n.content}</p>
               <NoticeSeen noticeId={n.id} />
             </div>
           ))}

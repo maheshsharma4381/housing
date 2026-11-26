@@ -55,22 +55,22 @@ export const AddMobilePrompt: React.FC = () => {
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-40 p-3 sm:p-4">
-      <form onSubmit={phone ? verify : send} className="max-w-md mx-auto p-4 rounded-2xl bg-slate-900 border border-emerald-500/40 shadow-2xl space-y-2 text-xs">
+      <form onSubmit={phone ? verify : send} className="max-w-md mx-auto p-4 rounded-xl bg-surface border border-success/40 shadow-card space-y-2 text-xs">
         <div className="flex items-start justify-between gap-2">
-          <div className="font-bold text-white text-sm">Add your mobile number</div>
-          <button type="button" onClick={dismiss} aria-label="Not now" className="text-slate-500 hover:text-white cursor-pointer"><X className="w-4 h-4" /></button>
+          <div className="font-semibold text-fg text-sm">Add your mobile number</div>
+          <button type="button" onClick={dismiss} aria-label="Not now" className="text-fg-subtle hover:text-fg cursor-pointer"><X className="w-4 h-4" /></button>
         </div>
-        <p className="text-slate-400">Then you can log in with a code on WhatsApp, and your society can reach you.</p>
-        {error && <p className="text-rose-300">{error}</p>}
+        <p className="text-fg-muted">Then you can log in with a code on WhatsApp, and your society can reach you.</p>
+        {error && <p className="text-danger">{error}</p>}
         <div className="flex gap-2">
           {phone ? (
             <input autoFocus inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ''))}
-              placeholder="6-digit code" className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-emerald-500 font-mono tracking-widest" />
+              placeholder="6-digit code" className="flex-1 bg-surface border border-border-strong rounded-lg px-3 py-2 text-fg outline-none focus:border-brand font-mono tracking-widest" />
           ) : (
             <input inputMode="tel" value={mobile} onChange={e => setMobile(e.target.value)} placeholder="98765 43210"
-              className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-emerald-500" />
+              className="flex-1 bg-surface border border-border-strong rounded-lg px-3 py-2 text-fg outline-none focus:border-brand" />
           )}
-          <button type="submit" disabled={busy} className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold cursor-pointer disabled:opacity-50 flex items-center gap-1.5">
+          <button type="submit" disabled={busy} className="px-4 py-2 rounded-lg bg-success hover:bg-success/90 text-on-brand font-semibold cursor-pointer disabled:opacity-50 flex items-center gap-1.5">
             {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />} {phone ? 'Confirm' : 'Send code'}
           </button>
         </div>

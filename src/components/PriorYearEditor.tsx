@@ -71,33 +71,33 @@ export const PriorYearEditor: React.FC<{ societyId: string; canEdit: boolean }> 
     setNotice(`Saved ${lines.length} figures for ${fyLabel(fyEnd)}. Reports now show them as the previous-year column.`);
   };
 
-  const inputClass = 'w-28 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-right text-white outline-none focus:border-sky-500 disabled:opacity-60';
+  const inputClass = 'w-28 bg-surface border border-border-strong rounded-lg px-2 py-1 text-right text-fg outline-none focus:border-brand disabled:opacity-60';
 
   return (
     <div className="space-y-4 text-xs">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-lg font-bold text-white flex items-center gap-2"><History className="w-4 h-4 text-sky-400" /> Last year&apos;s audited figures</h2>
-          <p className="text-slate-400">Type the closing trial balance from last year&apos;s audited accounts. Used only for the comparative column — nothing is posted to the books.</p>
+          <h2 className="text-lg font-semibold text-fg flex items-center gap-2"><History className="w-4 h-4 text-brand" /> Last year&apos;s audited figures</h2>
+          <p className="text-fg-muted">Type the closing trial balance from last year&apos;s audited accounts. Used only for the comparative column — nothing is posted to the books.</p>
         </div>
-        <select value={fyEnd} onChange={e => setFyEnd(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white">
+        <select value={fyEnd} onChange={e => setFyEnd(e.target.value)} className="bg-surface border border-border-strong rounded-lg px-3 py-2 text-fg">
           {[latest, `${Number(latest.slice(0, 4)) - 1}-03-31`].map(f => <option key={f} value={f}>{fyLabel(f)}</option>)}
         </select>
       </div>
       <Banner tone="error">{error}</Banner>
       <Banner tone="success">{notice}</Banner>
 
-      {busy === 'load' ? <Loader2 className="w-5 h-5 text-sky-400 animate-spin" /> : (
-        <div className="rounded-2xl bg-slate-900 border border-slate-800 overflow-x-auto">
+      {busy === 'load' ? <Loader2 className="w-5 h-5 text-brand animate-spin" /> : (
+        <div className="rounded-xl bg-surface border border-border overflow-x-auto">
           <table className="w-full text-left min-w-[520px]">
-            <thead className="bg-slate-950 text-slate-400"><tr><th className="p-2">Account</th><th className="p-2 text-right">Debit</th><th className="p-2 text-right">Credit</th></tr></thead>
-            <tbody className="text-slate-300">
+            <thead className="bg-canvas text-fg-muted"><tr><th className="p-2">Account</th><th className="p-2 text-right">Debit</th><th className="p-2 text-right">Credit</th></tr></thead>
+            <tbody className="text-fg">
               {TYPE_ORDER.map(type => (
                 <React.Fragment key={type}>
-                  <tr><td colSpan={3} className="px-2 pt-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">{TYPE_LABEL[type]}</td></tr>
+                  <tr><td colSpan={3} className="px-2 pt-3 pb-1 text-xs font-semibold text-fg-subtle">{TYPE_LABEL[type]}</td></tr>
                   {accounts.filter(a => a.type === type).map(a => (
-                    <tr key={a.code} className="border-t border-slate-800/60">
-                      <td className="p-2"><span className="font-mono text-slate-500 mr-2">{a.code}</span>{a.name}</td>
+                    <tr key={a.code} className="border-t border-border/60">
+                      <td className="p-2"><span className="font-mono text-fg-subtle mr-2">{a.code}</span>{a.name}</td>
                       <td className="p-2 text-right"><input type="number" min={0} step="0.01" disabled={!canEdit} value={entries[a.code]?.debit || ''} onChange={e => set(a.code, 'debit', Number(e.target.value))} className={inputClass} /></td>
                       <td className="p-2 text-right"><input type="number" min={0} step="0.01" disabled={!canEdit} value={entries[a.code]?.credit || ''} onChange={e => set(a.code, 'credit', Number(e.target.value))} className={inputClass} /></td>
                     </tr>
@@ -105,7 +105,7 @@ export const PriorYearEditor: React.FC<{ societyId: string; canEdit: boolean }> 
                 </React.Fragment>
               ))}
             </tbody>
-            <tfoot className="border-t border-slate-700 font-bold text-white">
+            <tfoot className="border-t border-border-strong font-semibold text-fg">
               <tr><td className="p-2">Total</td><td className="p-2 text-right">{formatINR(totals.dr)}</td><td className="p-2 text-right">{formatINR(totals.cr)}</td></tr>
             </tfoot>
           </table>
@@ -113,11 +113,11 @@ export const PriorYearEditor: React.FC<{ societyId: string; canEdit: boolean }> 
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className={Math.abs(diff) < 0.005 ? 'text-emerald-300' : 'text-amber-300'}>
+        <span className={Math.abs(diff) < 0.005 ? 'text-success' : 'text-warning'}>
           {Math.abs(diff) < 0.005 ? '✓ Debits equal credits' : `Debits and credits differ by ${formatINR(Math.abs(diff))} — fine if you only entered Income & Expenditure`}
         </span>
         {canEdit && (
-          <button onClick={save} disabled={busy !== null} className="flex items-center gap-1 px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold cursor-pointer disabled:opacity-50">
+          <button onClick={save} disabled={busy !== null} className="flex items-center gap-1 px-4 py-2 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold cursor-pointer disabled:opacity-50">
             {busy === 'save' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} Save {fyLabel(fyEnd)}
           </button>
         )}

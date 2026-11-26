@@ -7,7 +7,7 @@ import { downloadCsv, downloadFile, toCsv } from '../lib/csv-export';
 import { buildTallyXml, splitPartyLines, type PartyLine } from '../lib/tally-xml';
 import { EMPTY_CHART, groupTree, nodeRows, nodeSum, type Chart, type GroupNode } from '../lib/chart';
 import { fyLabel } from '../lib/tds';
-import { BarChart3, Download, Loader2, AlertCircle, RefreshCw, Printer, FileCode2, Lock } from 'lucide-react';
+import { Download, Loader2, AlertCircle, RefreshCw, Printer, FileCode2, Lock } from 'lucide-react';
 
 type ReportKey = 'pnl' | 'balance' | 'rp' | 'trial' | 'ledger' | 'dues' | 'payables' | 'tds' | 'gst' | 'journal';
 
@@ -261,30 +261,30 @@ export const FinancialReports: React.FC<FinancialReportsProps> = ({ societyId, s
     downloadFile(`${slug}-tally-${from}-to-${to}.xml`, xml, 'application/xml');
   };
 
-  const inputClass = 'bg-slate-950 border border-slate-700 rounded-xl px-2 py-1.5 text-white outline-none focus:border-sky-500';
+  const inputClass = 'bg-surface border border-border-strong rounded-lg px-2 py-1.5 text-fg outline-none focus:border-brand';
   const usesRange = RANGE_REPORTS.includes(report);
   const show = !loading && !error;
 
   return (
-    <div className="space-y-5 text-xs">
+    <div className="space-y-5 text-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-bold text-white flex items-center gap-2"><BarChart3 className="w-4 h-4 text-sky-400" /> Financial Reports</h2>
-          <p className="text-slate-400">Built automatically from bills, payments, vendor bills, depreciation and approved adjustments (double-entry).</p>
-          {lockedUntil && <p className="text-amber-300 flex items-center gap-1 mt-1"><Lock className="w-3 h-3" /> Books locked after audit up to {lockedUntil}</p>}
+          <h2 className="text-2xl font-semibold tracking-tight text-fg">Reports</h2>
+          <p className="text-fg-muted">Built automatically from bills, payments, vendor bills, depreciation and approved adjustments (double-entry).</p>
+          {lockedUntil && <p className="text-warning flex items-center gap-1 mt-1"><Lock className="w-3 h-3" /> Books locked after audit up to {lockedUntil}</p>}
         </div>
         <div className="flex flex-wrap items-center gap-2 print:hidden">
-          <button onClick={load} className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:bg-slate-800 cursor-pointer" title="Refresh">
+          <button onClick={load} className="p-2 rounded-xl bg-surface border border-border text-fg hover:bg-surface-muted cursor-pointer" title="Refresh">
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
           </button>
-          <button onClick={exportCsv} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 hover:border-sky-500 text-slate-200 cursor-pointer">
+          <button onClick={exportCsv} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-surface border border-border-strong hover:border-brand text-fg cursor-pointer">
             <Download className="w-3.5 h-3.5" /> Excel (CSV)
           </button>
-          <button onClick={() => window.print()} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 hover:border-sky-500 text-slate-200 cursor-pointer">
+          <button onClick={() => window.print()} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-surface border border-border-strong hover:border-brand text-fg cursor-pointer">
             <Printer className="w-3.5 h-3.5" /> Print / PDF
           </button>
           {has('tally_export') && <button onClick={exportTally} title="Journal vouchers for the selected period; import into a test company first"
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 hover:border-sky-500 text-slate-200 cursor-pointer">
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-surface border border-border-strong hover:border-brand text-fg cursor-pointer">
             <FileCode2 className="w-3.5 h-3.5" /> Tally XML
           </button>}
         </div>
@@ -293,14 +293,14 @@ export const FinancialReports: React.FC<FinancialReportsProps> = ({ societyId, s
       <div className="flex flex-wrap gap-1.5 print:hidden">
         {REPORTS.filter(r => r.key !== 'tds' || has('tds_register')).map(r => (
           <button key={r.key} onClick={() => setReport(r.key)}
-            className={`px-3 py-1.5 rounded-xl font-medium cursor-pointer transition ${report === r.key ? 'bg-sky-600 text-white' : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'}`}>
+            className={`px-3 py-1.5 rounded-lg font-medium cursor-pointer transition ${report === r.key ? 'bg-brand text-on-brand' : 'bg-surface border border-border text-fg-muted hover:text-on-brand'}`}>
             {r.label}
           </button>
         ))}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 text-slate-400">
-        <span className="hidden print:inline font-bold text-white">{societyName} · {REPORTS.find(r => r.key === report)?.label} ·</span>
+      <div className="flex flex-wrap items-center gap-2 text-fg-muted">
+        <span className="hidden print:inline font-semibold text-fg">{societyName} · {REPORTS.find(r => r.key === report)?.label} ·</span>
         {report === 'ledger' && (
           <select value={ledgerCode} onChange={e => setLedgerCode(e.target.value)} className={inputClass}>
             {accounts.map(a => <option key={a.code} value={a.code}>{a.code} · {a.name}</option>)}
@@ -310,7 +310,7 @@ export const FinancialReports: React.FC<FinancialReportsProps> = ({ societyId, s
           <>
             <span>From</span><input type="date" value={from} onChange={e => setFrom(e.target.value)} className={inputClass} />
             <span>to</span><input type="date" value={to} onChange={e => setTo(e.target.value)} className={inputClass} />
-            <button onClick={() => { setFrom(fy.from); setTo(fy.to); }} className="text-sky-400 hover:underline cursor-pointer print:hidden">{fy.label}</button>
+            <button onClick={() => { setFrom(fy.from); setTo(fy.to); }} className="text-brand hover:underline cursor-pointer print:hidden">{fy.label}</button>
           </>
         ) : (
           <><span>As of</span><input type="date" value={asOf} onChange={e => setAsOf(e.target.value)} className={inputClass} /></>
@@ -318,22 +318,22 @@ export const FinancialReports: React.FC<FinancialReportsProps> = ({ societyId, s
       </div>
 
       {error && (
-        <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 flex items-start gap-2">
+        <div className="p-3 rounded-xl bg-danger-soft border border-danger/30 text-danger flex items-start gap-2">
           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" /> <span>{error}</span>
         </div>
       )}
-      {loading && <div className="flex items-center gap-2 text-slate-400"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</div>}
+      {loading && <div className="flex items-center gap-2 text-fg-muted"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</div>}
 
       {show && report === 'pnl' && (
         <div className="space-y-3">
           <CompareTable title="Income" groups={ie.incomeGroups} prevLabel={prevLabel} prevSource={prevSource} onOpen={openLedger} total={ie.inc} />
           <CompareTable title="Expenditure" groups={ie.expenseGroups} prevLabel={prevLabel} prevSource={prevSource} onOpen={openLedger} total={ie.exp} />
-          <div className={`p-4 rounded-2xl border font-bold text-sm grid grid-cols-[1fr_auto_auto] gap-6 ${ie.inc.cur - ie.exp.cur >= 0 ? 'bg-emerald-500/5 border-emerald-500/30 text-emerald-300' : 'bg-rose-500/5 border-rose-500/30 text-rose-300'}`}>
+          <div className={`p-4 rounded-xl border font-semibold text-sm grid grid-cols-[1fr_auto_auto] gap-6 ${ie.inc.cur - ie.exp.cur >= 0 ? 'bg-success-soft border-success/30 text-success' : 'bg-danger-soft border-danger/30 text-danger'}`}>
             <span>{ie.inc.cur - ie.exp.cur >= 0 ? 'Surplus' : 'Deficit'} for the period</span>
             <span className="w-28 text-right">{signed(ie.inc.cur - ie.exp.cur)}</span>
             <span className="w-28 text-right opacity-70">{signed(ie.inc.prev - ie.exp.prev)}</span>
           </div>
-          <p className="text-slate-500">Capital purchases are in the Balance Sheet (Fixed Assets), not here. Click a head to see its entries.</p>
+          <p className="text-fg-subtle">Capital purchases are in the Balance Sheet (Fixed Assets), not here. Click a head to see its entries.</p>
         </div>
       )}
 
@@ -360,33 +360,33 @@ export const FinancialReports: React.FC<FinancialReportsProps> = ({ societyId, s
             ...rp.filter(r => r.section === 'payment').map(r => [`To ${r.name}`, n(r.amount)] as [string, number]),
             ...rp.filter(r => r.section === 'closing').map(r => [r.name, n(r.amount)] as [string, number]),
           ]} total={rp.filter(r => r.section === 'payment' || r.section === 'closing').reduce((s, r) => s + n(r.amount), 0)} />
-          <p className="md:col-span-2 text-slate-500">Cash basis: every bank / cash movement in the period, grouped by what it was for. TDS kept back from vendors is not a payment until deposited.</p>
+          <p className="md:col-span-2 text-fg-subtle">Cash basis: every bank / cash movement in the period, grouped by what it was for. TDS kept back from vendors is not a payment until deposited.</p>
         </div>
       )}
 
       {show && report === 'trial' && (
         <div className="space-y-3">
-          <div className="rounded-2xl bg-slate-900 border border-slate-800 overflow-x-auto">
+          <div className="rounded-xl bg-surface border border-border overflow-x-auto">
             <table className="w-full text-left">
-              <thead className="bg-slate-950 text-slate-400"><tr><th className="p-2.5">Code</th><th className="p-2.5">Account</th><th className="p-2.5 text-right">Debit</th><th className="p-2.5 text-right">Credit</th></tr></thead>
+              <thead className="bg-canvas text-fg-muted"><tr><th className="p-2.5">Code</th><th className="p-2.5">Account</th><th className="p-2.5 text-right">Debit</th><th className="p-2.5 text-right">Credit</th></tr></thead>
               {trialGroups.map(g => (
-                <tbody key={g.group.id} className="divide-y divide-slate-800 text-slate-300">
-                  <tr className="bg-slate-950/60 font-semibold text-slate-200">
+                <tbody key={g.group.id} className="divide-y divide-border text-fg">
+                  <tr className="bg-canvas/60 font-semibold text-fg">
                     <td className="p-2.5" colSpan={2}>{g.group.name}</td>
                     <td className="p-2.5 text-right">{formatINR(nodeSum(g, r => n(r.debit)))}</td>
                     <td className="p-2.5 text-right">{formatINR(nodeSum(g, r => n(r.credit)))}</td>
                   </tr>
                   {nodeRows(g).map(r => (
-                    <tr key={r.code} onClick={() => openLedger(r.code)} className="cursor-pointer hover:bg-slate-800/50">
-                      <td className="p-2.5 pl-5 font-mono text-slate-500">{r.code}</td>
-                      <td className="p-2.5 text-white">{r.name}</td>
+                    <tr key={r.code} onClick={() => openLedger(r.code)} className="cursor-pointer hover:bg-surface-muted/50">
+                      <td className="p-2.5 pl-5 font-mono text-fg-subtle">{r.code}</td>
+                      <td className="p-2.5 text-fg">{r.name}</td>
                       <td className="p-2.5 text-right">{n(r.debit) ? formatINR(r.debit) : ''}</td>
                       <td className="p-2.5 text-right">{n(r.credit) ? formatINR(r.credit) : ''}</td>
                     </tr>
                   ))}
                 </tbody>
               ))}
-              <tfoot className="border-t border-slate-700 font-bold text-white">
+              <tfoot className="border-t border-border-strong font-semibold text-fg">
                 <tr><td className="p-2.5" colSpan={2}>Total</td><td className="p-2.5 text-right">{formatINR(trialDr)}</td><td className="p-2.5 text-right">{formatINR(trialCr)}</td></tr>
               </tfoot>
             </table>
@@ -396,18 +396,18 @@ export const FinancialReports: React.FC<FinancialReportsProps> = ({ societyId, s
       )}
 
       {show && report === 'ledger' && (
-        <div className="rounded-2xl bg-slate-900 border border-slate-800 overflow-x-auto">
+        <div className="rounded-xl bg-surface border border-border overflow-x-auto">
           <table className="w-full text-left min-w-[640px]">
-            <thead className="bg-slate-950 text-slate-400"><tr><th className="p-2.5">Date</th><th className="p-2.5">Entry</th><th className="p-2.5">Narration</th><th className="p-2.5 text-right">Debit</th><th className="p-2.5 text-right">Credit</th><th className="p-2.5 text-right">Balance</th></tr></thead>
-            <tbody className="divide-y divide-slate-800 text-slate-300">
+            <thead className="bg-canvas text-fg-muted"><tr><th className="p-2.5">Date</th><th className="p-2.5">Entry</th><th className="p-2.5">Narration</th><th className="p-2.5 text-right">Debit</th><th className="p-2.5 text-right">Credit</th><th className="p-2.5 text-right">Balance</th></tr></thead>
+            <tbody className="divide-y divide-border text-fg">
               {ledger.map((r, i) => (
-                <tr key={i} className={i === 0 ? 'text-slate-400 italic' : ''}>
+                <tr key={i} className={i === 0 ? 'text-fg-muted italic' : ''}>
                   <td className="p-2.5 whitespace-nowrap">{r.entry_date}</td>
-                  <td className="p-2.5 font-mono text-sky-300">{r.entry_number ?? ''}</td>
+                  <td className="p-2.5 font-mono text-brand">{r.entry_number ?? ''}</td>
                   <td className="p-2.5">{r.narration}</td>
                   <td className="p-2.5 text-right">{r.debit ? formatINR(r.debit) : ''}</td>
                   <td className="p-2.5 text-right">{r.credit ? formatINR(r.credit) : ''}</td>
-                  <td className="p-2.5 text-right font-semibold text-white">{drCr(n(r.balance))}</td>
+                  <td className="p-2.5 text-right font-semibold text-fg">{drCr(n(r.balance))}</td>
                 </tr>
               ))}
             </tbody>
@@ -417,20 +417,20 @@ export const FinancialReports: React.FC<FinancialReportsProps> = ({ societyId, s
 
       {show && report === 'dues' && (
         <div className="space-y-3">
-          <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex justify-between font-bold text-white">
-            <span>{dues.length} flats with dues</span><span className="text-amber-400">{formatINR(totalDues)}</span>
+          <div className="p-4 rounded-xl bg-surface border border-border flex justify-between font-semibold text-fg">
+            <span>{dues.length} flats with dues</span><span className="text-warning">{formatINR(totalDues)}</span>
           </div>
-          <div className="rounded-2xl bg-slate-900 border border-slate-800 divide-y divide-slate-800">
-            {dues.length === 0 && <div className="p-4 text-slate-400">No outstanding dues. 🎉</div>}
+          <div className="rounded-xl bg-surface border border-border divide-y divide-border">
+            {dues.length === 0 && <div className="p-4 text-fg-muted">No outstanding dues. 🎉</div>}
             {dues.map(d => (
               <div key={`${d.wing}-${d.unit_number}`} className="p-3 flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="font-semibold text-white">Flat {d.unit_number} <span className="text-slate-500 font-normal">• {d.owner_name ?? 'Unknown owner'}</span></div>
-                  <div className="text-slate-400">{d.bills_count} unpaid bill{d.bills_count > 1 ? 's' : ''} • oldest due {d.oldest_due_date}</div>
+                  <div className="font-semibold text-fg">Flat {d.unit_number} <span className="text-fg-subtle font-normal">• {d.owner_name ?? 'Unknown owner'}</span></div>
+                  <div className="text-fg-muted">{d.bills_count} unpaid bill{d.bills_count > 1 ? 's' : ''} • oldest due {d.oldest_due_date}</div>
                 </div>
                 <div className="text-right shrink-0">
-                  <div className="font-bold text-white">{formatINR(d.outstanding)}</div>
-                  <div className={d.days_overdue > 90 ? 'text-rose-400 font-semibold' : d.days_overdue > 0 ? 'text-amber-400' : 'text-slate-500'}>
+                  <div className="font-semibold text-fg">{formatINR(d.outstanding)}</div>
+                  <div className={d.days_overdue > 90 ? 'text-danger font-semibold' : d.days_overdue > 0 ? 'text-warning' : 'text-fg-subtle'}>
                     {d.days_overdue > 0 ? `${d.days_overdue} days overdue` : 'not yet due'}
                   </div>
                 </div>
@@ -444,17 +444,17 @@ export const FinancialReports: React.FC<FinancialReportsProps> = ({ societyId, s
         <div className="space-y-3">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {buckets.map(b => (
-              <div key={b.b} className={`p-3 rounded-2xl border ${b.b === '90+' && b.total > 0 ? 'bg-rose-500/5 border-rose-500/30' : 'bg-slate-900 border-slate-800'}`}>
-                <div className="text-slate-400">{b.b} days</div><div className="text-base font-bold text-white">{formatINR(b.total)}</div>
+              <div key={b.b} className={`p-3 rounded-xl border ${b.b === '90+' && b.total > 0 ? 'bg-danger-soft border-danger/30' : 'bg-surface border-border'}`}>
+                <div className="text-fg-muted">{b.b} days</div><div className="text-base font-semibold text-fg">{formatINR(b.total)}</div>
               </div>
             ))}
           </div>
-          <div className="rounded-2xl bg-slate-900 border border-slate-800 divide-y divide-slate-800">
-            {payables.length === 0 && <div className="p-4 text-slate-400">Nothing owed to vendors.</div>}
+          <div className="rounded-xl bg-surface border border-border divide-y divide-border">
+            {payables.length === 0 && <div className="p-4 text-fg-muted">Nothing owed to vendors.</div>}
             {payables.map(p => (
               <div key={p.expense_id} className="p-3 flex justify-between gap-3">
-                <div className="min-w-0"><div className="text-white font-semibold">{p.payee}</div><div className="text-slate-400 truncate">{p.expense_number} · {p.title} · billed {p.bill_date}</div></div>
-                <div className="text-right shrink-0"><div className="font-bold text-white">{formatINR(p.outstanding)}</div><div className="text-slate-500">{p.days} days</div></div>
+                <div className="min-w-0"><div className="text-fg font-semibold">{p.payee}</div><div className="text-fg-muted truncate">{p.expense_number} · {p.title} · billed {p.bill_date}</div></div>
+                <div className="text-right shrink-0"><div className="font-semibold text-fg">{formatINR(p.outstanding)}</div><div className="text-fg-subtle">{p.days} days</div></div>
               </div>
             ))}
           </div>
@@ -464,24 +464,24 @@ export const FinancialReports: React.FC<FinancialReportsProps> = ({ societyId, s
       {show && report === 'tds' && (
         <div className="space-y-3">
           <div className="grid grid-cols-3 gap-2">
-            <div className="p-3 rounded-2xl bg-slate-900 border border-slate-800"><div className="text-slate-400">Deducted</div><div className="text-base font-bold text-white">{formatINR(tdsDeducted)}</div></div>
-            <div className="p-3 rounded-2xl bg-slate-900 border border-slate-800"><div className="text-slate-400">Deposited (challans)</div><div className="text-base font-bold text-white">{formatINR(deposited)}</div></div>
-            <div className={`p-3 rounded-2xl border ${tdsDeducted - deposited > 0 ? 'bg-amber-500/5 border-amber-500/30' : 'bg-slate-900 border-slate-800'}`}><div className="text-slate-400">Still to deposit</div><div className="text-base font-bold text-white">{formatINR(Math.max(tdsDeducted - deposited, 0))}</div></div>
+            <div className="p-3 rounded-xl bg-surface border border-border"><div className="text-fg-muted">Deducted</div><div className="text-base font-semibold text-fg">{formatINR(tdsDeducted)}</div></div>
+            <div className="p-3 rounded-xl bg-surface border border-border"><div className="text-fg-muted">Deposited (challans)</div><div className="text-base font-semibold text-fg">{formatINR(deposited)}</div></div>
+            <div className={`p-3 rounded-xl border ${tdsDeducted - deposited > 0 ? 'bg-warning-soft border-warning/30' : 'bg-surface border-border'}`}><div className="text-fg-muted">Still to deposit</div><div className="text-base font-semibold text-fg">{formatINR(Math.max(tdsDeducted - deposited, 0))}</div></div>
           </div>
-          <div className="rounded-2xl bg-slate-900 border border-slate-800 overflow-x-auto">
+          <div className="rounded-xl bg-surface border border-border overflow-x-auto">
             <table className="w-full text-left min-w-[720px]">
-              <thead className="bg-slate-950 text-slate-400"><tr><th className="p-2.5">Paid on</th><th className="p-2.5">Vendor / PAN</th><th className="p-2.5">Section</th><th className="p-2.5">Bill</th><th className="p-2.5 text-right">Taxable</th><th className="p-2.5 text-right">Paid</th><th className="p-2.5 text-right">TDS</th></tr></thead>
-              <tbody className="divide-y divide-slate-800 text-slate-300">
-                {tds.length === 0 && <tr><td colSpan={7} className="p-4 text-slate-500">No TDS deducted in this period.</td></tr>}
+              <thead className="bg-canvas text-fg-muted"><tr><th className="p-2.5">Paid on</th><th className="p-2.5">Vendor / PAN</th><th className="p-2.5">Section</th><th className="p-2.5">Bill</th><th className="p-2.5 text-right">Taxable</th><th className="p-2.5 text-right">Paid</th><th className="p-2.5 text-right">TDS</th></tr></thead>
+              <tbody className="divide-y divide-border text-fg">
+                {tds.length === 0 && <tr><td colSpan={7} className="p-4 text-fg-subtle">No TDS deducted in this period.</td></tr>}
                 {tds.map((r, i) => (
                   <tr key={i}>
-                    <td className="p-2.5">{r.paid_on}<div className="font-mono text-slate-500">{r.reference}</div></td>
-                    <td className="p-2.5"><div className="text-white">{r.vendor ?? '—'}</div><div className="font-mono text-slate-500">{r.pan ?? 'No PAN'}{r.entity ? ` · ${r.entity === 'individual' ? 'individual' : 'company/firm'}` : ''}</div></td>
+                    <td className="p-2.5">{r.paid_on}<div className="font-mono text-fg-subtle">{r.reference}</div></td>
+                    <td className="p-2.5"><div className="text-fg">{r.vendor ?? '—'}</div><div className="font-mono text-fg-subtle">{r.pan ?? 'No PAN'}{r.entity ? ` · ${r.entity === 'individual' ? 'individual' : 'company/firm'}` : ''}</div></td>
                     <td className="p-2.5">{r.section ?? '—'}{r.rate != null && ` · ${r.rate}%`}</td>
                     <td className="p-2.5 font-mono">{r.expense_number}</td>
                     <td className="p-2.5 text-right">{formatINR(r.taxable)}</td>
                     <td className="p-2.5 text-right">{formatINR(r.amount_paid)}</td>
-                    <td className="p-2.5 text-right font-semibold text-white">{formatINR(r.tds)}</td>
+                    <td className="p-2.5 text-right font-semibold text-fg">{formatINR(r.tds)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -494,24 +494,24 @@ export const FinancialReports: React.FC<FinancialReportsProps> = ({ societyId, s
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {([['GST charged on bills (output)', gst.output_gst], ['GST input claimed', gst.input_claimed], ['GST paid, not claimed', gst.input_not_claimed],
              [n(gst.net_payable) >= 0 ? 'Net GST payable' : 'Input credit carried forward', Math.abs(n(gst.net_payable))]] as [string, number][]).map(([label, v]) => (
-            <div key={label} className="p-4 rounded-2xl bg-slate-900 border border-slate-800"><div className="text-slate-400">{label}</div><div className="text-lg font-bold text-white">{formatINR(v)}</div></div>
+            <div key={label} className="p-4 rounded-xl bg-surface border border-border"><div className="text-fg-muted">{label}</div><div className="text-lg font-semibold text-fg">{formatINR(v)}</div></div>
           ))}
-          <p className="col-span-2 lg:col-span-4 text-slate-500">From the books. Match input credit with GSTR-2B before filing; “not claimed” is GST on bills the committee did not mark as claimable.</p>
+          <p className="col-span-2 lg:col-span-4 text-fg-subtle">From the books. Match input credit with GSTR-2B before filing; “not claimed” is GST on bills the committee did not mark as claimable.</p>
         </div>
       )}
 
       {show && report === 'journal' && (
         <div className="space-y-2">
-          {journal.length === 0 && <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 text-slate-400">No journal entries in this period.</div>}
+          {journal.length === 0 && <div className="p-4 rounded-xl bg-surface border border-border text-fg-muted">No journal entries in this period.</div>}
           {journal.slice(0, 200).map(j => (
-            <div key={j.id} className="p-3 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
+            <div key={j.id} className="p-3 rounded-xl bg-surface border border-border space-y-2">
               <div className="min-w-0">
-                <span className="font-mono text-sky-300">{j.entry_number}</span> <span className="text-slate-500">• {j.entry_date}</span>
-                {j.reference_event_type === 'adjustment.approved' && <span className="ml-2 px-1.5 py-px rounded-full text-[9px] font-bold uppercase bg-violet-500/15 text-violet-300">CA adjustment</span>}
-                <div className="text-slate-300 truncate">{j.narration}</div>
+                <span className="font-mono text-brand">{j.entry_number}</span> <span className="text-fg-subtle">• {j.entry_date}</span>
+                {j.reference_event_type === 'adjustment.approved' && <span className="ml-2 px-1.5 py-px rounded-full text-xs font-semibold uppercase bg-brand-soft text-brand-ink">CA adjustment</span>}
+                <div className="text-fg truncate">{j.narration}</div>
               </div>
               <table className="w-full">
-                <tbody className="text-slate-400">
+                <tbody className="text-fg-muted">
                   {[...j.ledger_entries].sort((a, b) => n(b.amount) - n(a.amount)).map((l, i) => (
                     <tr key={i}>
                       <td className={`py-0.5 ${n(l.amount) < 0 ? 'pl-6' : ''}`}>{n(l.amount) > 0 ? 'Dr' : 'Cr'} {l.accounts?.name ?? 'Account'}</td>
@@ -523,7 +523,7 @@ export const FinancialReports: React.FC<FinancialReportsProps> = ({ societyId, s
               </table>
             </div>
           ))}
-          {journal.length > 200 && <div className="text-slate-500">Showing 200 of {journal.length} — export CSV or Tally XML for the full period.</div>}
+          {journal.length > 200 && <div className="text-fg-subtle">Showing 200 of {journal.length} — export CSV or Tally XML for the full period.</div>}
         </div>
       )}
     </div>
@@ -538,20 +538,20 @@ interface CompareLine { code: string; name: string; current: number; previous: n
 
 const LedgerLine: React.FC<{ row: CompareLine; depth: number; onOpen: (code: string) => void }> = ({ row: r, depth, onOpen }) => (
   <button onClick={() => onOpen(r.code)} style={{ paddingLeft: 12 + depth * 16 }}
-    className="w-full p-3 grid grid-cols-[1fr_auto_auto] gap-6 text-left text-slate-300 hover:bg-slate-800/50 cursor-pointer">
-    <span><span className="font-mono text-slate-500 mr-2">{r.code}</span>{r.name}</span>
+    className="w-full p-3 grid grid-cols-[1fr_auto_auto] gap-6 text-left text-fg hover:bg-surface-muted/50 cursor-pointer">
+    <span><span className="font-mono text-fg-subtle mr-2">{r.code}</span>{r.name}</span>
     <span className="w-28 text-right">{signed(Number(r.current) || 0)}</span>
-    <span className="w-28 text-right text-slate-500">{signed(Number(r.previous) || 0)}</span>
+    <span className="w-28 text-right text-fg-subtle">{signed(Number(r.previous) || 0)}</span>
   </button>
 );
 
 /** A group line with its subtotal, then its ledgers and sub-groups, indented by depth. */
 const GroupLines: React.FC<{ node: GroupNode<CompareLine>; depth: number; onOpen: (code: string) => void }> = ({ node, depth, onOpen }) => (
   <>
-    <div className="p-3 grid grid-cols-[1fr_auto_auto] gap-6 bg-slate-950/40 font-semibold text-slate-200" style={{ paddingLeft: 12 + depth * 16 }}>
+    <div className="p-3 grid grid-cols-[1fr_auto_auto] gap-6 bg-canvas/40 font-semibold text-fg" style={{ paddingLeft: 12 + depth * 16 }}>
       <span>{node.group.name}</span>
       <span className="w-28 text-right">{signed(nodeSum(node, r => Number(r.current) || 0))}</span>
-      <span className="w-28 text-right text-slate-500">{signed(nodeSum(node, r => Number(r.previous) || 0))}</span>
+      <span className="w-28 text-right text-fg-subtle">{signed(nodeSum(node, r => Number(r.previous) || 0))}</span>
     </div>
     {node.rows.map(r => <LedgerLine key={r.code} row={r} depth={depth + 1} onOpen={onOpen} />)}
     {node.children.map(c => <GroupLines key={c.group.id} node={c} depth={depth + 1} onOpen={onOpen} />)}
@@ -567,43 +567,43 @@ const CompareTable: React.FC<{
   prevSource?: string;
   onOpen: (code: string) => void;
 }> = ({ title, groups, extra, total, prevLabel, prevSource, onOpen }) => (
-  <div className="rounded-2xl bg-slate-900 border border-slate-800 overflow-hidden">
-    <div className="p-3 border-b border-slate-800 font-bold text-white grid grid-cols-[1fr_auto_auto] gap-6">
-      <span>{title}</span><span className="w-28 text-right text-slate-400 font-medium">This period</span>
-      <span className="w-28 text-right text-slate-400 font-medium">{prevLabel}{prevSource && <span className="block text-[10px]">({r0(prevSource)})</span>}</span>
+  <div className="rounded-xl bg-surface border border-border overflow-hidden">
+    <div className="p-3 border-b border-border font-semibold text-fg grid grid-cols-[1fr_auto_auto] gap-6">
+      <span>{title}</span><span className="w-28 text-right text-fg-muted font-medium">This period</span>
+      <span className="w-28 text-right text-fg-muted font-medium">{prevLabel}{prevSource && <span className="block text-xs">({r0(prevSource)})</span>}</span>
     </div>
-    <div className="divide-y divide-slate-800">
-      {groups.length === 0 && !extra && <div className="p-3 text-slate-500">Nothing recorded</div>}
+    <div className="divide-y divide-border">
+      {groups.length === 0 && !extra && <div className="p-3 text-fg-subtle">Nothing recorded</div>}
       {groups.map(g => <GroupLines key={g.group.id} node={g} depth={0} onOpen={onOpen} />)}
       {extra && (
-        <div className="p-3 grid grid-cols-[1fr_auto_auto] gap-6 text-slate-300">
-          <span>{extra.name}</span><span className="w-28 text-right">{signed(extra.cur)}</span><span className="w-28 text-right text-slate-500">{signed(extra.prev)}</span>
+        <div className="p-3 grid grid-cols-[1fr_auto_auto] gap-6 text-fg">
+          <span>{extra.name}</span><span className="w-28 text-right">{signed(extra.cur)}</span><span className="w-28 text-right text-fg-subtle">{signed(extra.prev)}</span>
         </div>
       )}
     </div>
-    <div className="p-3 border-t border-slate-700 grid grid-cols-[1fr_auto_auto] gap-6 font-bold text-white">
-      <span>Total</span><span className="w-28 text-right">{signed(total.cur)}</span><span className="w-28 text-right text-slate-400">{signed(total.prev)}</span>
+    <div className="p-3 border-t border-border-strong grid grid-cols-[1fr_auto_auto] gap-6 font-semibold text-fg">
+      <span>Total</span><span className="w-28 text-right">{signed(total.cur)}</span><span className="w-28 text-right text-fg-muted">{signed(total.prev)}</span>
     </div>
   </div>
 );
 
 const Statement: React.FC<{ title: string; rows: [string, number][]; total: number }> = ({ title, rows, total }) => (
-  <div className="rounded-2xl bg-slate-900 border border-slate-800">
-    <div className="p-3 border-b border-slate-800 font-bold text-white">{title}</div>
-    <div className="divide-y divide-slate-800">
-      {rows.length === 0 && <div className="p-3 text-slate-500">Nothing recorded</div>}
+  <div className="rounded-xl bg-surface border border-border">
+    <div className="p-3 border-b border-border font-semibold text-fg">{title}</div>
+    <div className="divide-y divide-border">
+      {rows.length === 0 && <div className="p-3 text-fg-subtle">Nothing recorded</div>}
       {rows.map(([label, value], i) => (
-        <div key={`${label}-${i}`} className="p-3 flex justify-between text-slate-300">
-          <span>{label}</span><span className={value < 0 ? 'text-rose-300' : ''}>{signed(value)}</span>
+        <div key={`${label}-${i}`} className="p-3 flex justify-between text-fg">
+          <span>{label}</span><span className={value < 0 ? 'text-danger' : ''}>{signed(value)}</span>
         </div>
       ))}
     </div>
-    <div className="p-3 border-t border-slate-700 flex justify-between font-bold text-white"><span>Total</span><span>{formatINR(total)}</span></div>
+    <div className="p-3 border-t border-border-strong flex justify-between font-semibold text-fg"><span>Total</span><span>{formatINR(total)}</span></div>
   </div>
 );
 
 const BalanceCheck: React.FC<{ ok: boolean }> = ({ ok }) => (
-  <div className={`p-2.5 rounded-xl text-center font-semibold ${ok ? 'bg-emerald-500/5 text-emerald-400' : 'bg-rose-500/10 text-rose-300'}`}>
+  <div className={`p-2.5 rounded-xl text-center font-semibold ${ok ? 'bg-success-soft text-success' : 'bg-danger-soft text-danger'}`}>
     {ok ? '✓ Books balance' : '⚠ Books do not balance — contact support'}
   </div>
 );

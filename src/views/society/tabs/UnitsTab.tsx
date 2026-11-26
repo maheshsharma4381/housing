@@ -74,14 +74,14 @@ export const UnitsTab: React.FC<UnitsTabProps> = ({ societyId, societyName, unit
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-bold text-white">Flats & Occupancy Roster</h2>
-          <p className="text-xs text-slate-400">{units.length} flats mapped for {societyName}</p>
+          <h2 className="text-2xl font-semibold tracking-tight text-fg">Flats</h2>
+          <p className="text-xs text-fg-muted">{units.length} flats mapped for {societyName}</p>
         </div>
         <div className="flex flex-wrap justify-end gap-2">
         {canManage && units.length > 0 && (
           <button
             onClick={() => setShowPaste(v => !v)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-surface-muted hover:bg-border text-fg text-xs font-semibold cursor-pointer"
           >
             {showPaste ? <X className="w-3.5 h-3.5" /> : <ClipboardPaste className="w-3.5 h-3.5" />}
             <span>{showPaste ? 'Close' : 'Paste owners from Excel'}</span>
@@ -89,7 +89,7 @@ export const UnitsTab: React.FC<UnitsTabProps> = ({ societyId, societyName, unit
         )}
         <button
           onClick={() => setShowImport(v => !v)}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold cursor-pointer"
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-brand hover:bg-brand-hover text-on-brand text-xs font-semibold cursor-pointer"
         >
           {showImport ? <X className="w-3.5 h-3.5" /> : <Upload className="w-3.5 h-3.5" />}
           <span>{showImport ? 'Close' : 'Import Flats (CSV)'}</span>
@@ -100,20 +100,20 @@ export const UnitsTab: React.FC<UnitsTabProps> = ({ societyId, societyName, unit
       {showPaste && canManage && <OwnerPaste societyId={societyId} units={units} onDone={onChanged} />}
 
       {result && (
-        <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-300 flex items-start gap-2">
+        <div className="p-3.5 rounded-xl bg-success-soft border border-success/30 text-xs text-success flex items-start gap-2">
           <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
           <span>{result}</span>
         </div>
       )}
 
       {showImport && (
-        <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4 text-xs">
+        <div className="p-5 rounded-xl bg-surface border border-border space-y-4 text-xs">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-slate-400">
-              Upload a CSV with columns <code className="text-sky-300">building, wing, floor, unit_number, unit_type, carpet_area_sqft, occupancy_status</code>.
+            <p className="text-fg-muted">
+              Upload a CSV with columns <code className="text-brand">building, wing, floor, unit_number, unit_type, carpet_area_sqft, occupancy_status</code>.
               Existing flats (same wing + number) are updated, not duplicated.
             </p>
-            <a href={templateHref} download="sahvaas-flats-template.csv" className="flex items-center gap-1 text-sky-400 font-semibold hover:underline">
+            <a href={templateHref} download="sahvaas-flats-template.csv" className="flex items-center gap-1 text-brand font-semibold hover:underline">
               <FileDown className="w-3.5 h-3.5" /> Download template
             </a>
           </div>
@@ -122,7 +122,7 @@ export const UnitsTab: React.FC<UnitsTabProps> = ({ societyId, societyName, unit
             type="file"
             accept=".csv,text/csv"
             onChange={e => handleFile(e.target.files?.[0])}
-            className="block w-full text-slate-300 file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-slate-800 file:text-slate-200 file:cursor-pointer"
+            className="block w-full text-fg file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-slate-800 file:text-slate-200 file:cursor-pointer"
           />
 
           <textarea
@@ -130,17 +130,17 @@ export const UnitsTab: React.FC<UnitsTabProps> = ({ societyId, societyName, unit
             value={csvText}
             onChange={e => setCsvText(e.target.value)}
             placeholder="…or paste CSV here"
-            className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 font-mono text-[11px] text-white outline-none focus:border-sky-500"
+            className="w-full bg-surface border border-border-strong rounded-lg p-3 font-mono text-xs text-fg outline-none focus:border-brand"
           />
 
           {parsed && (
             <div className="space-y-2">
-              <div className="text-slate-300">
-                <strong className="text-white">{parsed.rows.length}</strong> flats ready to import
-                {parsed.errors.length > 0 && <>, <strong className="text-rose-300">{parsed.errors.length}</strong> rows skipped</>}
+              <div className="text-fg">
+                <strong className="text-fg">{parsed.rows.length}</strong> flats ready to import
+                {parsed.errors.length > 0 && <>, <strong className="text-danger">{parsed.errors.length}</strong> rows skipped</>}
               </div>
               {parsed.errors.length > 0 && (
-                <ul className="max-h-32 overflow-y-auto p-3 rounded-xl bg-rose-500/5 border border-rose-500/20 text-rose-300 space-y-0.5">
+                <ul className="max-h-32 overflow-y-auto p-3 rounded-xl bg-danger-soft border border-danger/20 text-danger space-y-0.5">
                   {parsed.errors.slice(0, 50).map(e => <li key={e}>{e}</li>)}
                 </ul>
               )}
@@ -148,7 +148,7 @@ export const UnitsTab: React.FC<UnitsTabProps> = ({ societyId, societyName, unit
           )}
 
           {rpcError && (
-            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 flex items-start gap-2">
+            <div className="p-3 rounded-xl bg-danger-soft border border-danger/30 text-danger flex items-start gap-2">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
               <span>{rpcError}</span>
             </div>
@@ -157,7 +157,7 @@ export const UnitsTab: React.FC<UnitsTabProps> = ({ societyId, societyName, unit
           <button
             onClick={handleImport}
             disabled={importing || !parsed || parsed.rows.length === 0}
-            className="w-full py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+            className="w-full py-2.5 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
           >
             {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
             <span>{importing ? 'Importing…' : `Import ${parsed?.rows.length ?? 0} Flats`}</span>
@@ -178,25 +178,25 @@ export const UnitsTab: React.FC<UnitsTabProps> = ({ societyId, societyName, unit
           {[...units]
             .sort((a, b) => a.unit_number.localeCompare(b.unit_number, undefined, { numeric: true }))
             .map(u => (
-              <div key={u.id} className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-2 text-xs">
+              <div key={u.id} className="p-4 rounded-xl bg-surface border border-border space-y-2 text-xs">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-base text-white">{u.unit_number}</span>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase bg-sky-500/10 text-sky-400">
+                  <span className="font-semibold text-base text-fg">{u.unit_number}</span>
+                  <span className="px-2 py-0.5 rounded-full text-xs font-semibold uppercase bg-brand-soft text-brand">
                     {u.occupancy_status?.replace('_', ' ')}
                   </span>
                 </div>
-                <div className="text-slate-400">
-                  Type: <strong className="text-white">{u.unit_type}</strong> • Area: {u.carpet_area_sqft} sqft
+                <div className="text-fg-muted">
+                  Type: <strong className="text-fg">{u.unit_type}</strong> • Area: {u.carpet_area_sqft} sqft
                 </div>
                 {(contacts[u.id]?.owner_name || contacts[u.id]?.owner_mobile) && (
-                  <div className="text-slate-400">
-                    Owner: <strong className="text-white">{[contacts[u.id]?.owner_name, formatMobile(contacts[u.id]?.owner_mobile)].filter(Boolean).join(' · ')}</strong>
+                  <div className="text-fg-muted">
+                    Owner: <strong className="text-fg">{[contacts[u.id]?.owner_name, formatMobile(contacts[u.id]?.owner_mobile)].filter(Boolean).join(' · ')}</strong>
                   </div>
                 )}
                 <div className="flex flex-wrap gap-3">
-                  <button onClick={() => toggle(u.id, 'owners')} className="text-sky-400 hover:underline cursor-pointer">Owners</button>
-                  {canManage && <button onClick={() => toggle(u.id, 'contact')} className="text-sky-400 hover:underline cursor-pointer">Owner mobile</button>}
-                  {canManage && <button onClick={() => toggle(u.id, 'change')} className="text-sky-400 hover:underline cursor-pointer">Owner change</button>}
+                  <button onClick={() => toggle(u.id, 'owners')} className="text-brand hover:underline cursor-pointer">Owners</button>
+                  {canManage && <button onClick={() => toggle(u.id, 'contact')} className="text-brand hover:underline cursor-pointer">Owner mobile</button>}
+                  {canManage && <button onClick={() => toggle(u.id, 'change')} className="text-brand hover:underline cursor-pointer">Owner change</button>}
                 </div>
                 {panel?.unitId === u.id && panel.kind === 'owners' && <OwnerHistory societyId={societyId} unitId={u.id} />}
                 {panel?.unitId === u.id && panel.kind === 'contact' && (

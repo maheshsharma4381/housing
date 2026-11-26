@@ -21,8 +21,8 @@ interface Remark {
 }
 
 const MODULES = ['general', 'billing', 'payments', 'expenses', 'gst', 'ledger', 'documents'];
-const SEVERITY_STYLES = { info: 'text-slate-400', minor: 'text-amber-300', major: 'text-rose-400 font-bold' };
-const STATUS_STYLES = { open: 'bg-amber-500/10 text-amber-300', responded: 'bg-sky-500/10 text-sky-300', closed: 'bg-emerald-500/10 text-emerald-300' };
+const SEVERITY_STYLES = { info: 'text-fg-muted', minor: 'text-warning', major: 'text-danger font-semibold' };
+const STATUS_STYLES = { open: 'bg-warning-soft text-warning', responded: 'bg-brand-soft text-brand', closed: 'bg-success-soft text-success' };
 
 interface RemarksPanelProps {
   societyId: string;
@@ -89,14 +89,14 @@ export const RemarksPanel: React.FC<RemarksPanelProps> = ({ societyId, currentUs
     load();
   };
 
-  const inputClass = 'bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-sky-500';
+  const inputClass = 'bg-surface border border-border-strong rounded-lg px-3 py-2 text-fg outline-none focus:border-brand';
   const openCount = remarks.filter(r => r.status === 'open').length;
 
   return (
     <div className="space-y-4 text-xs">
       <div>
-        <h2 className="text-lg font-bold text-white flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-emerald-400" /> Audit Remarks</h2>
-        <p className="text-slate-400">
+        <h2 className="text-lg font-semibold text-fg flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-success" /> Audit Remarks</h2>
+        <p className="text-fg-muted">
           {mode === 'professional'
             ? 'Record observations for the committee. They respond here; close a remark once satisfied.'
             : `Observations from your CA / auditor. ${openCount} awaiting your response.`}
@@ -105,7 +105,7 @@ export const RemarksPanel: React.FC<RemarksPanelProps> = ({ societyId, currentUs
       <Banner tone="error">{error}</Banner>
 
       {mode === 'professional' && (
-        <form onSubmit={add} className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
+        <form onSubmit={add} className="p-4 rounded-xl bg-surface border border-border space-y-2">
           <div className="grid grid-cols-3 gap-2">
             <select value={module} onChange={e => setModule(e.target.value)} className={inputClass}>
               {MODULES.map(m => <option key={m} value={m}>{m}</option>)}
@@ -116,7 +116,7 @@ export const RemarksPanel: React.FC<RemarksPanelProps> = ({ societyId, currentUs
             <input value={reference} onChange={e => setReference(e.target.value)} placeholder="Ref (EXP-0004, bill no…)" className={inputClass} />
           </div>
           <textarea rows={3} value={text} onChange={e => setText(e.target.value)} placeholder="Observation, e.g. Lift AMC invoice lacks a signed work order" className={`w-full ${inputClass}`} />
-          <button type="submit" disabled={busy === 'new' || text.trim().length < 3} className="w-full py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50">
+          <button type="submit" disabled={busy === 'new' || text.trim().length < 3} className="w-full py-2 rounded-lg bg-warning-solid hover:bg-warning-solid text-on-brand font-semibold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50">
             {busy === 'new' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} Add Remark
           </button>
         </form>
@@ -126,23 +126,23 @@ export const RemarksPanel: React.FC<RemarksPanelProps> = ({ societyId, currentUs
         <EmptyState icon={ShieldCheck} title="No Remarks" description={mode === 'professional' ? 'Your observations will appear here.' : 'Your auditor has not raised any observations.'} />
       ) : (
         remarks.map(r => (
-          <div key={r.id} className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
+          <div key={r.id} className="p-4 rounded-xl bg-surface border border-border space-y-2">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="flex flex-wrap gap-2 text-[11px] text-slate-400">
+                <div className="flex flex-wrap gap-2 text-xs text-fg-muted">
                   <span className="uppercase">{r.module}</span>
                   {r.reference && <span className="font-mono">• {r.reference}</span>}
                   <span className={SEVERITY_STYLES[r.severity]}>• {r.severity}</span>
                   <span>• {r.author?.full_name ?? 'Professional'} • {new Date(r.created_at).toLocaleDateString('en-IN')}</span>
                 </div>
-                <p className="text-slate-200 whitespace-pre-line mt-1">{r.remark}</p>
+                <p className="text-fg whitespace-pre-line mt-1">{r.remark}</p>
               </div>
-              <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-semibold shrink-0 ${STATUS_STYLES[r.status]}`}>{r.status}</span>
+              <span className={`px-2 py-0.5 rounded-full text-xs uppercase font-semibold shrink-0 ${STATUS_STYLES[r.status]}`}>{r.status}</span>
             </div>
 
             {r.response && (
-              <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-300">
-                <strong className="text-sky-300">Committee:</strong> {r.response}
+              <div className="p-2.5 rounded-xl bg-canvas border border-border text-fg">
+                <strong className="text-brand">Committee:</strong> {r.response}
               </div>
             )}
 
@@ -157,14 +157,14 @@ export const RemarksPanel: React.FC<RemarksPanelProps> = ({ societyId, currentUs
                 <button
                   onClick={() => update(r, { response: (responses[r.id] ?? '').trim() })}
                   disabled={busy !== null || !(responses[r.id] ?? '').trim()}
-                  className="px-3 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold cursor-pointer disabled:opacity-50"
+                  className="px-3 rounded-xl bg-brand hover:bg-brand-hover text-on-brand font-semibold cursor-pointer disabled:opacity-50"
                 >
                   Send
                 </button>
               </div>
             )}
             {mode === 'professional' && r.author_id === currentUserId && r.status !== 'closed' && (
-              <button onClick={() => update(r, { status: 'closed' })} disabled={busy !== null} className="flex items-center gap-1 text-emerald-400 hover:underline cursor-pointer disabled:opacity-50">
+              <button onClick={() => update(r, { status: 'closed' })} disabled={busy !== null} className="flex items-center gap-1 text-success hover:underline cursor-pointer disabled:opacity-50">
                 <CheckCircle2 className="w-3.5 h-3.5" /> Close remark
               </button>
             )}

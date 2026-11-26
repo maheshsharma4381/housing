@@ -37,29 +37,29 @@ export const ShiftingForm: React.FC<{ societyId: string; unitId: string; flatLab
     if (err) return setError(err.message);
     onDone();
   };
-  const inputClass = 'w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-sky-500';
+  const inputClass = 'w-full bg-surface border border-border-strong rounded-lg px-3 py-2 text-fg outline-none focus:border-brand';
 
   return (
-    <div className="p-4 rounded-2xl bg-slate-900 border border-sky-500/40 space-y-2 text-xs">
-      <div className="font-bold text-white text-sm">Book shifting for flat {flatLabel}</div>
+    <div className="p-4 rounded-xl bg-surface border border-brand/40 space-y-2 text-xs">
+      <div className="font-semibold text-fg text-sm">Book shifting for flat {flatLabel}</div>
       <Banner tone="error">{error}</Banner>
-      <div className="flex gap-3 text-slate-300">
+      <div className="flex gap-3 text-fg">
         <label className="flex items-center gap-1"><input type="radio" checked={d.direction === 'in'} onChange={() => setD({ ...d, direction: 'in' })} /> Moving in</label>
         <label className="flex items-center gap-1"><input type="radio" checked={d.direction === 'out'} onChange={() => setD({ ...d, direction: 'out' })} /> Moving out</label>
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <label className="text-slate-400">Date<input type="date" value={d.date} onChange={e => setD({ ...d, date: e.target.value })} className={`${inputClass} mt-1`} /></label>
-        <label className="text-slate-400">Time ({from}–{to})<input type="time" value={d.time} onChange={e => setD({ ...d, time: e.target.value })} className={`${inputClass} mt-1`} /></label>
+        <label className="text-fg-muted">Date<input type="date" value={d.date} onChange={e => setD({ ...d, date: e.target.value })} className={`${inputClass} mt-1`} /></label>
+        <label className="text-fg-muted">Time ({from}–{to})<input type="time" value={d.time} onChange={e => setD({ ...d, time: e.target.value })} className={`${inputClass} mt-1`} /></label>
       </div>
       <input value={d.vehicle} onChange={e => setD({ ...d, vehicle: e.target.value })} maxLength={80} placeholder="Vehicle (optional), e.g. Tempo MH12 AB 1234" className={inputClass} />
-      <div className="text-slate-300">
+      <div className="text-fg">
         {charge > 0 || deposit > 0
           ? <>On approval the flat is billed {charge > 0 ? `${formatINR(charge)} shifting charges` : ''}{charge > 0 && deposit > 0 ? ' and ' : ''}{deposit > 0 ? `${formatINR(deposit)} refundable deposit` : ''}.</>
           : 'The society does not charge for shifting.'}
       </div>
       <div className="flex gap-2">
-        <button onClick={submit} disabled={busy} className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold disabled:opacity-50 cursor-pointer">{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Send to the committee'}</button>
-        <button onClick={onCancel} className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 cursor-pointer">Cancel</button>
+        <button onClick={submit} disabled={busy} className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold disabled:opacity-50 cursor-pointer">{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Send to the committee'}</button>
+        <button onClick={onCancel} className="px-4 py-2 rounded-lg bg-surface-muted text-fg cursor-pointer">Cancel</button>
       </div>
     </div>
   );

@@ -88,13 +88,13 @@ export const ComplaintThread: React.FC<ComplaintThreadProps> = ({ complaint, cur
     onChanged();
   };
 
-  const inputClass = 'bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-sky-500';
+  const inputClass = 'bg-surface border border-border-strong rounded-lg px-3 py-2 text-fg outline-none focus:border-brand';
 
   return (
-    <div className="space-y-3 text-xs pt-3 border-t border-slate-800">
-      <p className="text-slate-300 whitespace-pre-line">{complaint.description}</p>
+    <div className="space-y-3 text-xs pt-3 border-t border-border">
+      <p className="text-fg whitespace-pre-line">{complaint.description}</p>
       {complaint.resolution_notes && !canManage && (
-        <div className="p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/20 text-emerald-300">
+        <div className="p-3 rounded-xl bg-success-soft border border-success/20 text-success">
           <strong>Resolution:</strong> {complaint.resolution_notes}
         </div>
       )}
@@ -103,8 +103,8 @@ export const ComplaintThread: React.FC<ComplaintThreadProps> = ({ complaint, cur
       {updates.length > 0 && (
         <div className="space-y-2">
           {updates.map(u => (
-            <div key={u.id} className={`p-2.5 rounded-xl max-w-[85%] ${u.author_id === currentUserId ? 'ml-auto bg-sky-600/20 text-sky-100' : 'bg-slate-800 text-slate-200'}`}>
-              <div className="text-[10px] text-slate-400 mb-0.5">
+            <div key={u.id} className={`p-2.5 rounded-xl max-w-[85%] ${u.author_id === currentUserId ? 'ml-auto bg-brand-soft text-brand-ink' : 'bg-surface-muted text-fg'}`}>
+              <div className="text-xs text-fg-muted mb-0.5">
                 {u.author_id === currentUserId ? 'You' : u.profiles?.full_name ?? 'Society office'} • {new Date(u.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
               </div>
               {u.message}
@@ -116,14 +116,14 @@ export const ComplaintThread: React.FC<ComplaintThreadProps> = ({ complaint, cur
       {complaint.status !== 'closed' && (
         <form onSubmit={send} className="flex gap-2">
           <input value={message} onChange={e => setMessage(e.target.value)} maxLength={2000} placeholder="Add an update…" className={`flex-1 ${inputClass}`} />
-          <button type="submit" disabled={sending || !message.trim()} className="px-3 rounded-xl bg-sky-600 hover:bg-sky-500 text-white cursor-pointer disabled:opacity-50">
+          <button type="submit" disabled={sending || !message.trim()} className="px-3 rounded-xl bg-brand hover:bg-brand-hover text-on-brand cursor-pointer disabled:opacity-50">
             {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           </button>
         </form>
       )}
 
       {canManage && (
-        <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+        <div className="p-3 rounded-xl bg-canvas border border-border space-y-2">
           <div className="grid grid-cols-2 gap-2">
             <select value={status} onChange={e => setStatus(e.target.value as ComplaintStatus)} className={inputClass}>
               {STATUSES.map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
@@ -134,7 +134,7 @@ export const ComplaintThread: React.FC<ComplaintThreadProps> = ({ complaint, cur
             </select>
           </div>
           <input value={resolution} onChange={e => setResolution(e.target.value)} placeholder="Resolution notes (shown to the resident)" className={`w-full ${inputClass}`} />
-          <button onClick={saveWorkflow} disabled={saving} className="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50">
+          <button onClick={saveWorkflow} disabled={saving} className="w-full py-2 rounded-lg bg-surface-muted hover:bg-border text-fg font-semibold flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50">
             {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} Save Ticket
           </button>
         </div>

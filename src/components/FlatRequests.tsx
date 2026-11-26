@@ -36,7 +36,7 @@ const NocTemplates: React.FC<{ societyId: string; types: NocType[]; onSaved: () 
   const [edit, setEdit] = useState<(Omit<NocType, 'id' | 'code'> & { id: string | null }) | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const inputClass = 'w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-sky-500';
+  const inputClass = 'w-full bg-surface border border-border-strong rounded-lg px-3 py-2 text-fg outline-none focus:border-brand';
 
   const save = async () => {
     if (!supabase || !edit) return;
@@ -57,24 +57,24 @@ const NocTemplates: React.FC<{ societyId: string; types: NocType[]; onSaved: () 
       {!edit && (
         <>
           {types.map(t => (
-            <div key={t.id} className={`p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between ${t.is_active ? '' : 'opacity-50'}`}>
-              <div><div className="text-white font-semibold">{t.name}</div><div className="text-slate-500">{t.checklist.length} document{t.checklist.length === 1 ? '' : 's'}{t.tenant_can_ask ? ' · tenants can ask' : ''}{t.is_active ? '' : ' · switched off'}</div></div>
-              <button onClick={() => setEdit({ ...t })} className="text-sky-300 cursor-pointer">Edit</button>
+            <div key={t.id} className={`p-3 rounded-xl bg-canvas border border-border flex items-center justify-between ${t.is_active ? '' : 'opacity-50'}`}>
+              <div><div className="text-fg font-semibold">{t.name}</div><div className="text-fg-subtle">{t.checklist.length} document{t.checklist.length === 1 ? '' : 's'}{t.tenant_can_ask ? ' · tenants can ask' : ''}{t.is_active ? '' : ' · switched off'}</div></div>
+              <button onClick={() => setEdit({ ...t })} className="text-brand cursor-pointer">Edit</button>
             </div>
           ))}
           <button onClick={() => setEdit({ id: null, name: '', title: 'No Objection Certificate', body: '{addressee}\n\nThis is to certify that flat {flat} of {society_name} stands in the name of {member_name}.\n\n{dues_line}', signatory: 'secretary', checklist: [], tenant_can_ask: false, is_active: true })}
-            className="flex items-center gap-1 text-sky-300 cursor-pointer"><Plus className="w-4 h-4" /> Add a NOC type</button>
+            className="flex items-center gap-1 text-brand cursor-pointer"><Plus className="w-4 h-4" /> Add a NOC type</button>
         </>
       )}
       {edit && (
-        <div className="p-4 rounded-2xl bg-slate-900 border border-sky-500/40 space-y-2">
+        <div className="p-4 rounded-xl bg-surface border border-brand/40 space-y-2">
           <Banner tone="error">{error}</Banner>
           <input value={edit.name} onChange={e => setEdit({ ...edit, name: e.target.value })} maxLength={80} placeholder="Name, e.g. Bank account opening" className={inputClass} />
           <input value={edit.title} onChange={e => setEdit({ ...edit, title: e.target.value })} maxLength={120} placeholder="Letter title" className={inputClass} />
           <textarea rows={10} value={edit.body} onChange={e => setEdit({ ...edit, body: e.target.value })} maxLength={4000} className={`${inputClass} font-mono`} />
-          <div className="flex flex-wrap gap-3 items-center text-slate-300">
+          <div className="flex flex-wrap gap-3 items-center text-fg">
             <label>Signed by{' '}
-              <select value={edit.signatory} onChange={e => setEdit({ ...edit, signatory: e.target.value })} className="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-white">
+              <select value={edit.signatory} onChange={e => setEdit({ ...edit, signatory: e.target.value })} className="bg-surface border border-border-strong rounded-lg px-2 py-1 text-fg">
                 <option value="secretary">Secretary</option><option value="chairman">Chairman</option><option value="treasurer">Treasurer</option>
               </select>
             </label>
@@ -82,21 +82,21 @@ const NocTemplates: React.FC<{ societyId: string; types: NocType[]; onSaved: () 
             <label className="flex items-center gap-1"><input type="checkbox" checked={edit.is_active} onChange={e => setEdit({ ...edit, is_active: e.target.checked })} /> In use</label>
           </div>
           <div className="space-y-1.5">
-            <div className="text-slate-400">Documents to ask for (up to 10)</div>
+            <div className="text-fg-muted">Documents to ask for (up to 10)</div>
             {edit.checklist.map((c, i) => (
               <div key={i} className="flex gap-2 items-center">
                 <input value={c.label} maxLength={120} onChange={e => setEdit({ ...edit, checklist: edit.checklist.map((x, j) => j === i ? { ...x, label: e.target.value } : x) })} className={inputClass} />
-                <label className="flex items-center gap-1 text-slate-300 shrink-0"><input type="checkbox" checked={c.required} onChange={e => setEdit({ ...edit, checklist: edit.checklist.map((x, j) => j === i ? { ...x, required: e.target.checked } : x) })} /> Required</label>
-                <button onClick={() => setEdit({ ...edit, checklist: edit.checklist.filter((_, j) => j !== i) })} className="text-slate-500 hover:text-rose-300 cursor-pointer">Remove</button>
+                <label className="flex items-center gap-1 text-fg shrink-0"><input type="checkbox" checked={c.required} onChange={e => setEdit({ ...edit, checklist: edit.checklist.map((x, j) => j === i ? { ...x, required: e.target.checked } : x) })} /> Required</label>
+                <button onClick={() => setEdit({ ...edit, checklist: edit.checklist.filter((_, j) => j !== i) })} className="text-fg-subtle hover:text-danger cursor-pointer">Remove</button>
               </div>
             ))}
             {edit.checklist.length < 10 && (
-              <button onClick={() => setEdit({ ...edit, checklist: [...edit.checklist, { key: '', label: '', required: false }] })} className="flex items-center gap-1 text-sky-300 cursor-pointer"><Plus className="w-4 h-4" /> Add a document</button>
+              <button onClick={() => setEdit({ ...edit, checklist: [...edit.checklist, { key: '', label: '', required: false }] })} className="flex items-center gap-1 text-brand cursor-pointer"><Plus className="w-4 h-4" /> Add a document</button>
             )}
           </div>
           <div className="flex gap-2">
-            <button onClick={save} disabled={busy} className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold disabled:opacity-50 cursor-pointer">{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save'}</button>
-            <button onClick={() => setEdit(null)} className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 cursor-pointer">Cancel</button>
+            <button onClick={save} disabled={busy} className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold disabled:opacity-50 cursor-pointer">{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save'}</button>
+            <button onClick={() => setEdit(null)} className="px-4 py-2 rounded-lg bg-surface-muted text-fg cursor-pointer">Cancel</button>
           </div>
         </div>
       )}
@@ -141,21 +141,21 @@ export const FlatRequests: React.FC<{ societyId: string; canManage: boolean }> =
   const shown = useMemo(() => requests.filter(r => status === 'all' || r.status === 'submitted' || r.status === 'changes_asked'), [requests, status]);
   const current = requests.find(r => r.id === selected) ?? null;
   const tab = (id: typeof view, label: string) => (
-    <button onClick={() => setView(id)} className={`px-3 py-1.5 rounded-lg cursor-pointer ${view === id ? 'bg-sky-600 text-white font-bold' : 'bg-slate-900 text-slate-400 border border-slate-800'}`}>{label}</button>
+    <button onClick={() => setView(id)} className={`px-3 py-1.5 rounded-lg cursor-pointer ${view === id ? 'bg-brand text-on-brand font-semibold' : 'bg-surface text-fg-muted border border-border'}`}>{label}</button>
   );
 
   return (
-    <div className="space-y-4 text-xs">
+    <div className="space-y-4 text-sm">
       <div>
-        <h2 className="text-lg font-bold text-white">Requests &amp; NOCs</h2>
-        <p className="text-slate-400">NOC requests, tenant registrations, shifting bookings and flat sales, with their documents. Approved NOCs get a number and go in the register.</p>
+        <h2 className="text-2xl font-semibold tracking-tight text-fg">Requests &amp; NOCs</h2>
+        <p className="text-fg-muted">NOC requests, tenant registrations, shifting bookings and flat sales, with their documents. Approved NOCs get a number and go in the register.</p>
       </div>
       <div className="flex flex-wrap gap-2">{tab('inbox', 'Requests')}{tab('tenants', 'Tenants')}{tab('shifting', 'Shifting')}{canManage && tab('sale', 'Sale settings')}{tab('register', 'NOC register')}{canManage && tab('letters', 'NOC letters')}</div>
-      {loading && <Loader2 className="w-4 h-4 animate-spin text-slate-500" />}
+      {loading && <Loader2 className="w-4 h-4 animate-spin text-fg-subtle" />}
 
       {view === 'inbox' && !loading && (
         <div className="space-y-2">
-          <div className="flex gap-2 text-slate-300">
+          <div className="flex gap-2 text-fg">
             <label className="flex items-center gap-1"><input type="radio" checked={status === 'open'} onChange={() => setStatus('open')} /> Waiting</label>
             <label className="flex items-center gap-1"><input type="radio" checked={status === 'all'} onChange={() => setStatus('all')} /> All</label>
           </div>
@@ -165,12 +165,12 @@ export const FlatRequests: React.FC<{ societyId: string; canManage: boolean }> =
             const open = r.status === 'submitted' || r.status === 'changes_asked';
             return (
               <div key={r.id} className="space-y-2">
-                <button onClick={() => setSelected(selected === r.id ? null : r.id)} className={`w-full text-left p-3 rounded-xl border cursor-pointer ${selected === r.id ? 'bg-slate-900 border-sky-500/50' : 'bg-slate-900 border-slate-800'}`}>
+                <button onClick={() => setSelected(selected === r.id ? null : r.id)} className={`w-full text-left p-3 rounded-xl border cursor-pointer ${selected === r.id ? 'bg-surface border-brand/50' : 'bg-surface border-border'}`}>
                   <div className="flex justify-between gap-2">
-                    <span className="text-white font-semibold">Flat {labels[r.unit_id] ?? ''} · {typeName(r)}</span>
-                    <span className={open && pendingTone(r.kind, days) === 'amber' ? 'text-amber-300' : 'text-slate-400'}>{open ? `${days} day${days === 1 ? '' : 's'}` : REQUEST_STATUS_LABELS[r.status]}</span>
+                    <span className="text-fg font-semibold">Flat {labels[r.unit_id] ?? ''} · {typeName(r)}</span>
+                    <span className={open && pendingTone(r.kind, days) === 'amber' ? 'text-warning' : 'text-fg-muted'}>{open ? `${days} day${days === 1 ? '' : 's'}` : REQUEST_STATUS_LABELS[r.status]}</span>
                   </div>
-                  <div className="text-slate-400">{names[r.applicant_id ?? ''] ?? ''}{open ? ` · ${REQUEST_STATUS_LABELS[r.status]}` : ''}</div>
+                  <div className="text-fg-muted">{names[r.applicant_id ?? ''] ?? ''}{open ? ` · ${REQUEST_STATUS_LABELS[r.status]}` : ''}</div>
                 </button>
                 {selected === r.id && current && (
                   <RequestDetail request={current} title={typeName(current)} flatLabel={labels[current.unit_id] ?? ''} applicantName={names[current.applicant_id ?? '']}
@@ -184,7 +184,7 @@ export const FlatRequests: React.FC<{ societyId: string; canManage: boolean }> =
 
       {view === 'tenants' && !loading && (
         <div className="space-y-4">
-          <label className="flex items-center gap-1.5 text-slate-300"><input type="checkbox" checked={pastTenants} onChange={e => setPastTenants(e.target.checked)} /> Show past tenancies</label>
+          <label className="flex items-center gap-1.5 text-fg"><input type="checkbox" checked={pastTenants} onChange={e => setPastTenants(e.target.checked)} /> Show past tenancies</label>
           <Tenancies societyId={societyId} labels={labels} canEnd={canManage} showPast={pastTenants} />
           {canManage && <TenancySettings societyId={societyId} />}
         </div>
@@ -205,13 +205,13 @@ export const FlatRequests: React.FC<{ societyId: string; canManage: boolean }> =
           : (
             <div className="overflow-x-auto">
               <table className="w-full text-left">
-                <thead className="text-slate-400"><tr><th className="p-2">Number</th><th className="p-2">Date</th><th className="p-2">Flat</th><th className="p-2">Type</th><th className="p-2">Issued to</th><th className="p-2" /></tr></thead>
+                <thead className="text-fg-muted"><tr><th className="p-2">Number</th><th className="p-2">Date</th><th className="p-2">Flat</th><th className="p-2">Type</th><th className="p-2">Issued to</th><th className="p-2" /></tr></thead>
                 <tbody>
                   {letters.map(l => (
-                    <tr key={l.id} className="border-t border-slate-800 text-slate-300">
+                    <tr key={l.id} className="border-t border-border text-fg">
                       <td className="p-2 font-mono">{l.number}</td><td className="p-2">{l.issued_on}</td><td className="p-2">{l.flat_label}</td>
                       <td className="p-2">{l.type_name}</td><td className="p-2">{l.issued_to}</td>
-                      <td className="p-2"><button onClick={() => openNocLetter(l, societyId)} className="text-sky-300 cursor-pointer" title="Open letter"><Printer className="w-4 h-4" /></button></td>
+                      <td className="p-2"><button onClick={() => openNocLetter(l, societyId)} className="text-brand cursor-pointer" title="Open letter"><Printer className="w-4 h-4" /></button></td>
                     </tr>
                   ))}
                 </tbody>

@@ -100,32 +100,32 @@ export const TaxRulesPanel: React.FC<{ currentUserId?: string }> = ({ currentUse
   }), 'Category added.').then(() => setNewCategory(null));
 
   const num = (v: string) => (v === '' ? null : Number(v));
-  const cell = 'bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-white outline-none focus:border-purple-500';
+  const cell = 'bg-surface border border-border-strong rounded-lg px-2 py-1 text-fg outline-none focus:border-brand';
 
   return (
     <div className="space-y-6 text-xs">
       <div>
-        <h2 className="text-lg font-bold text-white">Tax rules</h2>
-        <p className="text-slate-400">TDS rates and limits for every society. Each bill stores the rule it used. Have a CA confirm these — the Income-tax Act, 2025 renumbers sections from 1 Apr 2026, so section labels are editable.</p>
+        <h2 className="text-lg font-semibold text-fg">Tax rules</h2>
+        <p className="text-fg-muted">TDS rates and limits for every society. Each bill stores the rule it used. Have a CA confirm these — the Income-tax Act, 2025 renumbers sections from 1 Apr 2026, so section labels are editable.</p>
       </div>
       <Banner tone="error">{error}</Banner>
       <Banner tone="success">{notice}</Banner>
 
-      <section className="bg-slate-950 border border-slate-800 rounded-2xl overflow-x-auto">
-        <div className="p-3 flex flex-wrap items-center justify-between gap-2 border-b border-slate-800">
-          <div className="font-bold text-white">TDS rates · in force from {latestFrom ?? '—'}</div>
+      <section className="bg-canvas border border-border rounded-xl overflow-x-auto">
+        <div className="p-3 flex flex-wrap items-center justify-between gap-2 border-b border-border">
+          <div className="font-semibold text-fg">TDS rates · in force from {latestFrom ?? '—'}</div>
           <div className="flex items-center gap-2">
             <input type="date" value={newFrom} onChange={e => setNewFrom(e.target.value)} className={cell} />
             <button onClick={newVersion} disabled={!newFrom || (latestFrom != null && newFrom <= latestFrom) || busy !== null}
-              className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-200 cursor-pointer disabled:opacity-50">New version from this date</button>
+              className="px-3 py-1.5 rounded-lg bg-surface-muted text-fg cursor-pointer disabled:opacity-50">New version from this date</button>
           </div>
         </div>
         <table className="w-full min-w-[820px] text-left">
-          <thead className="text-slate-400"><tr>
+          <thead className="text-fg-muted"><tr>
             <th className="p-2">Nature</th><th className="p-2">Section</th><th className="p-2">Individual / HUF %</th><th className="p-2">Company / others %</th>
             <th className="p-2">One bill above ₹</th><th className="p-2">Yearly total above ₹</th><th className="p-2">Active</th>
           </tr></thead>
-          <tbody className="divide-y divide-slate-800 text-slate-200">
+          <tbody className="divide-y divide-border text-fg">
             {current.map(r => (
               <tr key={r.id}>
                 <td className="p-2"><input value={r.label} onChange={e => editRule(r.id, { label: e.target.value })} className={`w-44 ${cell}`} /></td>
@@ -139,40 +139,40 @@ export const TaxRulesPanel: React.FC<{ currentUserId?: string }> = ({ currentUse
             ))}
           </tbody>
         </table>
-        <div className="p-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-800">
-          <label className="flex items-center gap-2 text-slate-300">Vendor has no PAN (206AA): <input type="number" min={0} max={100} value={noPanRate} onChange={e => setNoPanRate(Number(e.target.value))} className={`w-20 ${cell}`} /> %</label>
-          <button onClick={saveRules} disabled={busy !== null} className="flex items-center gap-1 px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold cursor-pointer disabled:opacity-50">
+        <div className="p-3 flex flex-wrap items-center justify-between gap-2 border-t border-border">
+          <label className="flex items-center gap-2 text-fg">Vendor has no PAN (206AA): <input type="number" min={0} max={100} value={noPanRate} onChange={e => setNoPanRate(Number(e.target.value))} className={`w-20 ${cell}`} /> %</label>
+          <button onClick={saveRules} disabled={busy !== null} className="flex items-center gap-1 px-4 py-2 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold cursor-pointer disabled:opacity-50">
             {busy === 'rules' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} Save rates
           </button>
         </div>
         {rules.length > current.length && (
-          <div className="p-3 border-t border-slate-800 text-slate-500">Older versions kept for bills dated before {latestFrom}: {[...new Set(rules.map(r => r.effective_from))].filter(d => d !== latestFrom).join(', ')}</div>
+          <div className="p-3 border-t border-border text-fg-subtle">Older versions kept for bills dated before {latestFrom}: {[...new Set(rules.map(r => r.effective_from))].filter(d => d !== latestFrom).join(', ')}</div>
         )}
       </section>
 
-      <section className="bg-slate-950 border border-slate-800 rounded-2xl overflow-x-auto">
-        <div className="p-3 font-bold text-white border-b border-slate-800">Expense categories (defaults for every society)</div>
+      <section className="bg-canvas border border-border rounded-xl overflow-x-auto">
+        <div className="p-3 font-semibold text-fg border-b border-border">Expense categories (defaults for every society)</div>
         <table className="w-full min-w-[820px] text-left">
-          <thead className="text-slate-400"><tr>
+          <thead className="text-fg-muted"><tr>
             <th className="p-2">Category</th><th className="p-2">Ledger head</th><th className="p-2">TDS</th><th className="p-2">Can be an asset</th><th className="p-2">Suggest asset from ₹</th><th className="p-2">On</th>
           </tr></thead>
-          <tbody className="divide-y divide-slate-800 text-slate-200">
+          <tbody className="divide-y divide-border text-fg">
             {categories.map(c => (
               <tr key={c.id}>
-                <td className="p-2"><input value={c.label} onChange={e => editCategory(c.id, { label: e.target.value })} className={`w-48 ${cell}`} /> <span className="font-mono text-slate-500">{c.key}</span></td>
+                <td className="p-2"><input value={c.label} onChange={e => editCategory(c.id, { label: e.target.value })} className={`w-48 ${cell}`} /> <span className="font-mono text-fg-subtle">{c.key}</span></td>
                 <td className="p-2"><input value={c.account_code} onChange={e => editCategory(c.id, { account_code: e.target.value })} className={`w-16 ${cell}`} /></td>
                 <td className="p-2"><select value={c.tds_nature} onChange={e => editCategory(c.id, { tds_nature: e.target.value as TdsNature })} className={cell}>
                   {NATURES.map(n => <option key={n.value} value={n.value}>{n.label}</option>)}</select></td>
                 <td className="p-2"><select value={c.asset_account_code ?? ''} onChange={e => editCategory(c.id, { asset_account_code: (e.target.value || null) as ExpenseCategory['asset_account_code'] })} className={cell}>
                   <option value="">Never</option>{ASSET_TYPES.map(a => <option key={a.code} value={a.code}>{a.label}</option>)}</select></td>
                 <td className="p-2"><input type="number" min={0} value={c.asset_threshold ?? ''} placeholder="—" onChange={e => editCategory(c.id, { asset_threshold: num(e.target.value) })} className={`w-24 ${cell}`} />
-                  {c.asset_threshold != null && <span className="ml-1 text-slate-500">{formatINR(c.asset_threshold)}</span>}</td>
+                  {c.asset_threshold != null && <span className="ml-1 text-fg-subtle">{formatINR(c.asset_threshold)}</span>}</td>
                 <td className="p-2"><input type="checkbox" checked={c.is_active} onChange={e => editCategory(c.id, { is_active: e.target.checked })} className="accent-purple-500" /></td>
               </tr>
             ))}
           </tbody>
         </table>
-        <div className="p-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-800">
+        <div className="p-3 flex flex-wrap items-center justify-between gap-2 border-t border-border">
           {newCategory ? (
             <div className="flex flex-wrap items-center gap-2">
               <input value={newCategory.key} onChange={e => setNewCategory({ ...newCategory, key: e.target.value })} placeholder="key e.g. solar" className={`w-28 ${cell}`} />
@@ -184,13 +184,13 @@ export const TaxRulesPanel: React.FC<{ currentUserId?: string }> = ({ currentUse
                 <option value="">Never an asset</option>{ASSET_TYPES.map(a => <option key={a.code} value={a.code}>{a.label}</option>)}</select>
               <input type="number" value={newCategory.asset_threshold} onChange={e => setNewCategory({ ...newCategory, asset_threshold: e.target.value })} placeholder="Asset from ₹" className={`w-28 ${cell}`} />
               <button onClick={addCategory} disabled={!/^[a-z0-9_]+$/.test(newCategory.key.trim().toLowerCase()) || !newCategory.label.trim() || busy !== null}
-                className="px-3 py-1.5 rounded-lg bg-purple-600 text-white cursor-pointer disabled:opacity-50">Add</button>
-              <button onClick={() => setNewCategory(null)} className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 cursor-pointer">Cancel</button>
+                className="px-3 py-1.5 rounded-lg bg-brand text-on-brand cursor-pointer disabled:opacity-50">Add</button>
+              <button onClick={() => setNewCategory(null)} className="px-3 py-1.5 rounded-lg bg-surface-muted text-fg cursor-pointer">Cancel</button>
             </div>
           ) : (
-            <button onClick={() => setNewCategory(emptyCategory)} className="flex items-center gap-1 text-purple-300 hover:underline cursor-pointer"><Plus className="w-3.5 h-3.5" /> Add category</button>
+            <button onClick={() => setNewCategory(emptyCategory)} className="flex items-center gap-1 text-brand-ink hover:underline cursor-pointer"><Plus className="w-3.5 h-3.5" /> Add category</button>
           )}
-          <button onClick={saveCategories} disabled={busy !== null} className="flex items-center gap-1 px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold cursor-pointer disabled:opacity-50">
+          <button onClick={saveCategories} disabled={busy !== null} className="flex items-center gap-1 px-4 py-2 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold cursor-pointer disabled:opacity-50">
             {busy === 'categories' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} Save categories
           </button>
         </div>

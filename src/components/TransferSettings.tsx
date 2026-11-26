@@ -35,24 +35,24 @@ export const TransferSettings: React.FC<{ societyId: string }> = ({ societyId })
     if (err) return setError(err.message);
     setDone('Saved. The fees are filled in when you bill a sale; you can change them for each one.');
   };
-  const inputClass = 'w-full mt-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white';
+  const inputClass = 'w-full mt-1 bg-canvas border border-border-strong rounded-lg px-3 py-2 text-fg';
 
   return (
-    <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-2 text-xs">
-      <div className="font-bold text-white">Sale and transfer</div>
+    <div className="p-4 rounded-xl bg-surface border border-border space-y-2 text-xs">
+      <div className="font-semibold text-fg">Sale and transfer</div>
       <Banner tone="info">{TRANSFER_WARNING}</Banner>
       <Banner tone="error">{error}</Banner>
       <Banner tone="success">{done}</Banner>
       <div className="grid sm:grid-cols-2 gap-2">
-        <label className="text-slate-400">Transfer fee (₹)<input type="number" min={0} max={100000} value={v.transfer_fee} onChange={e => setV({ ...v, transfer_fee: e.target.value })} className={inputClass} /></label>
-        <label className="text-slate-400">Transfer premium (₹, at most 25,000)<input type="number" min={0} max={25000} value={v.transfer_premium} onChange={e => setV({ ...v, transfer_premium: e.target.value })} className={inputClass} /></label>
+        <label className="text-fg-muted">Transfer fee (₹)<input type="number" min={0} max={100000} value={v.transfer_fee} onChange={e => setV({ ...v, transfer_fee: e.target.value })} className={inputClass} /></label>
+        <label className="text-fg-muted">Transfer premium (₹, at most 25,000)<input type="number" min={0} max={25000} value={v.transfer_premium} onChange={e => setV({ ...v, transfer_premium: e.target.value })} className={inputClass} /></label>
       </div>
-      <p className="text-slate-400">Fees go to the ledgers &ldquo;Transfer fees&rdquo; and &ldquo;Transfer premium&rdquo;. A sale is approved only when the flat has no dues.</p>
-      <label className="flex items-center gap-1.5 text-slate-300">
+      <p className="text-fg-muted">Fees go to the ledgers &ldquo;Transfer fees&rdquo; and &ldquo;Transfer premium&rdquo;. A sale is approved only when the flat has no dues.</p>
+      <label className="flex items-center gap-1.5 text-fg">
         <input type="checkbox" checked={v.shifting_required} onChange={e => setV({ ...v, shifting_required: e.target.checked })} />
         Require a shifting booking first: moving in before a tenant is approved, moving out before a sale is approved
       </label>
-      <button onClick={save} disabled={busy} className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold disabled:opacity-50 cursor-pointer">{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save'}</button>
+      <button onClick={save} disabled={busy} className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold disabled:opacity-50 cursor-pointer">{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save'}</button>
     </div>
   );
 };

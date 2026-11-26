@@ -52,31 +52,31 @@ export const YearLockPanel: React.FC<{ societyId: string; canLock: boolean }> = 
   };
 
   return (
-    <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-3 text-xs">
-      <div className="font-bold text-white flex items-center gap-2"><Lock className="w-4 h-4 text-amber-300" /> Year-end lock</div>
-      <p className="text-slate-400">Lock a financial year once the CA has finished the audit. The CA or Accountant proposes the lock and another committee member approves it in Approvals. Adjustments, opening balances and depreciation can no longer be dated in a locked year; anything else that arrives late is posted on the first day of the open year. Only Sahvaas support can unlock.</p>
+    <div className="p-4 rounded-xl bg-surface border border-border space-y-3 text-xs">
+      <div className="font-semibold text-fg flex items-center gap-2"><Lock className="w-4 h-4 text-warning" /> Year-end lock</div>
+      <p className="text-fg-muted">Lock a financial year once the CA has finished the audit. The CA or Accountant proposes the lock and another committee member approves it in Approvals. Adjustments, opening balances and depreciation can no longer be dated in a locked year; anything else that arrives late is posted on the first day of the open year. Only Sahvaas support can unlock.</p>
       <Banner tone="error">{error}</Banner>
       <Banner tone="success">{notice}</Banner>
       {locks.length > 0 && (
-        <ul className="space-y-1 text-slate-300">
+        <ul className="space-y-1 text-fg">
           {locks.map(l => <li key={l.fy_end}>🔒 {fyLabel(l.fy_end)} locked on {new Date(l.locked_at).toLocaleDateString('en-IN')}{l.note ? ` — ${l.note}` : ''}</li>)}
         </ul>
       )}
       {pending.map(p => (
-        <div key={p.id} className="text-amber-200">
+        <div key={p.id} className="text-warning">
           Waiting for the committee to approve the lock up to {new Date(`${p.entry_date}T00:00:00`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} ({p.proposal_number}).
         </div>
       ))}
       {canLockLast && (confirming ? (
         <div className="flex flex-wrap gap-2">
-          <input value={note} onChange={e => setNote(e.target.value)} placeholder="Note, e.g. audited by CA Priya Iyer on 12 Sep" className="flex-1 min-w-[220px] bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-amber-500" />
-          <button onClick={lock} disabled={busy} className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-semibold cursor-pointer disabled:opacity-50">
+          <input value={note} onChange={e => setNote(e.target.value)} placeholder="Note, e.g. audited by CA Priya Iyer on 12 Sep" className="flex-1 min-w-[220px] bg-surface border border-border-strong rounded-lg px-3 py-2 text-fg outline-none focus:border-brand" />
+          <button onClick={lock} disabled={busy} className="px-4 py-2 rounded-lg bg-warning-solid hover:bg-warning-solid text-on-brand font-semibold cursor-pointer disabled:opacity-50">
             {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Propose lock'}
           </button>
-          <button onClick={() => setConfirming(false)} className="px-3 rounded-xl bg-slate-800 text-slate-300 cursor-pointer">Cancel</button>
+          <button onClick={() => setConfirming(false)} className="px-3 rounded-xl bg-surface-muted text-fg cursor-pointer">Cancel</button>
         </div>
       ) : (
-        <button onClick={() => setConfirming(true)} className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 font-semibold cursor-pointer">Propose locking {fyLabel(lastEnded)}…</button>
+        <button onClick={() => setConfirming(true)} className="px-4 py-2 rounded-lg bg-surface-muted hover:bg-border text-warning font-semibold cursor-pointer">Propose locking {fyLabel(lastEnded)}…</button>
       ))}
     </div>
   );

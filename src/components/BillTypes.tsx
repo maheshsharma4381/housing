@@ -19,8 +19,8 @@ const TDS_LABELS: [TdsNature, string][] = [
 
 type Draft = { label: string; account_code: string; tds_nature: TdsNature };
 
-const inputClass = 'bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-white outline-none focus:border-sky-500 disabled:opacity-60';
-const linkClass = 'flex items-center gap-1 text-slate-400 hover:text-sky-300 cursor-pointer disabled:opacity-50';
+const inputClass = 'bg-surface border border-border-strong rounded-lg px-2 py-1 text-fg outline-none focus:border-brand disabled:opacity-60';
+const linkClass = 'flex items-center gap-1 text-fg-muted hover:text-brand cursor-pointer disabled:opacity-50';
 
 /**
  * Bill Types: the secretary picks a type on every vendor bill; the CA / accountant (manage_accounts)
@@ -113,19 +113,19 @@ export const BillTypes: React.FC<{ societyId: string; canManage: boolean }> = ({
     <div className="space-y-4 text-xs">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-bold text-white flex items-center gap-2"><Tags className="w-4 h-4 text-sky-400" /> Bill Types</h2>
-          <p className="text-slate-400 max-w-2xl">
+          <h2 className="text-lg font-semibold text-fg flex items-center gap-2"><Tags className="w-4 h-4 text-brand" /> Bill Types</h2>
+          <p className="text-fg-muted max-w-2xl">
             The secretary picks a bill type. The type decides the ledger and the TDS. Point a type to another ledger and new bills go there.
           </p>
         </div>
         <div className="flex gap-2">
           {canManage && !adding && (
             <button onClick={() => setAdding({ label: '', account_code: expenseLedgers[0]?.code ?? '', tds_nature: 'contract' })}
-              className="flex items-center gap-1 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold cursor-pointer">
+              className="flex items-center gap-1 px-3 py-2 rounded-lg bg-surface-muted hover:bg-border text-fg font-semibold cursor-pointer">
               <Plus className="w-3.5 h-3.5" /> Add bill type
             </button>
           )}
-          <button onClick={load} className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:bg-slate-800 cursor-pointer" title="Refresh">
+          <button onClick={load} className="p-2 rounded-xl bg-surface border border-border text-fg hover:bg-surface-muted cursor-pointer" title="Refresh">
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
           </button>
         </div>
@@ -135,24 +135,24 @@ export const BillTypes: React.FC<{ societyId: string; canManage: boolean }> = ({
       <Banner tone="success">{notice}</Banner>
 
       {adding && (
-        <form onSubmit={add} className="p-3 rounded-2xl bg-slate-900 border border-slate-800 flex flex-wrap items-center gap-2">
+        <form onSubmit={add} className="p-3 rounded-xl bg-surface border border-border flex flex-wrap items-center gap-2">
           <input autoFocus required value={adding.label} onChange={e => setAdding({ ...adding, label: e.target.value })} placeholder="Name, e.g. Water tanker" className={inputClass} />
           {ledgerSelect(adding.account_code, v => setAdding({ ...adding, account_code: v }), false)}
           {tdsSelect(adding.tds_nature, v => setAdding({ ...adding, tds_nature: v }), false)}
-          <button type="submit" disabled={busy !== null} className="px-3 py-1 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold cursor-pointer disabled:opacity-50">Add</button>
-          <button type="button" onClick={() => setAdding(null)} className="px-2 py-1 text-slate-400 hover:text-white cursor-pointer">Cancel</button>
+          <button type="submit" disabled={busy !== null} className="px-3 py-1 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold cursor-pointer disabled:opacity-50">Add</button>
+          <button type="button" onClick={() => setAdding(null)} className="px-2 py-1 text-fg-muted hover:text-fg cursor-pointer">Cancel</button>
         </form>
       )}
 
       {loading && types.length === 0 ? (
-        <div className="flex items-center gap-2 text-slate-400"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</div>
+        <div className="flex items-center gap-2 text-fg-muted"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</div>
       ) : (
-        <div className="rounded-2xl bg-slate-900 border border-slate-800 overflow-x-auto">
+        <div className="rounded-xl bg-surface border border-border overflow-x-auto">
           <table className="w-full">
-            <thead className="text-slate-500 text-left">
+            <thead className="text-fg-subtle text-left">
               <tr><th className="p-2">Bill type</th><th className="p-2">Ledger</th><th className="p-2">TDS</th><th className="p-2" /></tr>
             </thead>
-            <tbody className="divide-y divide-slate-800">
+            <tbody className="divide-y divide-border">
               {types.map(t => {
                 const d = draftOf(t);
                 return (
@@ -160,16 +160,16 @@ export const BillTypes: React.FC<{ societyId: string; canManage: boolean }> = ({
                     <td className="p-2">
                       {canManage
                         ? <input value={d.label} onChange={e => edit(t, { label: e.target.value })} className={`${inputClass} w-48`} />
-                        : <span className="text-white">{t.label}</span>}
-                      {!t.is_active && <span className="ml-2 text-slate-500">Off</span>}
+                        : <span className="text-fg">{t.label}</span>}
+                      {!t.is_active && <span className="ml-2 text-fg-subtle">Off</span>}
                     </td>
-                    <td className="p-2">{canManage ? ledgerSelect(d.account_code, v => edit(t, { account_code: v }), busy !== null) : <span className="text-slate-300">{t.ledger_name ?? t.account_code}</span>}</td>
-                    <td className="p-2">{canManage ? tdsSelect(d.tds_nature, v => edit(t, { tds_nature: v }), busy !== null) : <span className="text-slate-300">{TDS_LABELS.find(([v]) => v === t.tds_nature)?.[1]}</span>}</td>
+                    <td className="p-2">{canManage ? ledgerSelect(d.account_code, v => edit(t, { account_code: v }), busy !== null) : <span className="text-fg">{t.ledger_name ?? t.account_code}</span>}</td>
+                    <td className="p-2">{canManage ? tdsSelect(d.tds_nature, v => edit(t, { tds_nature: v }), busy !== null) : <span className="text-fg">{TDS_LABELS.find(([v]) => v === t.tds_nature)?.[1]}</span>}</td>
                     <td className="p-2">
                       {canManage && (
                         <div className="flex flex-wrap items-center justify-end gap-3">
                           {changed(t) && (
-                            <button onClick={() => save(t)} disabled={busy !== null} className="flex items-center gap-1 px-2 py-1 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold cursor-pointer disabled:opacity-50">
+                            <button onClick={() => save(t)} disabled={busy !== null} className="flex items-center gap-1 px-2 py-1 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold cursor-pointer disabled:opacity-50">
                               <Save className="w-3 h-3" /> Save
                             </button>
                           )}
@@ -192,7 +192,7 @@ export const BillTypes: React.FC<{ societyId: string; canManage: boolean }> = ({
           </table>
         </div>
       )}
-      <p className="text-slate-500">
+      <p className="text-fg-subtle">
         Earlier bills stay in their ledger until the committee approves a move; only this financial year&apos;s bills can be moved.
       </p>
     </div>

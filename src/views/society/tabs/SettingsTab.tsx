@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../../lib/supabase/client';
 import { SocietySetting } from '../../../types/database';
-import { Settings, QrCode, AlertCircle, CheckCircle2, Loader2, Save } from 'lucide-react';
+import { QrCode, AlertCircle, CheckCircle2, Loader2, Save } from 'lucide-react';
 
 import { isValidUpiId } from '../../../lib/setup';
 import { SocietyProfile } from '../../../components/SocietyProfile';
@@ -86,15 +86,15 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ societyId }) => {
     setSaved(true);
   };
 
-  const inputClass = 'w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-sky-500';
+  const inputClass = 'w-full bg-surface border border-border-strong rounded-lg px-3 py-2 text-fg outline-none focus:border-brand';
 
   if (loading) {
-    return <div className="flex items-center gap-2 text-xs text-slate-400"><Loader2 className="w-4 h-4 animate-spin" /> Loading settings…</div>;
+    return <div className="flex items-center gap-2 text-xs text-fg-muted"><Loader2 className="w-4 h-4 animate-spin" /> Loading settings…</div>;
   }
 
   if (!settings) {
     return (
-      <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-xs text-rose-300">
+      <div className="p-4 rounded-xl bg-danger-soft border border-danger/30 text-xs text-danger">
         {error ?? 'Settings not found for this society.'}
       </div>
     );
@@ -102,51 +102,51 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ societyId }) => {
 
   return (
     <div className="space-y-6">
-    <form onSubmit={handleSave} className="space-y-6 text-xs">
+    <form onSubmit={handleSave} className="space-y-6 text-sm">
       <div>
-        <h2 className="text-lg font-bold text-white flex items-center gap-2"><Settings className="w-4 h-4 text-sky-400" /> Society Rules</h2>
-        <p className="text-slate-400">Collection account, due dates and late fee policy.</p>
+        <h2 className="text-2xl font-semibold tracking-tight text-fg">Society settings</h2>
+        <p className="text-fg-muted">Collection account, due dates and late fee policy.</p>
       </div>
 
       {error && (
-        <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 flex items-start gap-2">
+        <div className="p-3 rounded-xl bg-danger-soft border border-danger/30 text-danger flex items-start gap-2">
           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
           <span>{error}</span>
         </div>
       )}
       {saved && (
-        <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 flex items-start gap-2">
+        <div className="p-3 rounded-xl bg-success-soft border border-success/30 text-success flex items-start gap-2">
           <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
           <span>Settings saved.</span>
         </div>
       )}
 
-      <section className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
-        <div className="flex items-center gap-2 font-bold text-white text-sm"><QrCode className="w-4 h-4 text-emerald-400" /> UPI Collection Account</div>
-        <p className="text-slate-400">
+      <section className="p-5 rounded-xl bg-surface border border-border space-y-4">
+        <div className="flex items-center gap-2 font-semibold text-fg text-sm"><QrCode className="w-4 h-4 text-success" /> UPI Collection Account</div>
+        <p className="text-fg-muted">
           Residents see a QR code for this UPI ID with the exact due amount. Use the society&apos;s bank account VPA, never a personal one.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="space-y-1">
-            <span className="block text-slate-400 font-medium">Society UPI ID</span>
+            <span className="block text-fg-muted font-medium">Society UPI ID</span>
             <input value={settings.upi_id ?? ''} onChange={e => update('upi_id', e.target.value)} placeholder="palmheights@icici" className={inputClass} />
           </label>
           <label className="space-y-1">
-            <span className="block text-slate-400 font-medium">Payee Name (as per bank)</span>
+            <span className="block text-fg-muted font-medium">Payee Name (as per bank)</span>
             <input value={settings.upi_payee_name ?? ''} onChange={e => update('upi_payee_name', e.target.value)} placeholder="Palm Heights CHS Ltd" className={inputClass} />
           </label>
         </div>
       </section>
 
-      <section className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
-        <div className="font-bold text-white text-sm">Billing Rules</div>
+      <section className="p-5 rounded-xl bg-surface border border-border space-y-4">
+        <div className="font-semibold text-fg text-sm">Billing Rules</div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <label className="space-y-1">
-            <span className="block text-slate-400 font-medium">Due Day of Month</span>
+            <span className="block text-fg-muted font-medium">Due Day of Month</span>
             <input type="number" min={1} max={28} value={settings.due_day_of_month} onChange={e => update('due_day_of_month', Number(e.target.value))} className={inputClass} />
           </label>
           <label className="space-y-1">
-            <span className="block text-slate-400 font-medium">Late Fee Type</span>
+            <span className="block text-fg-muted font-medium">Late Fee Type</span>
             <select value={settings.late_fee_type} onChange={e => update('late_fee_type', e.target.value as EditableSettings['late_fee_type'])} className={inputClass}>
               <option value="percentage">% of due per month</option>
               <option value="flat">Flat ₹ amount</option>
@@ -154,11 +154,11 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ societyId }) => {
             </select>
           </label>
           <label className="space-y-1">
-            <span className="block text-slate-400 font-medium">{settings.late_fee_type === 'flat' ? 'Late Fee (₹)' : 'Late Fee (%)'}</span>
+            <span className="block text-fg-muted font-medium">{settings.late_fee_type === 'flat' ? 'Late Fee (₹)' : 'Late Fee (%)'}</span>
             <input type="number" min={0} step="0.01" disabled={settings.late_fee_type === 'none'} value={settings.late_fee_amount} onChange={e => update('late_fee_amount', Number(e.target.value))} className={`${inputClass} disabled:opacity-50`} />
           </label>
         </div>
-        <label className="flex items-center gap-2 text-slate-300 cursor-pointer">
+        <label className="flex items-center gap-2 text-fg cursor-pointer">
           <input type="checkbox" checked={settings.require_two_step_expense_approval} onChange={e => update('require_two_step_expense_approval', e.target.checked)} />
           <span>Require two committee approvals for every expense</span>
         </label>
@@ -167,7 +167,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ societyId }) => {
       <button
         type="submit"
         disabled={saving}
-        className="w-full py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+        className="w-full py-2.5 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
       >
         {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
         <span>{saving ? 'Saving…' : 'Save Settings'}</span>
@@ -202,17 +202,17 @@ const ReminderSchedule: React.FC<{ societyId: string }> = ({ societyId }) => {
     setMessage(error ? { ok: false, text: error.message } : { ok: true, text: 'Reminder schedule saved.' });
   };
 
-  const box = 'w-16 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-white outline-none focus:border-sky-500 text-center';
+  const box = 'w-16 bg-surface border border-border-strong rounded-lg px-2 py-1 text-fg outline-none focus:border-brand text-center';
   return (
-    <section className="mt-4 p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-2 text-xs">
-      <h3 className="font-bold text-white">Dues reminders</h3>
-      <p className="text-slate-400">Owners with unpaid bills get a reminder in the app (and on their phone, if they turned it on).</p>
-      <div className="flex flex-wrap items-center gap-2 text-slate-300">
+    <section className="mt-4 p-4 rounded-xl bg-surface border border-border space-y-2 text-xs">
+      <h3 className="font-semibold text-fg">Dues reminders</h3>
+      <p className="text-fg-muted">Owners with unpaid bills get a reminder in the app (and on their phone, if they turned it on).</p>
+      <div className="flex flex-wrap items-center gap-2 text-fg">
         Remind <input type="number" min={1} max={60} value={first} onChange={e => setFirst(e.target.value)} className={box} /> days after the due date,
         then every <input type="number" min={1} max={60} value={every} onChange={e => setEvery(e.target.value)} className={box} /> days.
-        <button onClick={save} className="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold cursor-pointer">Save</button>
+        <button onClick={save} className="px-3 py-1.5 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold cursor-pointer">Save</button>
       </div>
-      {message && <p className={message.ok ? 'text-emerald-300' : 'text-rose-300'}>{message.text}</p>}
+      {message && <p className={message.ok ? 'text-success' : 'text-danger'}>{message.text}</p>}
     </section>
   );
 };
