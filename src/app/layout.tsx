@@ -19,10 +19,10 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   title: 'Sahvaas - Housing Society Management',
-  description: 'Multi-tenant housing society management and operations platform with automated backend financials, granular professional access, and mobile-first PWA.',
+  description: 'Maintenance bills, UPI payments, receipts, notices and complaints for housing societies, with double-entry books your CA can trust.',
   openGraph: {
     title: 'Sahvaas - Housing Society Management',
-    description: 'Multi-tenant housing society management and operations platform with automated backend financials, granular professional access, and mobile-first PWA.',
+    description: 'Maintenance bills, UPI payments, receipts, notices and complaints for housing societies, with double-entry books your CA can trust.',
     type: 'website',
   },
   appleWebApp: {

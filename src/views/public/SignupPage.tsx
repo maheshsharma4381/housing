@@ -9,6 +9,8 @@ const PHONE_LOGIN = process.env.NEXT_PUBLIC_PHONE_LOGIN === '1';
 import { useRouter, Link } from '../../router/RouterContext';
 import { useAuth } from '../../context/AuthContext';
 import { Mail, Lock, User, ArrowRight, AlertCircle, Loader2, CheckCircle2 } from 'lucide-react';
+import { Logo } from '../../components/ui/Logo';
+import { AuthLayout } from '../../components/ui/AuthLayout';
 
 export const SignupPage: React.FC = () => {
   const { signUp, isAuthenticated, isLoading, getRedirectPath, authError, clearAuthError, isSupabaseConfigured } = useAuth();
@@ -64,53 +66,51 @@ export const SignupPage: React.FC = () => {
   const errorText = validationError || authError;
 
   return (
-    <div className="bg-slate-950 min-h-screen flex items-center justify-center p-4 py-12">
+    <AuthLayout>
+    <div className="min-h-screen lg:min-h-0 flex items-center justify-center p-4 py-12">
       <div className="w-full max-w-md space-y-6">
         <div className="text-center space-y-2">
           <Link href="/" className="inline-flex items-center gap-2">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-sky-500 to-sky-700 flex items-center justify-center text-white font-black text-lg shadow-lg shadow-sky-600/30">
-              S
-            </div>
-            <span className="font-bold text-2xl text-white tracking-tight">Sahvaas</span>
+            <Logo size={32} />
           </Link>
-          <h1 className="text-xl font-bold text-white mt-2">Create Your Account</h1>
-          <p className="text-xs text-slate-400">
+          <h1 className="text-xl font-semibold text-fg mt-2">Create your account</h1>
+          <p className="text-xs text-fg-muted">
             Register your society or accept an invite from your committee.
           </p>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl text-xs space-y-5">
+        <div className="bg-surface border border-border rounded-2xl p-6 sm:p-8 shadow-card text-xs space-y-5">
           {!isSupabaseConfigured && (
-            <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300">
+            <div className="p-3.5 rounded-xl bg-warning-soft border border-warning/30 text-warning">
               Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.
             </div>
           )}
 
           {verifyEmailSent ? (
-            <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 space-y-2 text-center">
-              <CheckCircle2 className="w-6 h-6 text-emerald-400 mx-auto" />
-              <div className="font-bold text-white text-sm">Check Your Inbox</div>
-              <p className="text-slate-300">
-                We sent a verification link to <strong className="text-white">{email}</strong>. After verifying, sign in to
+            <div className="p-4 rounded-xl bg-success-soft border border-success/30 text-success space-y-2 text-center">
+              <CheckCircle2 className="w-6 h-6 text-success mx-auto" />
+              <div className="font-semibold text-fg text-sm">Check Your Inbox</div>
+              <p className="text-fg">
+                We sent a verification link to <strong className="text-fg">{email}</strong>. After verifying, sign in to
                 register your society. If your committee invited you, you&apos;ll see the invitation to accept.
               </p>
-              <Link href={loginHref} className="inline-block pt-2 text-sky-400 font-semibold hover:underline">
+              <Link href={loginHref} className="inline-block pt-2 text-brand font-semibold hover:underline">
                 Go to Sign In
               </Link>
             </div>
           ) : !useEmail ? (
             <div className="space-y-4">
-              <p className="text-slate-400">Enter your mobile number. A new number gets an account when you log in.</p>
+              <p className="text-fg-muted">Enter your mobile number. A new number gets an account when you log in.</p>
               <MobileOtpLogin onSignedIn={(path) => navigate(returnUrl || path, { replace: true })} />
-              <button type="button" onClick={() => setUseEmail(true)} className="w-full text-center text-slate-400 hover:text-white cursor-pointer">
+              <button type="button" onClick={() => setUseEmail(true)} className="w-full text-center text-fg-muted hover:text-fg cursor-pointer">
                 Use email instead
               </button>
             </div>
           ) : (
             <>
               {errorText && (
-                <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                <div className="p-3.5 rounded-xl bg-danger-soft border border-danger/30 text-danger flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-danger shrink-0 mt-0.5" />
                   <span>{errorText}</span>
                 </div>
               )}
@@ -124,7 +124,7 @@ export const SignupPage: React.FC = () => {
                 <button
                   type="submit"
                   disabled={submitting || !isSupabaseConfigured}
-                  className="w-full mt-2 py-3 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-sky-600/30 transition cursor-pointer disabled:opacity-50"
+                  className="w-full mt-2 py-3 rounded-xl bg-brand hover:bg-brand-hover text-on-brand font-semibold text-xs flex items-center justify-center gap-2 shadow-card transition cursor-pointer disabled:opacity-50"
                 >
                   {submitting ? (
                     <>
@@ -143,14 +143,15 @@ export const SignupPage: React.FC = () => {
           )}
         </div>
 
-        <div className="text-center text-xs text-slate-500">
+        <div className="text-center text-xs text-fg-subtle">
           Already have an account?{' '}
-          <Link href={loginHref} className="text-sky-400 hover:underline">
+          <Link href={loginHref} className="text-brand hover:underline">
             Sign In
           </Link>
         </div>
       </div>
     </div>
+    </AuthLayout>
   );
 };
 
@@ -166,9 +167,9 @@ interface FieldProps {
 
 const Field: React.FC<FieldProps> = ({ icon: Icon, label, type, autoComplete, placeholder, value, onChange }) => (
   <div>
-    <label className="block text-slate-400 mb-1.5 font-medium">{label}</label>
+    <label className="block text-fg-muted mb-1.5 font-medium">{label}</label>
     <div className="relative">
-      <Icon className="w-4 h-4 absolute left-3 top-2.5 text-slate-500" />
+      <Icon className="w-4 h-4 absolute left-3 top-2.5 text-fg-subtle" />
       <input
         type={type}
         required
@@ -176,7 +177,7 @@ const Field: React.FC<FieldProps> = ({ icon: Icon, label, type, autoComplete, pl
         placeholder={placeholder}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-slate-950 border border-slate-700 focus:border-sky-500 rounded-xl pl-9 pr-3 py-2.5 text-white outline-none transition"
+        className="w-full bg-surface border border-border-strong focus:border-brand rounded-lg pl-9 pr-3 py-2.5 text-fg outline-none transition"
       />
     </div>
   </div>

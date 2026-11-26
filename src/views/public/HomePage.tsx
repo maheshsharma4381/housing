@@ -1,252 +1,220 @@
 import React from 'react';
 import { Link } from '../../router/RouterContext';
-import {
-  Smartphone,
-  Building2,
-  ShieldCheck,
-  Briefcase,
-  CheckCircle2,
-  ArrowRight,
-  Sparkles,
-} from 'lucide-react';
+import { Users, Smartphone, Briefcase, CheckCircle2, ArrowRight, ShieldCheck, Lock, FileCheck2, ClipboardList } from 'lucide-react';
+import { buttonClass } from '../../components/ui/Button';
+import { Badge } from '../../components/ui/Badge';
+
+const PERSONAS = [
+  {
+    Icon: Users,
+    title: 'For the committee',
+    body: 'Issue every flat’s bill in one go, see who has paid, verify UPI payments and approve vendor bills from your phone.',
+    points: ['Bills for all flats in three steps', 'Payments to verify, in one list', 'Two-person approval for spending'],
+    href: '/societies',
+    link: 'For societies',
+  },
+  {
+    Icon: Smartphone,
+    title: 'For residents',
+    body: 'Owners see what they owe and pay by UPI in one tap. Everyone reads notices and raises complaints without calling anyone.',
+    points: ['Pay by UPI, get a receipt', 'Notices on the phone', 'Complaints with status'],
+    href: '/features',
+    link: 'All features',
+  },
+  {
+    Icon: Briefcase,
+    title: 'For your CA',
+    body: 'Double-entry books keep themselves. Your CA opens only what the committee allows and exports to Excel or Tally.',
+    points: ['I&E, Balance Sheet, Trial Balance', 'GSTR-2B and TDS register', 'Tally XML export'],
+    href: '/accountants',
+    link: 'For CAs',
+  },
+];
+
+const STEPS = [
+  { n: 1, title: 'Add your society', body: 'Name, address and your flats: type them, or paste them from Excel.' },
+  { n: 2, title: 'Set the maintenance charge', body: 'Per flat or per sq.ft, and the society’s UPI ID for payments.' },
+  { n: 3, title: 'Share one link', body: 'Post the joining link in your WhatsApp group. Owners join, then you issue the first bills.' },
+];
+
+const FAQ = [
+  { q: 'Do residents have to install an app?', a: 'No. Sahvaas opens in the phone’s browser, and anyone can add it to the home screen like an app.' },
+  { q: 'Who can see our society’s data?', a: 'Only your members. Each society’s data is kept apart, a resident sees only their own flat, and a CA sees only the modules your committee allows.' },
+  { q: 'What does it cost?', a: 'There is a free plan. Basic is ₹10 per flat per month and Pro is ₹18 (minimum 20 flats), with two months free when you pay yearly. New societies get a free trial of everything.' },
+  { q: 'Do we need to know accounting?', a: 'No. You record bills and payments; the ledgers, receipts and reports are made for you, and your CA can check them.' },
+];
+
+/** A small, faithful picture of the resident home screen (what the app really shows). */
+const PhonePreview: React.FC = () => (
+  <div aria-hidden="true" className="mx-auto w-[280px] rounded-[2rem] border border-border-strong bg-surface p-2 shadow-pop">
+    <div className="rounded-[1.6rem] bg-canvas overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-3 bg-surface border-b border-border">
+        <span className="w-7 h-7 rounded-lg bg-brand" />
+        <div>
+          <div className="text-[13px] font-semibold text-fg">Your society</div>
+          <div className="text-xs text-fg-subtle">Flat A-101 · Owner</div>
+        </div>
+      </div>
+      <div className="p-3 space-y-3">
+        <div className="rounded-xl bg-surface border border-border p-4 space-y-1">
+          <div className="text-xs text-fg-muted">December maintenance</div>
+          <div className="text-2xl font-semibold text-fg tabular-nums">₹2,000</div>
+          <Badge tone="warning" dot>Due 10 Dec</Badge>
+          <div className="mt-3 h-10 rounded-lg bg-brand text-on-brand text-[13px] font-semibold flex items-center justify-center">Pay ₹2,000 via UPI</div>
+        </div>
+        <div className="rounded-xl bg-surface border border-border p-3 space-y-2">
+          <div className="text-[12px] font-semibold text-fg">Paid already? Enter the UTR</div>
+          <div className="h-9 rounded-lg border border-border-strong" />
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="rounded-xl bg-surface border border-border p-3 text-xs font-medium text-fg">Raise a complaint</div>
+          <div className="rounded-xl bg-surface border border-border p-3 text-xs font-medium text-fg">Ask for an NOC</div>
+        </div>
+      </div>
+    </div>
+  </div>
+);
 
 export const HomePage: React.FC = () => {
   return (
-    <div className="bg-slate-950 text-slate-100 min-h-screen">
-      {/* Hero Section */}
-      <section className="relative overflow-hidden pt-12 pb-20 sm:pt-20 sm:pb-28 border-b border-slate-800/80">
-        <div className="absolute inset-0 bg-radial from-sky-900/20 via-slate-950/80 to-slate-950 pointer-events-none" />
-        
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          <div className="text-center max-w-3xl mx-auto space-y-6">
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-sky-500/10 border border-sky-500/30 text-sky-400 text-xs font-semibold">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Multi-Tenant Housing Society OS</span>
-            </div>
-
-            <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-white tracking-tight leading-tight">
-              Run Your Society from Your Phone.
-              <span className="block text-transparent bg-clip-text bg-gradient-to-r from-sky-400 via-sky-300 to-indigo-400">
-                Accounting Stays Automated in the Backend.
-              </span>
+    <div className="bg-canvas text-fg min-h-screen">
+      {/* Hero */}
+      <section className="border-b border-border bg-surface">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-14 sm:py-20 grid gap-12 lg:grid-cols-2 items-center">
+          <div className="space-y-6 text-center lg:text-left">
+            <Badge tone="brand">For housing societies in India</Badge>
+            <h1 className="text-[34px] sm:text-5xl lg:text-[56px] leading-[1.1] font-semibold tracking-tight text-fg">
+              Run your society without registers and WhatsApp chaos
             </h1>
-
-            <p className="text-sm sm:text-base text-slate-300 max-w-2xl mx-auto leading-relaxed">
-              Sahvaas is not a complex accounting software clone. It is an operations platform built 
-              for Secretaries, Chairmen, and Treasurers to manage approvals, payments, and notices on mobile — while financial ledgers, audit trails, and tax reconciliations maintain themselves.
+            <p className="text-base sm:text-lg text-fg-muted leading-relaxed max-w-xl mx-auto lg:mx-0">
+              Maintenance bills, UPI payments, receipts, notices and complaints in one place, for the committee and every flat.
+              The books keep themselves, ready for your CA.
             </p>
-
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-4">
-              <Link
-                href="/login"
-                className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs sm:text-sm shadow-lg shadow-sky-600/30 flex items-center justify-center gap-2 transition"
-              >
-                <span>Access Society Workspace</span>
-                <ArrowRight className="w-4 h-4" />
-              </Link>
-
-              <Link
-                href="/contact"
-                className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-800 font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 transition"
-              >
-                <span>Book a Guided Demo</span>
-              </Link>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center lg:justify-start">
+              <Link href="/signup" className={buttonClass('primary', 'lg')}>Start free <ArrowRight className="w-4 h-4" /></Link>
+              <Link href="/contact" className={buttonClass('secondary', 'lg')}>Book a demo</Link>
             </div>
+            <ul className="flex flex-wrap gap-x-6 gap-y-2 justify-center lg:justify-start text-sm text-fg-muted">
+              {['Free trial of everything', 'No app to install', 'Works on any phone'].map(t => (
+                <li key={t} className="flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4 text-success" aria-hidden="true" />{t}</li>
+              ))}
+            </ul>
+          </div>
+          <PhonePreview />
+        </div>
+      </section>
 
-            {/* Trust Badges */}
-            <div className="pt-8 flex flex-wrap items-center justify-center gap-6 text-xs text-slate-400">
-              <div className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                <span>Model Bye-laws Ready</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                <span>Zero Accounting Jargon</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                <span>Granular CA & Auditor Portal</span>
-              </div>
-            </div>
+      {/* Who it is for */}
+      <section className="py-16 sm:py-20">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="max-w-2xl mb-10">
+            <h2 className="text-3xl sm:text-[34px] font-semibold tracking-tight">One app, three kinds of people</h2>
+            <p className="mt-2 text-fg-muted">Everyone sees what is theirs, and nothing else.</p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-3">
+            {PERSONAS.map(p => (
+              <article key={p.title} className="flex flex-col p-6 rounded-xl bg-surface border border-border shadow-card">
+                <span className="w-11 h-11 rounded-full bg-brand-soft text-brand flex items-center justify-center"><p.Icon className="w-5 h-5" aria-hidden="true" /></span>
+                <h3 className="mt-4 text-lg font-semibold">{p.title}</h3>
+                <p className="mt-2 text-sm text-fg-muted leading-relaxed">{p.body}</p>
+                <ul className="mt-4 space-y-2 text-sm flex-1">
+                  {p.points.map(pt => (
+                    <li key={pt} className="flex items-start gap-2"><CheckCircle2 className="w-4 h-4 mt-0.5 text-success shrink-0" aria-hidden="true" />{pt}</li>
+                  ))}
+                </ul>
+                <Link href={p.href} className="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-brand hover:text-brand-hover">
+                  {p.link} <ArrowRight className="w-4 h-4" />
+                </Link>
+              </article>
+            ))}
           </div>
         </div>
       </section>
 
-      {/* The 3 Core Experiences Section */}
-      <section className="py-16 sm:py-24 border-b border-slate-800/80 bg-slate-900/40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-2xl mx-auto mb-12">
-            <span className="text-xs font-bold uppercase tracking-wider text-sky-400">
-              Unified Platform
-            </span>
-            <h2 className="text-2xl sm:text-3xl font-extrabold text-white mt-1">
-              Purpose-Built Portals for Every Stakeholder
-            </h2>
-            <p className="text-xs sm:text-sm text-slate-400 mt-2">
-              No confused roles. A secretary manages operations, a CA audits financial ledgers, and a resident pays dues seamlessly.
+      {/* How it works */}
+      <section className="py-16 sm:py-20 bg-surface border-y border-border">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <h2 className="text-3xl sm:text-[34px] font-semibold tracking-tight">Start in one sitting</h2>
+          <p className="mt-2 text-fg-muted">You can issue your first bills the same day you sign up.</p>
+          <ol className="mt-10 grid gap-6 md:grid-cols-3">
+            {STEPS.map(s => (
+              <li key={s.n} className="space-y-2">
+                <span className="w-9 h-9 rounded-full bg-brand text-on-brand font-semibold flex items-center justify-center">{s.n}</span>
+                <h3 className="text-lg font-semibold">{s.title}</h3>
+                <p className="text-sm text-fg-muted leading-relaxed">{s.body}</p>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
+
+      {/* Trust */}
+      <section className="py-16 sm:py-20">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 grid gap-10 lg:grid-cols-2 items-center">
+          <div className="space-y-4">
+            <h2 className="text-3xl sm:text-[34px] font-semibold tracking-tight">Your society’s money, kept safe and in order</h2>
+            <p className="text-fg-muted leading-relaxed">
+              Every society’s data is locked apart from every other. Residents see only their own flat. Your CA sees only what the committee allows,
+              and every approval and change is recorded with a name and a date.
             </p>
+            <Link href="/security" className={buttonClass('secondary', 'md')}>How we keep data safe <ArrowRight className="w-4 h-4" /></Link>
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Society Mobile PWA */}
-            <div className="p-6 sm:p-8 rounded-2xl bg-slate-900 border border-slate-800 space-y-4 hover:border-sky-500/40 transition">
-              <div className="w-12 h-12 rounded-xl bg-sky-500/10 text-sky-400 flex items-center justify-center">
-                <Smartphone className="w-6 h-6" />
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { Icon: Lock, t: 'Kept apart', d: 'One society can never see another’s data.' },
+              { Icon: ShieldCheck, t: 'You decide access', d: 'The CA gets only the modules you tick.' },
+              { Icon: ClipboardList, t: 'Every change recorded', d: 'Approvals and edits carry a name and date.' },
+              { Icon: FileCheck2, t: 'Real accounting', d: 'Double-entry books, not guesses.' },
+            ].map(({ Icon, t, d }) => (
+              <div key={t} className="p-4 rounded-xl bg-surface border border-border shadow-card space-y-1.5">
+                <Icon className="w-5 h-5 text-brand" aria-hidden="true" />
+                <div className="font-semibold">{t}</div>
+                <div className="text-sm text-fg-muted">{d}</div>
               </div>
-              <h3 className="text-lg font-bold text-white">Society Committee PWA</h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Secretary, Chairman, and Treasurer run daily operations on mobile. Approve vendor invoices, generate maintenance bills, post circulars, and reconcile payments.
-              </p>
-              <ul className="text-xs text-slate-300 space-y-2 pt-2 border-t border-slate-800">
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                  <span>Two-step expense approvals</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                  <span>Official UPI QR collection tracking</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                  <span>Flats & member occupancy registry</span>
-                </li>
-              </ul>
-              <Link href="/societies" className="inline-flex items-center gap-1.5 text-xs text-sky-400 font-semibold pt-2 hover:underline">
-                Explore Society PWA <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
-            </div>
-
-            {/* CA & Auditor Portal */}
-            <div className="p-6 sm:p-8 rounded-2xl bg-slate-900 border border-slate-800 space-y-4 hover:border-amber-500/40 transition">
-              <div className="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center">
-                <Briefcase className="w-6 h-6" />
-              </div>
-              <h3 className="text-lg font-bold text-white">Professional Web Portal</h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                For Statutory Auditors, CAs, and Tax Consultants. Audit society double-entry ledgers and reconcile GSTR-2B offline without compromising resident privacy.
-              </p>
-              <ul className="text-xs text-slate-300 space-y-2 pt-2 border-t border-slate-800">
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                  <span>GSTR-2B Excel/JSON reconciliation</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                  <span>Automated double-entry journals & ledger</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                  <span>Granular scope (personal data blocked)</span>
-                </li>
-              </ul>
-              <Link href="/accountants" className="inline-flex items-center gap-1.5 text-xs text-amber-400 font-semibold pt-2 hover:underline">
-                Explore CA Portal <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
-            </div>
-
-            {/* Resident Mobile App */}
-            <div className="p-6 sm:p-8 rounded-2xl bg-slate-900 border border-slate-800 space-y-4 hover:border-emerald-500/40 transition">
-              <div className="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
-                <Building2 className="w-6 h-6" />
-              </div>
-              <h3 className="text-lg font-bold text-white">Resident Self-Service</h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Owners and tenants receive automated maintenance bills, pay directly via UPI, download official payment receipts, and raise maintenance tickets.
-              </p>
-              <ul className="text-xs text-slate-300 space-y-2 pt-2 border-t border-slate-800">
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span>Flat bill & outstanding balance</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span>Instant receipt download</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span>Helpdesk complaints & notice board</span>
-                </li>
-              </ul>
-              <Link href="/features" className="inline-flex items-center gap-1.5 text-xs text-emerald-400 font-semibold pt-2 hover:underline">
-                View Resident Features <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
-            </div>
+            ))}
           </div>
         </div>
       </section>
 
-      {/* Security & Multi-Tenancy Guarantee */}
-      <section className="py-16 sm:py-24 border-b border-slate-800/80">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 rounded-3xl p-8 sm:p-12">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
-              <div className="space-y-4">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-semibold">
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  <span>Security & Multi-Tenant Isolation</span>
-                </div>
-                <h2 className="text-2xl sm:text-3xl font-extrabold text-white">
-                  Cross-Society Data Contamination is Impossible
-                </h2>
-                <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-                  Every single query is protected by PostgreSQL Row Level Security (RLS). Society A can never access Society B. 
-                  Residents cannot view another flat&apos;s records. CAs can only review modules explicitly approved by society committees.
-                </p>
-                <div className="pt-2">
-                  <Link
-                    href="/security"
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold border border-slate-700 transition"
-                  >
-                    Read Security Whitepaper <ArrowRight className="w-3.5 h-3.5" />
-                  </Link>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
-                  <div className="font-bold text-white text-sm">Supabase RLS</div>
-                  <div className="text-slate-400">Database-enforced policies on all tables.</div>
-                </div>
-                <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
-                  <div className="font-bold text-white text-sm">No GST Passwords</div>
-                  <div className="text-slate-400">Zero scraping; clean GSTR-2B offline file matching.</div>
-                </div>
-                <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
-                  <div className="font-bold text-white text-sm">Audit Trails</div>
-                  <div className="text-slate-400">Immutable logging of approvals and edits.</div>
-                </div>
-                <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
-                  <div className="font-bold text-white text-sm">Deterministic</div>
-                  <div className="text-slate-400">Double-entry financials strictly non-AI generated.</div>
-                </div>
-              </div>
+      {/* Pricing teaser */}
+      <section className="pb-16 sm:pb-20">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="rounded-xl bg-surface border border-border shadow-card p-6 sm:p-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div>
+              <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight">Free to start. From ₹10 per flat a month.</h2>
+              <p className="mt-2 text-fg-muted">A free plan for every society, Basic without ads, Pro with GST and Tally tools. Pay yearly and get two months free.</p>
             </div>
+            <Link href="/pricing" className={buttonClass('primary', 'lg', 'shrink-0')}>See pricing</Link>
           </div>
         </div>
       </section>
 
-      {/* Call to Action Banner */}
+      {/* FAQ */}
+      <section className="py-16 sm:py-20 bg-surface border-y border-border">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6">
+          <h2 className="text-3xl sm:text-[34px] font-semibold tracking-tight">Questions secretaries ask</h2>
+          <div className="mt-8 divide-y divide-border border-y border-border">
+            {FAQ.map(f => (
+              <details key={f.q} className="group py-4">
+                <summary className="flex items-center justify-between gap-4 cursor-pointer list-none font-semibold text-fg">
+                  {f.q}
+                  <span aria-hidden="true" className="text-fg-subtle transition group-open:rotate-45 text-xl leading-none">+</span>
+                </summary>
+                <p className="mt-2 text-fg-muted leading-relaxed">{f.a}</p>
+              </details>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Final call */}
       <section className="py-16 sm:py-20 text-center">
-        <div className="max-w-4xl mx-auto px-4 space-y-6">
-          <h2 className="text-2xl sm:text-4xl font-extrabold text-white">
-            Ready to Modernize Your Housing Society?
-          </h2>
-          <p className="text-xs sm:text-sm text-slate-400 max-w-xl mx-auto">
-            Get started in under 15 minutes. Import member flats, set maintenance rules, and give your committee peace of mind.
-          </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
-            <Link
-              href="/contact"
-              className="px-6 py-3 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs sm:text-sm shadow-md"
-            >
-              Request a Consultation
-            </Link>
-            <Link
-              href="/pricing"
-              className="px-6 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 font-semibold text-xs sm:text-sm"
-            >
-              View Pricing Tiers
-            </Link>
+        <div className="max-w-2xl mx-auto px-4 space-y-5">
+          <h2 className="text-3xl sm:text-4xl font-semibold tracking-tight">Ready when your committee is</h2>
+          <p className="text-fg-muted">Sign up, add your flats and share one link. We can also walk your committee through it.</p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Link href="/signup" className={buttonClass('primary', 'lg')}>Start free</Link>
+            <Link href="/contact" className={buttonClass('secondary', 'lg')}>Talk to us</Link>
           </div>
         </div>
       </section>

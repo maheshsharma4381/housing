@@ -26,9 +26,9 @@ const ROLES = [
   { value: 'treasurer', label: 'Treasurer' }, { value: 'society_admin', label: 'Manager' },
 ];
 
-const input = 'w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-white outline-none focus:border-sky-500';
-const primary = 'px-4 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2';
-const secondary = 'px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold cursor-pointer';
+const input = 'w-full bg-surface border border-border-strong rounded-lg px-3 py-2.5 text-fg outline-none focus:border-brand';
+const primary = 'px-4 py-2.5 rounded-lg bg-brand hover:bg-brand-hover text-on-brand font-semibold cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2';
+const secondary = 'px-4 py-2.5 rounded-lg bg-surface-muted hover:bg-border text-fg font-semibold cursor-pointer';
 const fmt = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
 /** `startNew`: register another society even though this login already runs one. */
@@ -82,7 +82,7 @@ export const SetupWizard: React.FC<{ startNew?: boolean }> = ({ startNew = false
     <div className="space-y-5 text-xs">
       <ol className="flex flex-wrap gap-1.5">
         {STEPS.map((s, i) => (
-          <li key={s.id} className={`px-2.5 py-1 rounded-full font-semibold ${i === current ? 'bg-sky-600 text-white' : i < current ? 'bg-emerald-500/15 text-emerald-300' : 'bg-slate-800 text-slate-400'}`}>
+          <li key={s.id} className={`px-2.5 py-1 rounded-full font-semibold ${i === current ? 'bg-brand text-on-brand' : i < current ? 'bg-success-soft text-success' : 'bg-surface-muted text-fg-muted'}`}>
             {i + 2}. {s.label}
           </li>
         ))}
@@ -90,11 +90,11 @@ export const SetupWizard: React.FC<{ startNew?: boolean }> = ({ startNew = false
       <Banner tone="error">{error}</Banner>
       {back && (
         <button onClick={() => { setError(null); setStep(back); }} disabled={busy}
-          className="flex items-center gap-1 text-slate-400 hover:text-white cursor-pointer disabled:opacity-50">
+          className="flex items-center gap-1 text-fg-muted hover:text-fg cursor-pointer disabled:opacity-50">
           <ArrowLeft className="w-3.5 h-3.5" /> Back
         </button>
       )}
-      <div className="p-5 sm:p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-4">
+      <div className="p-5 sm:p-6 rounded-2xl bg-surface border border-border space-y-4">
         {step === 'society' && !societyId && (
           <SocietyStep busy={busy} onCreate={(f) => run(async () => {
             const { data, error: err } = await supabase!.rpc('create_society', {
@@ -173,31 +173,31 @@ const SocietyStep: React.FC<{ busy: boolean; onCreate: (f: { name: string; pinco
   };
   return (
     <form onSubmit={(e) => { e.preventDefault(); onCreate(f); }} className="space-y-4">
-      <h2 className="text-base font-bold text-white">Your society</h2>
-      <label className="block space-y-1"><span className="text-slate-400">Society name</span>
+      <h2 className="text-base font-semibold text-fg">Your society</h2>
+      <label className="block space-y-1"><span className="text-fg-muted">Society name</span>
         <input className={input} value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="Palm Heights CHS" required /></label>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <label className="block space-y-1"><span className="text-slate-400">Pincode</span>
+        <label className="block space-y-1"><span className="text-fg-muted">Pincode</span>
           <input className={input} inputMode="numeric" maxLength={6} value={f.pincode} required
             onChange={e => { const pin = e.target.value.replace(/\D/g, ''); setF({ ...f, pincode: pin }); if (pin.length === 6) lookup(pin); }} /></label>
-        <label className="block space-y-1"><span className="text-slate-400">City {looking && <Loader2 className="inline w-3 h-3 animate-spin" />}</span>
+        <label className="block space-y-1"><span className="text-fg-muted">City {looking && <Loader2 className="inline w-3 h-3 animate-spin" />}</span>
           <input className={input} value={f.city} onChange={e => setF({ ...f, city: e.target.value })} required /></label>
-        <label className="block space-y-1"><span className="text-slate-400">State</span>
+        <label className="block space-y-1"><span className="text-fg-muted">State</span>
           <select className={input} value={f.state} onChange={e => setF({ ...f, state: e.target.value })} required>
             <option value="">Choose…</option>
             {INDIAN_STATES.map(s => <option key={s.code} value={s.name}>{s.name}</option>)}
           </select></label>
       </div>
       <div className="space-y-1.5">
-        <span className="text-slate-400">Your role</span>
+        <span className="text-fg-muted">Your role</span>
         <div className="flex flex-wrap gap-2">
           {ROLES.map(r => (
             <button type="button" key={r.value} onClick={() => setF({ ...f, role: r.value })}
-              className={`px-3 py-1.5 rounded-full border cursor-pointer ${f.role === r.value ? 'bg-sky-600 border-sky-500 text-white' : 'border-slate-700 text-slate-300'}`}>{r.label}</button>
+              className={`px-3 py-1.5 rounded-full border cursor-pointer ${f.role === r.value ? 'bg-brand border-brand text-on-brand' : 'border-border-strong text-fg'}`}>{r.label}</button>
           ))}
         </div>
       </div>
-      <p className="text-slate-500">Address, registration number and contact details can be added later in Society settings → Society profile.</p>
+      <p className="text-fg-subtle">Address, registration number and contact details can be added later in Society settings → Society profile.</p>
       <button type="submit" disabled={busy} className={`${primary} w-full`}>{busy && <Loader2 className="w-4 h-4 animate-spin" />} Continue</button>
     </form>
   );
@@ -217,39 +217,39 @@ const FlatsStep: React.FC<{ busy: boolean; existing: number; onCreate: (rows: un
   };
   return (
     <div className="space-y-4">
-      <h2 className="text-base font-bold text-white">Flats</h2>
+      <h2 className="text-base font-semibold text-fg">Flats</h2>
       {!canGenerateFlats(existing) ? (<>
-        <div className="p-3 rounded-xl bg-emerald-500/10 text-emerald-300">{existing} flats are already added.</div>
+        <div className="p-3 rounded-xl bg-success-soft text-success">{existing} flats are already added.</div>
         <button onClick={onContinue} disabled={busy} className={`${primary} w-full`}>{busy && <Loader2 className="w-4 h-4 animate-spin" />} Continue</button>
-        <p className="text-slate-500">To add, rename or remove flats, use Flats &amp; residents (<a href="/society?tab=flats" className="text-sky-400 hover:underline">open</a>), then come back here.</p>
+        <p className="text-fg-subtle">To add, rename or remove flats, use Flats &amp; residents (<a href="/society?tab=flats" className="text-brand hover:underline">open</a>), then come back here.</p>
       </>) : (<>
       <div className="space-y-1.5">
-        <span className="text-slate-400">Wings</span>
+        <span className="text-fg-muted">Wings</span>
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={() => setWings(noWings ? ['A'] : [''])}
-            className={`px-3 py-1.5 rounded-full border cursor-pointer ${noWings ? 'bg-sky-600 border-sky-500 text-white' : 'border-slate-700 text-slate-300'}`}>
+            className={`px-3 py-1.5 rounded-full border cursor-pointer ${noWings ? 'bg-brand border-brand text-on-brand' : 'border-border-strong text-fg'}`}>
             No wings (101, 102…)
           </button>
           {!noWings && wings.map(w => (
-            <span key={w} className="px-3 py-1.5 rounded-full bg-slate-800 text-white flex items-center gap-1.5">
+            <span key={w} className="px-3 py-1.5 rounded-full bg-surface-muted text-fg flex items-center gap-1.5">
               {w}{wings.length > 1 && <button onClick={() => setWings(wings.filter(x => x !== w))} aria-label={`Remove wing ${w}`} className="cursor-pointer"><X className="w-3 h-3" /></button>}
             </span>
           ))}
-          <input className="w-20 bg-slate-950 border border-slate-700 rounded-xl px-2 py-1.5 text-white" value={newWing} onChange={e => setNewWing(e.target.value)} placeholder="B" />
-          <button onClick={addWing} className="flex items-center gap-1 text-sky-400 cursor-pointer"><Plus className="w-3.5 h-3.5" /> Add wing</button>
+          <input className="w-20 bg-surface border border-border-strong rounded-lg px-2 py-1.5 text-fg" value={newWing} onChange={e => setNewWing(e.target.value)} placeholder="B" />
+          <button onClick={addWing} className="flex items-center gap-1 text-brand cursor-pointer"><Plus className="w-3.5 h-3.5" /> Add wing</button>
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <label className="block space-y-1"><span className="text-slate-400">Number of floors</span>
+        <label className="block space-y-1"><span className="text-fg-muted">Number of floors</span>
           <input className={input} type="number" min={1} value={floors} onChange={e => setFloors(Number(e.target.value))} /></label>
-        <label className="block space-y-1"><span className="text-slate-400">Flats per floor</span>
+        <label className="block space-y-1"><span className="text-fg-muted">Flats per floor</span>
           <input className={input} type="number" min={1} value={perFloor} onChange={e => setPerFloor(Number(e.target.value))} /></label>
       </div>
-      {plan.error ? <Banner tone="error">{plan.error}</Banner> : <p className="text-white font-semibold">{plan.preview}</p>}
+      {plan.error ? <Banner tone="error">{plan.error}</Banner> : <p className="text-fg font-semibold">{plan.preview}</p>}
       <button disabled={busy || !!plan.error} onClick={() => onCreate(plan.rows)} className={`${primary} w-full`}>
         {busy && <Loader2 className="w-4 h-4 animate-spin" />} Create {plan.rows.length} flats
       </button>
-      <p className="text-slate-500">Or upload from Excel in Flats &amp; residents (<a href="/society?tab=flats" className="text-sky-400 hover:underline">open</a>), then come back here. You can edit any flat afterwards.</p>
+      <p className="text-fg-subtle">Or upload from Excel in Flats &amp; residents (<a href="/society?tab=flats" className="text-brand hover:underline">open</a>), then come back here. You can edit any flat afterwards.</p>
       </>)}
     </div>
   );
@@ -286,45 +286,45 @@ const MaintenanceStep: React.FC<{ busy: boolean; societyId: string; saved: boole
 
   return (
     <div className="space-y-4">
-      <h2 className="text-base font-bold text-white">Maintenance</h2>
+      <h2 className="text-base font-semibold text-fg">Maintenance</h2>
       <div className="flex gap-2">
         {(['flat', 'sqft'] as const).map(m => (
-          <button key={m} onClick={() => setMode(m)} className={`px-3 py-1.5 rounded-full border cursor-pointer ${mode === m ? 'bg-sky-600 border-sky-500 text-white' : 'border-slate-700 text-slate-300'}`}>
+          <button key={m} onClick={() => setMode(m)} className={`px-3 py-1.5 rounded-full border cursor-pointer ${mode === m ? 'bg-brand border-brand text-on-brand' : 'border-border-strong text-fg'}`}>
             {m === 'flat' ? 'Same for all' : 'Per sq.ft'}
           </button>
         ))}
       </div>
-      <label className="block space-y-1"><span className="text-slate-400">{mode === 'flat' ? '₹ per flat per month' : '₹ per sq.ft per month'}</span>
+      <label className="block space-y-1"><span className="text-fg-muted">{mode === 'flat' ? '₹ per flat per month' : '₹ per sq.ft per month'}</span>
         <input className={input} type="number" min={0} step="0.01" value={rate} onChange={e => setRate(e.target.value)} /></label>
       {mode === 'sqft' && positions.length > 0 && (
         <div className="space-y-1.5">
-          <span className="text-slate-400">Area of each flat position (sq.ft) — you can change single flats later</span>
+          <span className="text-fg-muted">Area of each flat position (sq.ft) — you can change single flats later</span>
           <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
             {positions.map(p => (
-              <label key={p} className="space-y-1"><span className="text-slate-500">All …{p} flats</span>
+              <label key={p} className="space-y-1"><span className="text-fg-subtle">All …{p} flats</span>
                 <input className={input} type="number" min={0} value={areas[p] ?? ''} onChange={e => setAreas({ ...areas, [p]: e.target.value })} /></label>
             ))}
           </div>
-          {missing.length > 0 && <p className="text-amber-300">Enter the area for …{missing.join(', …')} — those flats would not be billed.</p>}
+          {missing.length > 0 && <p className="text-warning">Enter the area for …{missing.join(', …')} — those flats would not be billed.</p>}
         </div>
       )}
       <div className="space-y-2">
-        <span className="text-slate-400">Extra charges (₹ per flat per month)</span>
+        <span className="text-fg-muted">Extra charges (₹ per flat per month)</span>
         {EXTRAS.map(x => (
           <label key={x.key} className="flex items-center gap-2">
             <input type="checkbox" checked={x.key in extras} onChange={e => setExtras(v => { const n = { ...v }; if (e.target.checked) n[x.key] = ''; else delete n[x.key]; return n; })} />
-            <span className="text-slate-300 flex-1">{x.label}</span>
-            {x.key in extras && <input className="w-28 bg-slate-950 border border-slate-700 rounded-xl px-2 py-1.5 text-white" type="number" min={0} value={extras[x.key]} onChange={e => setExtras({ ...extras, [x.key]: e.target.value })} />}
+            <span className="text-fg flex-1">{x.label}</span>
+            {x.key in extras && <input className="w-28 bg-surface border border-border-strong rounded-lg px-2 py-1.5 text-fg" type="number" min={0} value={extras[x.key]} onChange={e => setExtras({ ...extras, [x.key]: e.target.value })} />}
           </label>
         ))}
       </div>
-      <label className="block space-y-1"><span className="text-slate-400">Due day of the month</span>
+      <label className="block space-y-1"><span className="text-fg-muted">Due day of the month</span>
         <input className={input} type="number" min={1} max={28} value={dueDay} onChange={e => setDueDay(Number(e.target.value))} /></label>
-      <p className="text-slate-300 flex flex-wrap items-center gap-1.5">
-        Remind <input className="w-14 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-white" type="number" min={1} value={first} onChange={e => setFirst(Number(e.target.value))} />
-        days after the due date, then every <input className="w-14 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-white" type="number" min={1} value={every} onChange={e => setEvery(Number(e.target.value))} /> days
+      <p className="text-fg flex flex-wrap items-center gap-1.5">
+        Remind <input className="w-14 bg-surface border border-border-strong rounded-lg px-2 py-1 text-fg" type="number" min={1} value={first} onChange={e => setFirst(Number(e.target.value))} />
+        days after the due date, then every <input className="w-14 bg-surface border border-border-strong rounded-lg px-2 py-1 text-fg" type="number" min={1} value={every} onChange={e => setEvery(Number(e.target.value))} /> days
       </p>
-      {saved && <p className="text-slate-400">Your charges are saved. Enter them again only to change them.</p>}
+      {saved && <p className="text-fg-muted">Your charges are saved. Enter them again only to change them.</p>}
       <div className="flex gap-2">
         <button disabled={busy || !(Number(rate) > 0) || (mode === 'sqft' && missing.length > 0)} onClick={save} className={`${primary} flex-1`}>{busy && <Loader2 className="w-4 h-4 animate-spin" />} {saved ? 'Save and continue' : 'Continue'}</button>
         {saved && <button disabled={busy} onClick={onKeep} className={secondary}>Keep saved charges</button>}
@@ -347,14 +347,14 @@ const UpiStep: React.FC<{ busy: boolean; societyId: string; societyName: string;
   const valid = isValidUpiId(upi);
   return (
     <div className="space-y-4">
-      <h2 className="text-base font-bold text-white">UPI</h2>
-      <label className="block space-y-1"><span className="text-slate-400">Society UPI ID</span>
+      <h2 className="text-base font-semibold text-fg">UPI</h2>
+      <label className="block space-y-1"><span className="text-fg-muted">Society UPI ID</span>
         <input className={input} value={upi} onChange={e => setUpi(e.target.value)} placeholder="palmheights@okaxis" /></label>
-      {upi.trim() && !valid && <p className="text-amber-300">A UPI ID looks like name@bank (palmheights@icici), not an email address.</p>}
-      <label className="block space-y-1"><span className="text-slate-400">Payee name</span>
+      {upi.trim() && !valid && <p className="text-warning">A UPI ID looks like name@bank (palmheights@icici), not an email address.</p>}
+      <label className="block space-y-1"><span className="text-fg-muted">Payee name</span>
         <input className={input} value={payee} onChange={e => setPayee(e.target.value)} /></label>
       {valid && (
-        <div className="palette-native flex items-center gap-4 p-3 rounded-xl bg-white text-slate-900">
+        <div className="palette-native flex items-center gap-4 p-3 rounded-xl bg-surface text-fg">
           <QRCodeSVG value={`upi://pay?${new URLSearchParams({ pa: upi.trim(), pn: payee, cu: 'INR' }).toString()}`} size={96} />
           <span>Residents scan this QR, with the exact amount of their bill filled in.</span>
         </div>
@@ -406,27 +406,27 @@ const OwnersStep: React.FC<{ societyId: string; onNext: (skipped: boolean) => vo
 
   return (
     <div className="space-y-4">
-      <h2 className="text-base font-bold text-white">Owners</h2>
-      <p className="text-slate-400">Owners whose mobile you enter join their flat straight away from your joining link.</p>
+      <h2 className="text-base font-semibold text-fg">Owners</h2>
+      <p className="text-fg-muted">Owners whose mobile you enter join their flat straight away from your joining link.</p>
       <Banner tone="error">{error}</Banner>
       <Banner tone="success">{notice}</Banner>
-      <div className="max-h-80 overflow-y-auto rounded-xl border border-slate-800 divide-y divide-slate-800">
+      <div className="max-h-80 overflow-y-auto rounded-xl border border-border divide-y divide-border">
         {units.map(f => (
           <div key={f.id} className="p-2 grid grid-cols-[4rem_1fr_1fr] gap-2 items-center">
-            <span className="font-semibold text-white">{f.unit_number}</span>
-            <input className="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-white" placeholder="Owner name" value={rows[f.id]?.name ?? ''}
+            <span className="font-semibold text-fg">{f.unit_number}</span>
+            <input className="bg-surface border border-border-strong rounded-lg px-2 py-1.5 text-fg" placeholder="Owner name" value={rows[f.id]?.name ?? ''}
               onChange={e => setRows({ ...rows, [f.id]: { ...rows[f.id], name: e.target.value } })} />
-            <input className="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-white" inputMode="tel" placeholder="Mobile" value={rows[f.id]?.mobile ?? ''}
+            <input className="bg-surface border border-border-strong rounded-lg px-2 py-1.5 text-fg" inputMode="tel" placeholder="Mobile" value={rows[f.id]?.mobile ?? ''}
               onChange={e => setRows({ ...rows, [f.id]: { ...rows[f.id], mobile: e.target.value } })} />
           </div>
         ))}
       </div>
       <button onClick={saveTable} disabled={busy} className={`${secondary} w-full flex items-center justify-center gap-2`}>{busy && <Loader2 className="w-4 h-4 animate-spin" />} Save owners</button>
-      <details className="text-slate-300">
-        <summary className="cursor-pointer text-sky-400">Or paste from Excel</summary>
+      <details className="text-fg">
+        <summary className="cursor-pointer text-brand">Or paste from Excel</summary>
         <div className="pt-2"><OwnerPaste societyId={societyId} units={units} onDone={load} /></div>
       </details>
-      <p className="text-slate-300">{entered} of {units.length} flats have an owner mobile.</p>
+      <p className="text-fg">{entered} of {units.length} flats have an owner mobile.</p>
       <div className="flex gap-2">
         <button onClick={() => onNext(false)} disabled={entered === 0} className={`${primary} flex-1`}>Continue</button>
         <button onClick={() => onNext(true)} className={secondary}>Skip — fill later</button>
@@ -471,28 +471,28 @@ const DoneStep: React.FC<{ societyId: string; societyName: string; billsAlready:
 
   return (
     <div className="space-y-4">
-      <h2 className="text-base font-bold text-white flex items-center gap-2"><CheckCircle2 className="w-5 h-5 text-emerald-400" /> Your society is ready</h2>
+      <h2 className="text-base font-semibold text-fg flex items-center gap-2"><CheckCircle2 className="w-5 h-5 text-success" /> Your society is ready</h2>
       <Banner tone="error">{error}</Banner>
       {!sent && preview && period && (
-        <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
-          <p className="text-white">This month: <strong>{preview.bills} bills</strong>, total <strong>{formatINR(Number(preview.total_amount))}</strong>, due <strong>{fmt(period.due)}</strong>.</p>
+        <div className="p-4 rounded-xl bg-canvas border border-border space-y-3">
+          <p className="text-fg">This month: <strong>{preview.bills} bills</strong>, total <strong>{formatINR(Number(preview.total_amount))}</strong>, due <strong>{fmt(period.due)}</strong>.</p>
           {preview.skipped_units.length > 0 && (
-            <p className="text-amber-300">
+            <p className="text-warning">
               {preview.skipped_units.length} flats not billed: {preview.skipped_units.slice(0, 8).map(s => s.unit_number).join(', ')}
               {preview.skipped_units.length > 8 ? '…' : ''} ({preview.skipped_units[0].reason}).
             </p>
           )}
           <button onClick={send} disabled={busy || preview.bills === 0} className={`${primary} w-full`}>{busy && <Loader2 className="w-4 h-4 animate-spin" />} Send bills</button>
-          <p className="text-slate-500">Owners see their bills as soon as they join through your link.</p>
+          <p className="text-fg-subtle">Owners see their bills as soon as they join through your link.</p>
         </div>
       )}
-      {sent && <p className="text-emerald-300">Bills are issued. Now share the joining link in your society&apos;s WhatsApp group.</p>}
+      {sent && <p className="text-success">Bills are issued. Now share the joining link in your society&apos;s WhatsApp group.</p>}
       <JoinLinkCard societyId={societyId} societyName={societyName} canChange />
       <div className="grid sm:grid-cols-2 gap-2">
         <a href="/society?tab=professionals" className={secondary + ' text-center'}>Invite your CA (opening balances and ledgers)</a>
         <a href="/society?tab=members" className={secondary + ' text-center'}>Add your treasurer or chairman</a>
       </div>
-      <button onClick={onDashboard} className="w-full text-slate-400 hover:text-white cursor-pointer">Not now, go to dashboard</button>
+      <button onClick={onDashboard} className="w-full text-fg-muted hover:text-fg cursor-pointer">Not now, go to dashboard</button>
     </div>
   );
 };

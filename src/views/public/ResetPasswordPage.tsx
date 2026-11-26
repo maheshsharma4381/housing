@@ -4,6 +4,8 @@ import React, { useState } from 'react';
 import { useRouter, Link } from '../../router/RouterContext';
 import { useAuth } from '../../context/AuthContext';
 import { Lock, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Logo } from '../../components/ui/Logo';
+import { AuthLayout } from '../../components/ui/AuthLayout';
 
 export const ResetPasswordPage: React.FC = () => {
   const { resetPassword, authError, clearAuthError } = useAuth();
@@ -43,65 +45,63 @@ export const ResetPasswordPage: React.FC = () => {
   };
 
   return (
-    <div className="bg-slate-950 min-h-screen flex items-center justify-center p-4">
+    <AuthLayout>
+    <div className="min-h-screen lg:min-h-0 flex items-center justify-center p-4 py-12">
       <div className="w-full max-w-md space-y-6">
         <div className="text-center space-y-2">
           <Link href="/" className="inline-flex items-center gap-2">
-            <div className="w-9 h-9 rounded-2xl bg-gradient-to-br from-sky-500 to-sky-700 flex items-center justify-center text-white font-bold text-base">
-              S
-            </div>
-            <span className="font-bold text-xl text-white">Sahvaas</span>
+            <Logo size={32} />
           </Link>
-          <h1 className="text-xl font-bold text-white mt-2">Set New Password</h1>
-          <p className="text-xs text-slate-400">
+          <h1 className="text-xl font-semibold text-fg mt-2">Set a new password</h1>
+          <p className="text-xs text-fg-muted">
             Create a secure new password for your society account.
           </p>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl text-xs space-y-5">
+        <div className="bg-surface border border-border rounded-2xl p-6 sm:p-8 shadow-card text-xs space-y-5">
           {(authError || validationError) && (
-            <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+            <div className="p-3.5 rounded-xl bg-danger-soft border border-danger/30 text-danger text-xs flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-danger shrink-0 mt-0.5" />
               <span>{validationError || authError}</span>
             </div>
           )}
 
           {success ? (
-            <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 space-y-2 text-center">
-              <CheckCircle2 className="w-6 h-6 text-emerald-400 mx-auto" />
-              <div className="font-bold text-white text-sm">Password Updated!</div>
-              <p className="text-slate-300 text-xs">
+            <div className="p-4 rounded-xl bg-success-soft border border-success/30 text-success space-y-2 text-center">
+              <CheckCircle2 className="w-6 h-6 text-success mx-auto" />
+              <div className="font-semibold text-fg text-sm">Password Updated!</div>
+              <p className="text-fg text-xs">
                 Your password has been changed. Redirecting you to sign in...
               </p>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-slate-400 mb-1.5 font-medium">New Password</label>
+                <label className="block text-fg-muted mb-1.5 font-medium">New Password</label>
                 <div className="relative">
-                  <Lock className="w-4 h-4 absolute left-3 top-2.5 text-slate-500" />
+                  <Lock className="w-4 h-4 absolute left-3 top-2.5 text-fg-subtle" />
                   <input
                     type="password"
                     required
                     placeholder="Min 8 characters"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 focus:border-sky-500 rounded-xl pl-9 pr-3 py-2.5 text-white outline-none transition"
+                    className="w-full bg-surface border border-border-strong focus:border-brand rounded-lg pl-9 pr-3 py-2.5 text-fg outline-none transition"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-slate-400 mb-1.5 font-medium">Confirm New Password</label>
+                <label className="block text-fg-muted mb-1.5 font-medium">Confirm New Password</label>
                 <div className="relative">
-                  <Lock className="w-4 h-4 absolute left-3 top-2.5 text-slate-500" />
+                  <Lock className="w-4 h-4 absolute left-3 top-2.5 text-fg-subtle" />
                   <input
                     type="password"
                     required
                     placeholder="Re-enter password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 focus:border-sky-500 rounded-xl pl-9 pr-3 py-2.5 text-white outline-none transition"
+                    className="w-full bg-surface border border-border-strong focus:border-brand rounded-lg pl-9 pr-3 py-2.5 text-fg outline-none transition"
                   />
                 </div>
               </div>
@@ -109,7 +109,7 @@ export const ResetPasswordPage: React.FC = () => {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-sky-600/30 transition cursor-pointer disabled:opacity-50"
+                className="w-full py-3 rounded-xl bg-brand hover:bg-brand-hover text-on-brand font-semibold text-xs flex items-center justify-center gap-2 shadow-card transition cursor-pointer disabled:opacity-50"
               >
                 {loading ? (
                   <>
@@ -125,5 +125,6 @@ export const ResetPasswordPage: React.FC = () => {
         </div>
       </div>
     </div>
+    </AuthLayout>
   );
 };

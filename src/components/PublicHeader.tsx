@@ -5,6 +5,7 @@ import { useRouter, Link } from '../router/RouterContext';
 import { useAuth } from '../context/AuthContext';
 import { contactText } from '../lib/mobile';
 import { PWAInstallButton } from './PWAInstallButton';
+import { Logo } from './ui/Logo';
 import {
   Menu,
   X,
@@ -21,28 +22,20 @@ export const PublicHeader: React.FC = () => {
   const navLinks = [
     { label: 'Home', href: '/' },
     { label: 'Features', href: '/features' },
-    { label: 'For Societies', href: '/societies' },
-    { label: 'For Accountants & CAs', href: '/accountants' },
+    { label: 'For societies', href: '/societies' },
+    { label: 'For CAs', href: '/accountants' },
     { label: 'Security', href: '/security' },
     { label: 'Pricing', href: '/pricing' },
     { label: 'Contact', href: '/contact' },
   ];
 
   return (
-    <header className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 text-slate-100">
+    <header className="sticky top-0 z-40 bg-surface/95 backdrop-blur-md border-b border-border text-fg">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo & Brand */}
-          <Link href="/" className="flex items-center gap-3 group">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-500 to-sky-700 flex items-center justify-center text-white font-black text-base shadow-md shadow-sky-600/30 group-hover:scale-105 transition">
-              S
-            </div>
-            <div>
-              <span className="font-bold text-lg text-white tracking-tight">Sahvaas</span>
-              <span className="text-[10px] block text-sky-400 font-medium -mt-1 tracking-wider uppercase">
-                Society Operations OS
-              </span>
-            </div>
+          <Link href="/" className="flex items-center" aria-label="Sahvaas home">
+            <Logo size={30} />
           </Link>
 
           {/* Desktop Navigation Links */}
@@ -55,8 +48,8 @@ export const PublicHeader: React.FC = () => {
                   href={link.href}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
                     isActive
-                      ? 'bg-slate-800 text-sky-400 font-semibold'
-                      : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+                      ? 'bg-surface-muted text-brand font-semibold'
+                      : 'text-fg hover:text-fg hover:bg-surface-muted/60'
                   }`}
                 >
                   {link.label}
@@ -73,7 +66,7 @@ export const PublicHeader: React.FC = () => {
               <div className="flex items-center gap-2">
                 <Link
                   href={getRedirectPath()}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold shadow-sm transition"
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-brand hover:bg-brand-hover text-on-brand text-xs font-semibold shadow-card transition"
                 >
                   <LayoutDashboard className="w-3.5 h-3.5" />
                   <span>Go to Workspace</span>
@@ -82,7 +75,7 @@ export const PublicHeader: React.FC = () => {
                 <button
                   onClick={() => logout()}
                   title="Sign Out"
-                  className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer"
+                  className="p-2 rounded-xl bg-surface-muted hover:bg-border text-fg hover:text-fg transition cursor-pointer"
                 >
                   <LogOut className="w-3.5 h-3.5" />
                 </button>
@@ -91,14 +84,14 @@ export const PublicHeader: React.FC = () => {
               <div className="flex items-center gap-2">
                 <Link
                   href="/login"
-                  className="px-3.5 py-2 rounded-xl text-xs font-medium text-slate-200 hover:text-white hover:bg-slate-800 transition"
+                  className="px-3.5 py-2 rounded-lg text-xs font-medium text-fg hover:text-fg hover:bg-surface-muted transition"
                 >
                   Sign In
                 </Link>
 
                 <Link
                   href="/contact"
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold shadow-sm shadow-sky-600/30 transition"
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-brand hover:bg-brand-hover text-on-brand text-xs font-semibold shadow-card transition"
                 >
                   <span>Book Demo</span>
                   <ArrowRight className="w-3.5 h-3.5" />
@@ -112,7 +105,7 @@ export const PublicHeader: React.FC = () => {
             <PWAInstallButton />
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="p-2 rounded-xl bg-slate-800 text-slate-300 hover:text-white focus:outline-none"
+              className="p-2 rounded-lg bg-surface-muted text-fg hover:text-fg focus:outline-none"
               aria-label="Toggle Navigation Menu"
             >
               {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -123,7 +116,7 @@ export const PublicHeader: React.FC = () => {
 
       {/* Mobile Dropdown Menu */}
       {mobileMenuOpen && (
-        <div className="lg:hidden border-t border-slate-800 bg-slate-900/98 px-4 pt-3 pb-6 space-y-2 animate-in slide-in-from-top-2 duration-150">
+        <div className="lg:hidden border-t border-border bg-surface/98 px-4 pt-3 pb-6 space-y-2 animate-in slide-in-from-top-2 duration-150">
           {navLinks.map((link) => (
             <Link
               key={link.href}
@@ -131,21 +124,21 @@ export const PublicHeader: React.FC = () => {
               onClick={() => setMobileMenuOpen(false)}
               className={`block px-3 py-2 rounded-lg text-sm font-medium ${
                 pathname === link.href
-                  ? 'bg-sky-600/20 text-sky-400 font-bold'
-                  : 'text-slate-300 hover:bg-slate-800'
+                  ? 'bg-brand-soft text-brand font-semibold'
+                  : 'text-fg hover:bg-surface-muted'
               }`}
             >
               {link.label}
             </Link>
           ))}
 
-          <div className="pt-3 border-t border-slate-800 space-y-2">
+          <div className="pt-3 border-t border-border space-y-2">
             {isAuthenticated ? (
               <>
                 <Link
                   href={getRedirectPath()}
                   onClick={() => setMobileMenuOpen(false)}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-sky-600 text-white text-xs font-semibold shadow-sm"
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-brand text-on-brand text-xs font-semibold shadow-card"
                 >
                   <LayoutDashboard className="w-4 h-4" />
                   <span>Go to Workspace</span>
@@ -155,7 +148,7 @@ export const PublicHeader: React.FC = () => {
                     logout();
                     setMobileMenuOpen(false);
                   }}
-                  className="w-full py-2 rounded-xl text-center text-xs text-rose-400 hover:bg-slate-800 cursor-pointer"
+                  className="w-full py-2 rounded-lg text-center text-xs text-danger hover:bg-surface-muted cursor-pointer"
                 >
                   Sign Out{contactText(profile) ? ` (${contactText(profile)})` : ''}
                 </button>
@@ -165,14 +158,14 @@ export const PublicHeader: React.FC = () => {
                 <Link
                   href="/login"
                   onClick={() => setMobileMenuOpen(false)}
-                  className="w-full text-center py-2.5 rounded-xl bg-slate-800 text-white text-xs font-semibold"
+                  className="w-full text-center py-2.5 rounded-lg bg-surface-muted text-fg text-xs font-semibold"
                 >
                   Sign In
                 </Link>
                 <Link
                   href="/contact"
                   onClick={() => setMobileMenuOpen(false)}
-                  className="w-full text-center py-2.5 rounded-xl bg-sky-600 text-white text-xs font-semibold"
+                  className="w-full text-center py-2.5 rounded-lg bg-brand text-on-brand text-xs font-semibold"
                 >
                   Book Demo
                 </Link>

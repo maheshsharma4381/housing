@@ -31,12 +31,12 @@ export const PricingPage: React.FC = () => {
   }, []);
 
   return (
-    <div className="bg-slate-950 text-slate-100 min-h-screen py-16">
+    <div className="bg-canvas text-fg min-h-screen py-16">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
         <div className="text-center max-w-3xl mx-auto space-y-4">
-          <span className="text-xs font-bold uppercase tracking-wider text-sky-400">Simple & Transparent</span>
-          <h1 className="text-3xl sm:text-5xl font-black text-white tracking-tight">Free to start. Pay per flat when you need more.</h1>
-          <p className="text-xs sm:text-sm text-slate-400 leading-relaxed">
+          <span className="text-xs font-semibold text-brand">Simple & Transparent</span>
+          <h1 className="text-3xl sm:text-5xl font-semibold text-fg tracking-tight">Free to start. Pay per flat when you need more.</h1>
+          <p className="text-xs sm:text-sm text-fg-muted leading-relaxed">
             Every society gets a 30-day trial with all features. No setup fee, no per-user fee and no charge on residents&apos; UPI payments —
             money goes straight to the society&apos;s own account.
           </p>
@@ -47,26 +47,26 @@ export const PricingPage: React.FC = () => {
             const highlight = p.tier_code === 'basic';
             const rate = Number(p.monthly_rate_per_unit_inr);
             return (
-              <div key={p.tier_code} className={`p-8 rounded-3xl space-y-6 flex flex-col justify-between relative ${highlight ? 'bg-gradient-to-b from-slate-900 to-slate-950 border-2 border-sky-500 shadow-2xl shadow-sky-950/50' : 'bg-slate-900 border border-slate-800'}`}>
+              <div key={p.tier_code} className={`p-8 rounded-2xl space-y-6 flex flex-col justify-between relative ${highlight ? 'bg-surface border-2 border-brand shadow-card' : 'bg-surface border border-border'}`}>
                 {highlight && (
-                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-sky-500 text-slate-950 font-bold text-[10px] uppercase tracking-wider">Most societies</div>
+                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-brand text-fg font-semibold text-xs">Most societies</div>
                 )}
                 <div className="space-y-4">
                   <div>
-                    <h3 className="text-xl font-bold text-white">{p.name}</h3>
-                    {p.description && <p className="text-xs text-slate-400 mt-1">{p.description}</p>}
+                    <h3 className="text-xl font-semibold text-fg">{p.name}</h3>
+                    {p.description && <p className="text-xs text-fg-muted mt-1">{p.description}</p>}
                   </div>
                   <div className="flex items-baseline gap-1">
-                    <span className="text-3xl font-extrabold text-white">{rate ? `₹${rate}` : '₹0'}</span>
-                    <span className="text-xs text-slate-400">{rate ? '/ flat / month + GST' : 'forever'}</span>
+                    <span className="text-3xl font-semibold text-fg">{rate ? `₹${rate}` : '₹0'}</span>
+                    <span className="text-xs text-fg-muted">{rate ? '/ flat / month + GST' : 'forever'}</span>
                   </div>
-                  <ul className="text-xs text-slate-300 space-y-2.5 pt-4 border-t border-slate-800">
+                  <ul className="text-xs text-fg space-y-2.5 pt-4 border-t border-border">
                     {(p.features_included ?? []).map(f => (
-                      <li key={f} className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-sky-400 shrink-0" /><span>{f}</span></li>
+                      <li key={f} className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-brand shrink-0" /><span>{f}</span></li>
                     ))}
                   </ul>
                 </div>
-                <Link href="/signup" className={`w-full py-2.5 rounded-xl font-semibold text-xs text-center block transition ${highlight ? 'bg-sky-600 hover:bg-sky-500 text-white shadow-md' : 'bg-slate-800 hover:bg-slate-700 text-white'}`}>
+                <Link href="/signup" className={`w-full py-2.5 rounded-lg font-semibold text-xs text-center block transition ${highlight ? 'bg-brand hover:bg-brand-hover text-on-brand shadow-card' : 'bg-surface-muted hover:bg-border text-on-brand'}`}>
                   Start the 30-day trial
                 </Link>
               </div>
@@ -74,10 +74,10 @@ export const PricingPage: React.FC = () => {
           })}
         </div>
 
-        <div className="max-w-3xl mx-auto text-center text-xs text-slate-400 space-y-1">
+        <div className="max-w-3xl mx-auto text-center text-xs text-fg-muted space-y-1">
           <p>Yearly billing charges 10 months for 12. Paid plans bill a minimum of 20 flats. GST at 18% is added on the invoice.</p>
           <p>If a renewal isn&apos;t paid, the society simply moves to Free — nothing is deleted, and paying brings everything back.</p>
-          <p><Link href="/contact" className="text-sky-400 hover:underline">Large township or special requirements? Talk to us.</Link></p>
+          <p><Link href="/contact" className="text-brand hover:underline">Large township or special requirements? Talk to us.</Link></p>
         </div>
       </div>
     </div>
