@@ -267,8 +267,13 @@ export const FinancialReports: React.FC<FinancialReportsProps> = ({ societyId, s
 
   return (
     <div className="space-y-5 text-sm">
+      {/* on paper: the society, the report and the period, like a CA's working paper */}
+      <div className="hidden print:block border-b-2 border-black pb-2">
+        <div className="text-lg font-semibold text-black">{societyName}</div>
+        <div className="text-sm text-black">{REPORTS.find(r => r.key === report)?.label}</div>
+      </div>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+        <div className="print:hidden">
           <h2 className="text-2xl font-semibold tracking-tight text-fg">Reports</h2>
           <p className="text-fg-muted">Built automatically from bills, payments, vendor bills, depreciation and approved adjustments (double-entry).</p>
           {lockedUntil && <p className="text-warning flex items-center gap-1 mt-1"><Lock className="w-3 h-3" /> Books locked after audit up to {lockedUntil}</p>}
@@ -293,14 +298,13 @@ export const FinancialReports: React.FC<FinancialReportsProps> = ({ societyId, s
       <div className="flex flex-wrap gap-1.5 print:hidden">
         {REPORTS.filter(r => r.key !== 'tds' || has('tds_register')).map(r => (
           <button key={r.key} onClick={() => setReport(r.key)}
-            className={`px-3 py-1.5 rounded-lg font-medium cursor-pointer transition ${report === r.key ? 'bg-brand text-on-brand' : 'bg-surface border border-border text-fg-muted hover:text-on-brand'}`}>
+            className={`px-3 py-1.5 rounded-lg font-medium cursor-pointer transition ${report === r.key ? 'bg-brand text-on-brand' : 'bg-surface border border-border text-fg-muted hover:text-fg'}`}>
             {r.label}
           </button>
         ))}
       </div>
 
       <div className="flex flex-wrap items-center gap-2 text-fg-muted">
-        <span className="hidden print:inline font-semibold text-fg">{societyName} · {REPORTS.find(r => r.key === report)?.label} ·</span>
         {report === 'ledger' && (
           <select value={ledgerCode} onChange={e => setLedgerCode(e.target.value)} className={inputClass}>
             {accounts.map(a => <option key={a.code} value={a.code}>{a.code} · {a.name}</option>)}

@@ -272,7 +272,7 @@ export const ExpenseBillForm: React.FC<ExpenseBillFormProps> = ({ societyId, ven
         <div role="radiogroup" className="flex gap-1 p-1 rounded-xl bg-canvas border border-border">
           {([['invoice', 'With invoice'], ['pending', 'Invoice comes later'], ['none', 'No invoice (voucher)']] as [Mode, string][]).map(([m, label]) => (
             <button key={m} type="button" role="radio" aria-checked={mode === m} onClick={() => switchMode(m)}
-              className={`px-3 py-1.5 rounded-lg font-semibold cursor-pointer ${mode === m ? 'bg-brand text-on-brand' : 'text-fg-muted hover:text-on-brand'}`}>
+              className={`px-3 py-1.5 rounded-lg font-semibold cursor-pointer ${mode === m ? 'bg-brand text-on-brand' : 'text-fg-muted hover:text-fg'}`}>
               {label}
             </button>
           ))}

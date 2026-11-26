@@ -194,7 +194,7 @@ export const AdjustmentsPanel: React.FC<AdjustmentsPanelProps> = ({ societyId, c
             <div role="radiogroup" className="flex gap-1 p-1 rounded-xl bg-canvas border border-border">
               {([['journal', 'Journal entry'], ['capitalise', 'Move an expense to assets'], ['bank_move', 'Move to another bank']] as const).map(([k, label]) => (
                 <button key={k} type="button" role="radio" aria-checked={kind === k} onClick={() => setKind(k)}
-                  className={`px-3 py-1.5 rounded-lg font-semibold cursor-pointer ${kind === k ? 'bg-brand text-on-brand' : 'text-fg-muted hover:text-on-brand'}`}>{label}</button>
+                  className={`px-3 py-1.5 rounded-lg font-semibold cursor-pointer ${kind === k ? 'bg-brand text-on-brand' : 'text-fg-muted hover:text-fg'}`}>{label}</button>
               ))}
             </div>
           </div>

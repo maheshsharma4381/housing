@@ -49,7 +49,7 @@ export const PricingPage: React.FC = () => {
             return (
               <div key={p.tier_code} className={`p-8 rounded-2xl space-y-6 flex flex-col justify-between relative ${highlight ? 'bg-surface border-2 border-brand shadow-card' : 'bg-surface border border-border'}`}>
                 {highlight && (
-                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-brand text-fg font-semibold text-xs">Most societies</div>
+                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-brand text-on-brand font-semibold text-xs">Most societies</div>
                 )}
                 <div className="space-y-4">
                   <div>
@@ -66,7 +66,7 @@ export const PricingPage: React.FC = () => {
                     ))}
                   </ul>
                 </div>
-                <Link href="/signup" className={`w-full py-2.5 rounded-lg font-semibold text-xs text-center block transition ${highlight ? 'bg-brand hover:bg-brand-hover text-on-brand shadow-card' : 'bg-surface-muted hover:bg-border text-on-brand'}`}>
+                <Link href="/signup" className={`w-full py-2.5 rounded-lg font-semibold text-xs text-center block transition ${highlight ? 'bg-brand hover:bg-brand-hover text-on-brand shadow-card' : 'bg-surface-muted hover:bg-border text-fg'}`}>
                   Start the 30-day trial
                 </Link>
               </div>

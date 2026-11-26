@@ -103,6 +103,19 @@ table {
   font-variant-numeric: tabular-nums;
 }
 
+/* bills, receipts, invoices and reports print on A4 portrait */
+@page {
+  size: A4 portrait;
+  margin: 14mm;
+}
+@media print {
+  body {
+    background: #fff;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -406,7 +406,7 @@ export const BankReconciliation: React.FC<BankReconciliationProps> = ({ societyI
               ['all', 'All'],
             ] as const).map(([k, label]) => (
               <button key={k} role="tab" aria-selected={filter === k} onClick={() => setFilter(k)}
-                className={`px-3 py-1.5 rounded-lg font-semibold cursor-pointer ${filter === k ? 'bg-brand text-on-brand' : 'text-fg-muted hover:text-on-brand'}`}>{label}</button>
+                className={`px-3 py-1.5 rounded-lg font-semibold cursor-pointer ${filter === k ? 'bg-brand text-on-brand' : 'text-fg-muted hover:text-fg'}`}>{label}</button>
             ))}
           </div>
 

@@ -87,7 +87,7 @@ export const NotificationBell: React.FC<{ onOpen?: (link: string) => void; align
       <button onClick={() => setOpen(o => !o)} className="relative p-1.5 rounded-lg bg-surface-muted text-fg hover:text-fg cursor-pointer" title="Notifications">
         {unread > 0 ? <BellRing className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
         {unread > 0 && (
-          <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-warning-solid text-fg text-xs font-semibold flex items-center justify-center">
+          <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-danger-solid text-on-brand text-xs font-semibold flex items-center justify-center">
             {unread > 99 ? '99+' : unread}
           </span>
         )}

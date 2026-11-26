@@ -5,7 +5,9 @@ import { supabase } from '../../lib/supabase/client';
 import { amountInWords, formatINR } from '../../lib/inr';
 import { useRouter } from '../../router/RouterContext';
 import { receiptText, whatsappLink } from '../../lib/messages';
-import { ArrowLeft, Printer, Loader2, MessageCircle } from 'lucide-react';
+import { Printer, MessageCircle } from 'lucide-react';
+import { Button, buttonClass } from '../../components/ui/Button';
+import { DocumentPage, DocumentState, Paper, Letterhead, DocFacts } from '../../components/ui/DocumentPaper';
 
 interface ReceiptData {
   id: string;
@@ -55,30 +57,14 @@ export const ReceiptPage: React.FC<{ paymentId: string }> = ({ paymentId }) => {
       });
   }, [paymentId]);
 
-  if (error) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
-        <div className="max-w-sm p-6 rounded-2xl bg-slate-900 border border-slate-800 text-center text-xs text-slate-300 space-y-3">
-          <p>{error}</p>
-          <button onClick={() => navigate('/')} className="text-sky-400 hover:underline cursor-pointer">Go back</button>
-        </div>
-      </div>
-    );
-  }
-
-  if (!receipt) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400 text-xs gap-2">
-        <Loader2 className="w-4 h-4 animate-spin" /> Loading receipt…
-      </div>
-    );
-  }
-
+  if (error) return <DocumentState error={error} onBack={() => navigate('/')} />;
+  if (!receipt) return <DocumentState loading="Loading receipt…" />;
   if (receipt.status !== 'verified' || !receipt.receipt_number) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 text-xs text-slate-300">
-        This payment is {receipt.status.replace('_', ' ')} — a receipt is issued once the treasurer verifies it.
-      </div>
+      <DocumentState onBack={() => window.history.back()}>
+        <p className="text-fg">This payment is {receipt.status === 'pending_verification' ? 'being checked' : receipt.status.replace('_', ' ')}.</p>
+        <p>A receipt is issued once the treasurer verifies it.</p>
+      </DocumentState>
     );
   }
 
@@ -86,83 +72,76 @@ export const ReceiptPage: React.FC<{ paymentId: string }> = ({ paymentId }) => {
   const unallocated = Number(receipt.amount) - receipt.payment_allocations.reduce((sum, a) => sum + Number(a.amount), 0);
 
   return (
-    <div className="min-h-screen bg-slate-950 print:bg-white py-8 px-4">
-      <div className="max-w-2xl mx-auto space-y-4">
-        <div className="flex items-center justify-between print:hidden">
-          <button onClick={() => window.history.back()} className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white cursor-pointer">
-            <ArrowLeft className="w-3.5 h-3.5" /> Back
-          </button>
-          <div className="flex items-center gap-2">
-            <a
-              href={whatsappLink(receiptText({
-                societyName: s?.name ?? 'Society',
-                ownerName: receipt.profiles?.full_name,
-                flat: receipt.units?.unit_number ?? '',
-                receiptNumber: receipt.receipt_number,
-                amount: Number(receipt.amount),
-                utr: receipt.transaction_reference_utr,
-                receiptUrl: window.location.href,
-              }))}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold"
-            >
-              <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
-            </a>
-            <button onClick={() => window.print()} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold cursor-pointer">
-              <Printer className="w-3.5 h-3.5" /> Print / Save PDF
-            </button>
+    <DocumentPage actions={
+      <>
+        <a
+          href={whatsappLink(receiptText({
+            societyName: s?.name ?? 'Society',
+            ownerName: receipt.profiles?.full_name,
+            flat: receipt.units?.unit_number ?? '',
+            receiptNumber: receipt.receipt_number,
+            amount: Number(receipt.amount),
+            utr: receipt.transaction_reference_utr,
+            receiptUrl: window.location.href,
+          }))}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={buttonClass('secondary', 'sm')}
+        >
+          <MessageCircle className="w-4 h-4 text-success" /> WhatsApp
+        </a>
+        <Button size="sm" onClick={() => window.print()} leftIcon={<Printer className="w-4 h-4" />}>Print / Save PDF</Button>
+      </>
+    }>
+      <Paper>
+        <Letterhead society={s?.name ?? ''} registration={s?.registration_number}
+          address={[s?.address_line1, s?.address_line2, s?.city, `${s?.state ?? ''} ${s?.pincode ?? ''}`.trim()].filter(Boolean).join(', ')}
+          title="PAYMENT RECEIPT" number={receipt.receipt_number} date={receipt.verified_at ? new Date(receipt.verified_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : undefined} />
+
+        <DocFacts rows={[
+          ['Received from', receipt.profiles?.full_name ?? '—'],
+          ['Flat', receipt.units?.unit_number ?? '—'],
+          ['Mode', `${receipt.payment_method.toUpperCase()} · UTR ${receipt.transaction_reference_utr}`],
+          ['Payment date', fmtDate(receipt.payment_date)],
+        ]} />
+
+        <table className="w-full">
+          <thead>
+            <tr className="bg-slate-100 text-slate-600 text-xs">
+              <th className="text-left font-semibold py-2 px-3">Against bill</th>
+              <th className="text-left font-semibold py-2 px-3">Due date</th>
+              <th className="text-right font-semibold py-2 px-3 w-40">Amount (₹)</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {receipt.payment_allocations.map((a, i) => (
+              <tr key={i}>
+                <td className="py-2.5 px-3 font-mono">{a.bills?.bill_number}</td>
+                <td className="py-2.5 px-3">{a.bills?.due_date ? fmtDate(a.bills.due_date) : ''}</td>
+                <td className="py-2.5 px-3 text-right">{formatINR(a.amount)}</td>
+              </tr>
+            ))}
+            {unallocated > 0.005 && (
+              <tr><td className="py-2.5 px-3" colSpan={2}>Advance (adjusted against future bills)</td><td className="py-2.5 px-3 text-right">{formatINR(unallocated)}</td></tr>
+            )}
+          </tbody>
+        </table>
+
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <p className="text-xs italic text-slate-600 max-w-sm">{amountInWords(Number(receipt.amount))}</p>
+          <div className="sm:min-w-64 rounded-lg border-2 border-slate-900 px-4 py-3 text-right">
+            <div className="text-xs text-slate-600">Total received</div>
+            <div className="text-2xl font-semibold text-slate-900">{formatINR(receipt.amount)}</div>
           </div>
         </div>
 
-        <div className="palette-native bg-white text-slate-900 rounded-2xl print:rounded-none p-8 shadow-xl print:shadow-none space-y-6 text-sm">
-          <header className="text-center border-b border-slate-200 pb-4 space-y-1">
-            <h1 className="text-xl font-bold">{s?.name}</h1>
-            {s?.registration_number && <div className="text-xs text-slate-500">Reg. No. {s.registration_number}</div>}
-            <div className="text-xs text-slate-500">
-              {[s?.address_line1, s?.address_line2, s?.city, `${s?.state} ${s?.pincode}`].filter(Boolean).join(', ')}
-            </div>
-            <div className="pt-2 text-base font-semibold tracking-widest">PAYMENT RECEIPT</div>
-          </header>
-
-          <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
-            <dt className="text-slate-500">Receipt No.</dt><dd className="font-mono font-semibold text-right">{receipt.receipt_number}</dd>
-            <dt className="text-slate-500">Receipt Date</dt><dd className="text-right">{receipt.verified_at ? new Date(receipt.verified_at).toLocaleDateString('en-IN') : '—'}</dd>
-            <dt className="text-slate-500">Received From</dt><dd className="font-semibold text-right">{receipt.profiles?.full_name}</dd>
-            <dt className="text-slate-500">Flat</dt><dd className="text-right">{receipt.units?.unit_number}</dd>
-            <dt className="text-slate-500">Mode</dt><dd className="text-right">{receipt.payment_method.toUpperCase()} • UTR {receipt.transaction_reference_utr}</dd>
-            <dt className="text-slate-500">Payment Date</dt><dd className="text-right">{new Date(receipt.payment_date).toLocaleDateString('en-IN')}</dd>
-          </dl>
-
-          <table className="w-full text-xs border-t border-slate-200">
-            <thead>
-              <tr className="text-slate-500"><th className="text-left py-2">Against Bill</th><th className="text-left py-2">Due Date</th><th className="text-right py-2">Amount</th></tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {receipt.payment_allocations.map((a, i) => (
-                <tr key={i}>
-                  <td className="py-2 font-mono">{a.bills?.bill_number}</td>
-                  <td className="py-2">{a.bills?.due_date}</td>
-                  <td className="py-2 text-right">{formatINR(a.amount)}</td>
-                </tr>
-              ))}
-              {unallocated > 0.005 && (
-                <tr><td className="py-2" colSpan={2}>Advance (adjusted against future bills)</td><td className="py-2 text-right">{formatINR(unallocated)}</td></tr>
-              )}
-            </tbody>
-            <tfoot>
-              <tr className="border-t border-slate-300 font-bold"><td className="py-2" colSpan={2}>Total Received</td><td className="py-2 text-right">{formatINR(receipt.amount)}</td></tr>
-            </tfoot>
-          </table>
-
-          <p className="text-xs italic text-slate-600">{amountInWords(Number(receipt.amount))}</p>
-
-          <footer className="pt-6 flex items-end justify-between text-[11px] text-slate-500">
-            <span>Computer-generated receipt. Payment verified against the society&apos;s bank records.</span>
-            <span className="text-right">For {s?.name}<br />Treasurer</span>
-          </footer>
-        </div>
-      </div>
-    </div>
+        <footer className="pt-8 flex items-end justify-between gap-6 text-xs text-slate-500">
+          <span className="max-w-xs">Computer-generated receipt. Payment verified against the society&apos;s bank records.</span>
+          <span className="text-right text-slate-700">For {s?.name}<br /><span className="inline-block mt-6 pt-1 border-t border-slate-300">Treasurer</span></span>
+        </footer>
+      </Paper>
+    </DocumentPage>
   );
 };
+
+const fmtDate = (iso: string) => new Date(`${iso.slice(0, 10)}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });

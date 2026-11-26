@@ -9,18 +9,18 @@ const d = (iso: string | null) => (iso ? new Date(`${iso}T00:00:00`).toLocaleDat
 
 /** Printable Sahvaas tax invoice (white sheet, prints on its own). */
 export const InvoiceView: React.FC<{ invoice: PlatformInvoice }> = ({ invoice: inv }) => (
-  <article className="palette-native bg-white text-slate-900 rounded-2xl p-6 space-y-4 text-xs print:rounded-none print:p-0">
-    <header className="flex flex-wrap justify-between gap-4 border-b border-slate-200 pb-3">
+  <article className="palette-native bg-white text-slate-900 rounded-xl border border-slate-200 p-6 sm:p-8 space-y-5 text-[13px] leading-5 tabular-nums print:rounded-none print:border-0 print:p-0">
+    <header className="flex flex-wrap justify-between gap-4 border-b-2 border-slate-900 pb-5">
       <div>
-        <div className="text-lg font-extrabold">{inv.seller.name || 'Sahvaas'}</div>
+        <div className="text-xl font-semibold tracking-tight">{inv.seller.name || 'Sahvaas'}</div>
         {inv.seller.address && <div className="text-slate-600">{inv.seller.address}</div>}
         <div className="text-slate-600">GSTIN {inv.seller.gstin || '— (to be added)'} · SAC {inv.seller.sac || '—'}</div>
       </div>
       <div className="text-right">
-        <div className="text-[11px] font-extrabold tracking-[0.15em]">TAX INVOICE</div>
-        <div className="font-mono font-bold">{inv.invoice_number}</div>
+        <div className="text-xs font-semibold tracking-[0.12em] text-slate-500">TAX INVOICE</div>
+        <div className="mt-1 text-lg font-semibold font-mono">{inv.invoice_number}</div>
         <div className="text-slate-600">Date {d(inv.issued_on)} · Due {d(inv.due_on)}</div>
-        <div className={`mt-1 inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${inv.status === 'paid' ? 'bg-emerald-100 text-emerald-800' : inv.status === 'void' ? 'bg-slate-100 text-slate-500' : 'bg-amber-100 text-amber-800'}`}>{inv.status}</div>
+        <div className={`mt-1 inline-block px-2 py-0.5 rounded-lg text-xs font-medium capitalize ${inv.status === 'paid' ? 'bg-emerald-100 text-emerald-800' : inv.status === 'void' ? 'bg-slate-100 text-slate-500' : 'bg-amber-100 text-amber-800'}`}>{inv.status}</div>
       </div>
     </header>
     <div className="text-slate-700">
@@ -40,7 +40,7 @@ export const InvoiceView: React.FC<{ invoice: PlatformInvoice }> = ({ invoice: i
         {Number(inv.discount) > 0 && <tr><td className="py-1 text-slate-600">Discount</td><td className="py-1 text-right">−{formatINR(inv.discount)}</td></tr>}
         <tr className="border-t border-slate-200"><td className="py-1 text-slate-600">Taxable value</td><td className="py-1 text-right">{formatINR(inv.taxable)}</td></tr>
         {gstSplit(inv).map(g => <tr key={g.label}><td className="py-1 text-slate-600">{g.label}</td><td className="py-1 text-right">{formatINR(g.amount)}</td></tr>)}
-        <tr className="border-t border-slate-300 font-extrabold text-sm"><td className="pt-2">Total</td><td className="pt-2 text-right">{formatINR(inv.total)}</td></tr>
+        <tr className="border-t border-slate-300 font-semibold text-sm"><td className="pt-2">Total</td><td className="pt-2 text-right">{formatINR(inv.total)}</td></tr>
       </tbody>
     </table>
     <p className="italic text-slate-600">{amountInWords(Number(inv.total))}</p>

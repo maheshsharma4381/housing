@@ -6,7 +6,9 @@ import { supabase } from '../../lib/supabase/client';
 import { amountInWords, formatINR } from '../../lib/inr';
 import { useRouter } from '../../router/RouterContext';
 import { billView } from '../../lib/bill-view';
-import { ArrowLeft, Printer, Loader2 } from 'lucide-react';
+import { Printer } from 'lucide-react';
+import { Button } from '../../components/ui/Button';
+import { DocumentPage, DocumentState, Paper, Letterhead, DocFacts } from '../../components/ui/DocumentPaper';
 
 interface BillDocument {
   society: {
@@ -26,7 +28,7 @@ interface BillDocument {
   late_fee_rule: string | null;
 }
 
-const fmtDate = (iso: string | null) => (iso ? new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
+const fmtDate = (iso: string | null) => (iso ? new Date(`${iso.slice(0, 10)}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '—');
 
 /** The maintenance bill in the usual society format, printable as PDF (spec 9.2). */
 export const BillPage: React.FC<{ billId: string }> = ({ billId }) => {
@@ -42,23 +44,8 @@ export const BillPage: React.FC<{ billId: string }> = ({ billId }) => {
     });
   }, [billId]);
 
-  if (error) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
-        <div className="max-w-sm p-6 rounded-2xl bg-slate-900 border border-slate-800 text-center text-xs text-slate-300 space-y-3">
-          <p>{error}</p>
-          <button onClick={() => navigate('/')} className="text-sky-400 hover:underline cursor-pointer">Go back</button>
-        </div>
-      </div>
-    );
-  }
-  if (!doc) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400 text-xs gap-2">
-        <Loader2 className="w-4 h-4 animate-spin" /> Loading bill…
-      </div>
-    );
-  }
+  if (error) return <DocumentState error={error} onBack={() => navigate('/')} />;
+  if (!doc) return <DocumentState loading="Loading bill…" />;
 
   const { society: s, bill: b } = doc;
   const view = billView(b.status, Number(b.balance));
@@ -69,80 +56,68 @@ export const BillPage: React.FC<{ billId: string }> = ({ billId }) => {
     : null;
 
   return (
-    <div className="min-h-screen bg-slate-950 print:bg-white py-8 px-4">
-      <div className="max-w-2xl mx-auto space-y-4">
-        <div className="flex items-center justify-between print:hidden">
-          <button onClick={() => window.history.back()} className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white cursor-pointer">
-            <ArrowLeft className="w-3.5 h-3.5" /> Back
-          </button>
-          <button onClick={() => window.print()} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold cursor-pointer">
-            <Printer className="w-3.5 h-3.5" /> Print / Save PDF
-          </button>
-        </div>
+    <DocumentPage actions={<Button size="sm" onClick={() => window.print()} leftIcon={<Printer className="w-4 h-4" />}>Print / Save PDF</Button>}>
+      <Paper>
+        <Letterhead society={s.name} registration={s.registration_number} address={s.address}
+          title={view.heading} number={b.number} date={`Bill date ${fmtDate(b.bill_date)}`} titleTone={b.status === 'cancelled' ? 'danger' : 'default'} />
 
-        <div className="palette-native bg-white text-slate-900 rounded-2xl print:rounded-none p-6 sm:p-8 shadow-xl print:shadow-none space-y-6 text-sm">
-          <header className="text-center border-b border-slate-200 pb-4 space-y-1">
-            <h1 className="text-xl font-bold">{s.name}</h1>
-            {s.registration_number && <div className="text-xs text-slate-500">Reg. No. {s.registration_number}</div>}
-            <div className="text-xs text-slate-500">{s.address}</div>
-            <div className={`pt-2 text-base font-semibold tracking-widest ${b.status === 'cancelled' ? 'text-rose-600' : ''}`}>{view.heading}</div>
-          </header>
+        <DocFacts rows={[
+          ['Member', doc.member_name ?? '—'],
+          ['Flat', `${doc.flat.number}${doc.flat.area ? ` · ${doc.flat.area} sq.ft` : ''}`],
+          ['Period', b.period_start ? `${fmtDate(b.period_start)} – ${fmtDate(b.period_end)}` : b.period ?? '—'],
+          ['Due date', <strong key="due">{fmtDate(b.due_date)}</strong>],
+        ]} />
 
-          <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
-            <dt className="text-slate-500">Member</dt><dd className="font-semibold text-right">{doc.member_name ?? '—'}</dd>
-            <dt className="text-slate-500">Flat</dt><dd className="text-right">{doc.flat.number}{doc.flat.area ? ` · ${doc.flat.area} sq.ft` : ''}</dd>
-            <dt className="text-slate-500">Bill No.</dt><dd className="font-mono font-semibold text-right">{b.number}</dd>
-            <dt className="text-slate-500">Bill Date</dt><dd className="text-right">{fmtDate(b.bill_date)}</dd>
-            <dt className="text-slate-500">Period</dt>
-            <dd className="text-right">{b.period_start ? `${fmtDate(b.period_start)} – ${fmtDate(b.period_end)}` : b.period ?? '—'}</dd>
-            <dt className="text-slate-500">Due Date</dt><dd className="font-semibold text-right">{fmtDate(b.due_date)}</dd>
-          </dl>
+        <table className="w-full">
+          <thead>
+            <tr className="bg-slate-100 text-slate-600 text-xs">
+              <th className="text-left font-semibold py-2 px-3">Particulars</th>
+              <th className="text-right font-semibold py-2 px-3 w-40">Amount (₹)</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {b.items.map((i, n) => (
+              <tr key={n}>
+                <td className="py-2.5 px-3">{i.description}{Number(i.quantity) !== 1 ? <span className="text-slate-500"> ({i.quantity} × {formatINR(i.rate)})</span> : ''}</td>
+                <td className="py-2.5 px-3 text-right">{formatINR(i.amount)}</td>
+              </tr>
+            ))}
+            {Number(b.tax) > 0 && <tr><td className="py-2.5 px-3">GST</td><td className="py-2.5 px-3 text-right">{formatINR(b.tax)}</td></tr>}
+            {Number(b.late_fee) > 0 && <tr><td className="py-2.5 px-3">Late fee</td><td className="py-2.5 px-3 text-right">{formatINR(b.late_fee)}</td></tr>}
+            <tr className="font-semibold border-t border-slate-300"><td className="py-2.5 px-3">This bill</td><td className="py-2.5 px-3 text-right">{formatINR(b.total)}</td></tr>
+            {Number(b.paid) > 0 && <tr><td className="py-2.5 px-3">Less: paid against this bill</td><td className="py-2.5 px-3 text-right">− {formatINR(b.paid)}</td></tr>}
+            {Number(doc.arrears) > 0 && <tr><td className="py-2.5 px-3">Add: previous dues</td><td className="py-2.5 px-3 text-right">{formatINR(doc.arrears)}</td></tr>}
+            {view.asksForPayment && Number(doc.advance) > 0 && <tr><td className="py-2.5 px-3">Less: advance with the society</td><td className="py-2.5 px-3 text-right">− {formatINR(doc.advance)}</td></tr>}
+          </tbody>
+        </table>
 
-          <table className="w-full text-xs border-t border-slate-200">
-            <thead>
-              <tr className="text-slate-500"><th className="text-left py-2">Particulars</th><th className="text-right py-2">Amount</th></tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {b.items.map((i, n) => (
-                <tr key={n}>
-                  <td className="py-2">{i.description}{Number(i.quantity) !== 1 ? ` (${i.quantity} × ${formatINR(i.rate)})` : ''}</td>
-                  <td className="py-2 text-right">{formatINR(i.amount)}</td>
-                </tr>
-              ))}
-              {Number(b.tax) > 0 && <tr><td className="py-2">GST</td><td className="py-2 text-right">{formatINR(b.tax)}</td></tr>}
-              {Number(b.late_fee) > 0 && <tr><td className="py-2">Late fee</td><td className="py-2 text-right">{formatINR(b.late_fee)}</td></tr>}
-              <tr className="font-semibold"><td className="py-2">This bill</td><td className="py-2 text-right">{formatINR(b.total)}</td></tr>
-              {Number(b.paid) > 0 && <tr><td className="py-2">Less: paid against this bill</td><td className="py-2 text-right">− {formatINR(b.paid)}</td></tr>}
-              {Number(doc.arrears) > 0 && <tr><td className="py-2">Add: previous dues</td><td className="py-2 text-right">{formatINR(doc.arrears)}</td></tr>}
-              {view.asksForPayment && Number(doc.advance) > 0 && <tr><td className="py-2">Less: advance with the society</td><td className="py-2 text-right">− {formatINR(doc.advance)}</td></tr>}
-            </tbody>
-            {view.asksForPayment && (
-              <tfoot>
-                <tr className="border-t border-slate-300 font-bold text-sm">
-                  <td className="py-2">Total payable by {fmtDate(b.due_date)}</td><td className="py-2 text-right">{formatINR(payable)}</td>
-                </tr>
-              </tfoot>
-            )}
-          </table>
-          {payable > 0 && <p className="text-xs italic text-slate-600">{amountInWords(payable)}</p>}
-          {b.status === 'cancelled' && <p className="text-xs font-semibold text-rose-600">This bill was cancelled. Nothing is payable against it.</p>}
-
-          <footer className="pt-4 border-t border-slate-200 grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-4 text-[11px] text-slate-600 items-start">
-            {upi && (
-              <div className="text-center space-y-1">
-                <QRCodeSVG value={upi} size={112} />
-                <div>Scan to pay {formatINR(payable)}</div>
-              </div>
-            )}
-            <div className="space-y-1">
-              {s.upi_id && <div>UPI: <strong>{s.upi_id}</strong></div>}
-              {s.bank && <div>Bank: {s.bank.bank_name}, A/c {s.bank.account_number}, IFSC {s.bank.ifsc}{s.bank.branch ? `, ${s.bank.branch}` : ''}</div>}
-              {doc.late_fee_rule && <div>Late fee: {doc.late_fee_rule}.</div>}
-              <div>Computer-generated bill. For {s.name}, Secretary / Treasurer.</div>
+        {view.asksForPayment && (
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+            <p className="text-xs italic text-slate-600 max-w-sm">{payable > 0 ? amountInWords(payable) : ''}</p>
+            <div className="sm:min-w-64 rounded-lg border-2 border-slate-900 px-4 py-3 text-right">
+              <div className="text-xs text-slate-600">Total payable by {fmtDate(b.due_date)}</div>
+              <div className="text-2xl font-semibold text-slate-900">{formatINR(payable)}</div>
             </div>
-          </footer>
-        </div>
-      </div>
-    </div>
+          </div>
+        )}
+        {b.status === 'cancelled' && <p className="text-sm font-semibold text-rose-600">This bill was cancelled. Nothing is payable against it.</p>}
+
+        <footer className="pt-5 border-t border-slate-200 grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-5 text-xs text-slate-600 items-start">
+          {upi && (
+            <div className="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-200 w-fit">
+              <QRCodeSVG value={upi} size={112} />
+              <div className="font-medium text-slate-900">Scan to pay {formatINR(payable)}</div>
+            </div>
+          )}
+          <div className="space-y-1.5">
+            <div className="text-slate-900 font-semibold">How to pay</div>
+            {s.upi_id && <div>UPI: <strong className="text-slate-900">{s.upi_id}</strong></div>}
+            {s.bank && <div>Bank: {s.bank.bank_name}, A/c {s.bank.account_number}, IFSC {s.bank.ifsc}{s.bank.branch ? `, ${s.bank.branch}` : ''}</div>}
+            {doc.late_fee_rule && <div>Late fee: {doc.late_fee_rule}.</div>}
+            <div className="pt-2 text-slate-500">Computer-generated bill. For {s.name}, Secretary / Treasurer.</div>
+          </div>
+        </footer>
+      </Paper>
+    </DocumentPage>
   );
 };
