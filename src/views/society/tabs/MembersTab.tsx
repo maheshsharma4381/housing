@@ -10,16 +10,18 @@ import { JoinLinkCard } from '../../../components/JoinLinkCard';
 import { normalizeMobile, formatMobile, contactLine } from '../../../lib/mobile';
 import { Users, UserPlus, Mail, AlertCircle, CheckCircle2, Loader2, XCircle, MessageCircle } from 'lucide-react';
 import { PHONE_LOGIN_ON } from '../../../lib/phone-login';
-import { confirmDialog } from '../../../components/ui/feedback';
+import { confirmDialog, toast } from '../../../components/ui/feedback';
+import { fieldClass } from '../../../components/ui/Field';
+import { cn } from '../../../components/ui/cn';
 
 const ROLE_OPTIONS: { value: SocietyRole; label: string }[] = [
   { value: 'resident_owner', label: 'Resident (Owner)' },
   { value: 'resident_tenant', label: 'Resident (Tenant)' },
-  { value: 'committee_member', label: 'Committee Member' },
+  { value: 'committee_member', label: 'Committee member' },
   { value: 'treasurer', label: 'Treasurer' },
   { value: 'secretary', label: 'Secretary' },
   { value: 'chairman', label: 'Chairman' },
-  { value: 'society_admin', label: 'Society Admin' },
+  { value: 'society_admin', label: 'Society admin' },
 ];
 
 const roleLabel = (role: string) => ROLE_OPTIONS.find(r => r.value === role)?.label ?? role;
@@ -43,13 +45,31 @@ interface MembersTabProps {
   canChooseAccountant?: boolean;
   /** the committee's admins (not a read-only committee member) may make a new joining link */
   canManage?: boolean;
-  /** called after the Accountant switch changes, so the menu can refresh */
+  /** the Secretary, Chairman or society admin may change committee roles (045) */
+  canChangeRoles?: boolean;
+  /** called after an Accountant switch or a role change, so the menu can refresh */
   onAccountantChanged?: (userId: string) => void;
 }
 
+/** posts held by one person at a time (045) */
+const SINGLE_POSTS: SocietyRole[] = ['secretary', 'chairman', 'treasurer'];
+const COMMITTEE_CHOICES: { value: SocietyRole; label: string }[] = [
+  { value: 'secretary', label: 'Secretary' },
+  { value: 'chairman', label: 'Chairman' },
+  { value: 'treasurer', label: 'Treasurer' },
+  { value: 'committee_member', label: 'Committee member' },
+  { value: 'society_admin', label: 'Society admin' },
+];
+const REMOVE = '__remove';
+
+interface Term { user_id: string; name: string; role: SocietyRole; from_date: string; to_date: string | null }
+const fmtDay = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+
 const COMMITTEE_ROLES: SocietyRole[] = ['society_admin', 'secretary', 'chairman', 'treasurer', 'committee_member'];
 
-export const MembersTab: React.FC<MembersTabProps> = ({ societyId, societyName, currentUserId, units, canChooseAccountant = false, canManage = false, onAccountantChanged }) => {
+export const MembersTab: React.FC<MembersTabProps> = ({ societyId, societyName, currentUserId, units, canChooseAccountant = false, canManage = false, canChangeRoles = false, onAccountantChanged }) => {
+  const [history, setHistory] = useState<Term[] | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [invites, setInvites] = useState<MemberInvite[]>([]);
   const [loading, setLoading] = useState(true);
@@ -168,6 +188,40 @@ export const MembersTab: React.FC<MembersTabProps> = ({ societyId, societyName, 
     setNotice(on ? `${m.profiles?.full_name ?? 'The member'} is now the society's Accountant.` : `${m.profiles?.full_name ?? 'The member'} is no longer the Accountant.`);
     await load();
     onAccountantChanged?.(m.user_id);
+  };
+
+  // 045: move a member to another post, bring a resident onto the committee, or take someone off it
+  const changeRole = async (m: MemberRow, next: string) => {
+    if (!supabase || !next) return;
+    const name = m.profiles?.full_name ?? 'This member';
+    const role = next === REMOVE ? null : (next as SocietyRole);
+    const holder = role && SINGLE_POSTS.includes(role) ? members.find(x => x.role === role && x.user_id !== m.user_id) : undefined;
+    const ok = await confirmDialog(role === null
+      ? { title: `Take ${name} off the committee?`, body: 'Their committee access ends today. If they own or rent a flat, that stays as it is.', confirmText: 'Take off committee', tone: 'danger' }
+      : {
+          title: `Make ${name} ${roleLabel(role)}?`,
+          body: holder
+            ? `${holder.profiles?.full_name ?? 'The current ' + roleLabel(role)} is ${roleLabel(role)} now and becomes a Committee member. Both are told, and the change is kept in the committee history.`
+            : 'They are told, and the change is kept in the committee history.',
+          confirmText: `Make ${roleLabel(role)}`,
+        });
+    if (!ok) return;
+    const { error: rpcErr } = await supabase.rpc('change_committee_role', { p_society_id: societyId, p_user_id: m.user_id, p_role: role });
+    if (rpcErr) return setError(rpcErr.message);
+    setError(null);
+    toast.success(role === null ? `${name} is off the committee.` : `${name} is now ${roleLabel(role)}.`);
+    setHistory(null);
+    await load();
+    onAccountantChanged?.(m.user_id);
+    if (holder) onAccountantChanged?.(holder.user_id);
+  };
+
+  const openHistory = async () => {
+    setHistoryOpen(v => !v);
+    if (history || !supabase) return;
+    const { data, error: rpcErr } = await supabase.rpc('committee_history', { p_society_id: societyId });
+    if (rpcErr) return setError(rpcErr.message);
+    setHistory((data ?? []) as Term[]);
   };
 
   const deactivateMember = async (m: MemberRow) => {
@@ -304,7 +358,26 @@ export const MembersTab: React.FC<MembersTabProps> = ({ societyId, societyName, 
                   <div className="text-fg-muted truncate">{contactLine(m.profiles)}</div>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
-                  <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-brand-soft text-brand">{roleLabel(m.role)}</span>
+                  {canChangeRoles ? (
+                    COMMITTEE_ROLES.includes(m.role) ? (
+                      <select aria-label={`Role of ${m.profiles?.full_name ?? 'member'}`} value={m.role} onChange={e => changeRole(m, e.target.value)}
+                        className={cn(fieldClass, 'h-9 w-auto text-sm')}>
+                        {COMMITTEE_CHOICES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                        <option value={REMOVE}>Take off committee</option>
+                      </select>
+                    ) : (
+                      <>
+                        <span className="px-2 py-0.5 rounded-lg text-xs font-medium bg-brand-soft text-brand-ink">{roleLabel(m.role)}</span>
+                        <select aria-label={`Add ${m.profiles?.full_name ?? 'member'} to the committee`} value="" onChange={e => changeRole(m, e.target.value)}
+                          className={cn(fieldClass, 'h-9 w-auto text-sm text-fg-muted')}>
+                          <option value="">Add to committee…</option>
+                          {COMMITTEE_CHOICES.map(c => <option key={c.value} value={c.value}>As {c.label}</option>)}
+                        </select>
+                      </>
+                    )
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-lg text-xs font-medium bg-brand-soft text-brand-ink">{roleLabel(m.role)}</span>
+                  )}
                   {COMMITTEE_ROLES.includes(m.role) && (canChooseAccountant ? (
                     <label className="flex items-center gap-1 text-fg cursor-pointer" title="Accountant (keeps the books in Sahvaas)">
                       <input type="checkbox" checked={m.is_accountant} onChange={e => setAccountant(m, e.target.checked)} /> Accountant
@@ -313,7 +386,8 @@ export const MembersTab: React.FC<MembersTabProps> = ({ societyId, societyName, 
                     <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-warning-soft text-warning">Accountant</span>
                   ))}
                   <span className="text-fg-muted w-14 text-right">{m.unit_id ? unitLabel(m.unit_id) : '—'}</span>
-                  {m.user_id !== currentUserId && (
+                  {/* committee members leave through "Take off committee", which keeps a Secretary or Chairman */}
+                  {m.user_id !== currentUserId && !COMMITTEE_ROLES.includes(m.role) && (
                     <button onClick={() => deactivateMember(m)} className="text-fg-subtle hover:text-danger cursor-pointer" title="Remove member">
                       <XCircle className="w-4 h-4" />
                     </button>
@@ -322,6 +396,27 @@ export const MembersTab: React.FC<MembersTabProps> = ({ societyId, societyName, 
               </div>
             ))}
           </div>
+        )}
+      </div>
+
+      {/* Committee history (045) */}
+      <div className="rounded-xl bg-surface border border-border">
+        <button type="button" onClick={openHistory} aria-expanded={historyOpen}
+          className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left font-semibold text-fg cursor-pointer">
+          Committee history
+          <span className="text-xs font-normal text-fg-subtle">{historyOpen ? 'Hide' : 'Who held which post, and when'}</span>
+        </button>
+        {historyOpen && (
+          <ul className="border-t border-border divide-y divide-border">
+            {history === null && <li className="px-4 py-3 text-fg-muted">Loading…</li>}
+            {history?.length === 0 && <li className="px-4 py-3 text-fg-muted">No committee changes yet.</li>}
+            {history?.map((t, i) => (
+              <li key={i} className="px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
+                <span><span className="font-medium text-fg">{roleLabel(t.role)}</span> <span className="text-fg-muted">· {t.name}</span></span>
+                <span className="text-xs text-fg-subtle tabular-nums">{fmtDay(t.from_date)} – {t.to_date ? fmtDay(t.to_date) : 'today'}</span>
+              </li>
+            ))}
+          </ul>
         )}
       </div>
     </div>

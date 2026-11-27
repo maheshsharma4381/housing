@@ -480,7 +480,8 @@ export const SocietyDashboardPage: React.FC = () => {
               />
             ) : (
               <MembersTab societyId={activeSociety.id} societyName={activeSociety.name} currentUserId={user?.id} units={units}
-                canChooseAccountant={!readOnly} canManage={!readOnly} onAccountantChanged={(id) => { if (id === user?.id) refreshUserData(activeSociety.id); }} />
+                canChooseAccountant={!readOnly} canManage={!readOnly}
+                canChangeRoles={['society_admin', 'secretary', 'chairman'].includes(committeeMembership?.role ?? '')} onAccountantChanged={(id) => { if (id === user?.id) refreshUserData(activeSociety.id); }} />
             )}
           </div>
         )}
